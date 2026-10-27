@@ -2382,7 +2382,10 @@ var _fp={hello:null, v:0, off:{}, shown:{}, covered:false, rev:0, pushT:null, co
   tabs:{mode:false, left:false, told:false, why:'', seq:0, rev:0, bar:null, up:0, req:0, pend:0, asked:false}};
 // Settings > About's Native Coach row (_fpAboutRow): its status, here ahead of the first render, which in tabs mode can be
 // Settings (the boot tab, contract 2.4): declared beside the row, it was still undefined there and the boot stopped.
-var _fpChat={st:null, at:0, busy:false, cbs:[], html:null};
+// Build 61's Native tab bar row reads the same status: thtml is its open sheet's last HTML, chk a "Check the switches
+// now" in flight, sw a setSwitch in flight, on the tab bar turned on in this document, sig the page's own state when
+// the status was last read (a change reads it again at once).
+var _fpChat={st:null, at:0, busy:false, cbs:[], html:null, thtml:null, chk:false, sw:false, on:false, sig:''};
 // fp-tabs boot block: tabs mode is decided once per document, by the head script's test (contract 2.3). On a pass the
 // page boots on the tab this web view showed last (fp_tab, written by every local switch in tabs mode), else the
 // flag's; the flag's selection counts as seq 0 and its bar as rev 0. Booted on an fp_tab that is not the flag's tab,
@@ -22348,9 +22351,11 @@ function renderSettings() {
     })()+
     // The build 60+ shell's own rows, under the build they belong to: the native copy (Storage: the flag and
     // TrovoStore) and the native chat (the flag, TrovoShell and a binary that has the chat, on or off: the row says
-    // why it is off). Neither shows in the browser, the PWA or a shell before 60.
+    // why it is off). Neither shows in the browser, the PWA or a shell before 60. Build 61 calls the chat's row
+    // Native Coach and adds the Native tab bar's (a binary with the bar, and TrovoShell's setSwitch).
     _fpStoreRowHTML()+
     _fpAboutRow()+
+    _fpTabsAboutRow()+
     (function(){
       var n=0; try{ n=(JSON.parse(localStorage.getItem('kt_err_log')||'[]')).length; }catch(e){}
       return '<div class="settings-row" onclick="openErrorLogSheet()">'+
@@ -25312,22 +25317,32 @@ if(_fpPlugin()){
 // its window, the page hidden under a native screen, breaker trips, crash markers). Before, the row showed only for a
 // negotiated chat, so it vanished exactly when the chat was off for a reason. Inert without the flag and TrovoShell.
 // Its state, _fpChat, is declared with _fp: the first render reads it when the boot tab is Settings (tabs mode).
+// Build 61 (contract 10.5; a binary that names coachHome): the row is Native Coach, for coachHome and coach, and speaks
+// for the piece that hosts the Coach (_fpCoachHost); Try again resets both; its sheet gains stable ids, "Check the
+// switches now" and the shell-wide counters; a Native tab bar row follows it (_fpTabsAboutRow). Under build 60's binary
+// (binary ['coach']) every row, line, note and counter stays as it was (spec 118's C5).
 // The native screens this binary has, on or off (the flag's binary; an older flag has none).
 function _fpBinary(s){ var f=_fpShellFlag(); return !!(f && Array.isArray(f.binary) && f.binary.indexOf(s)>=0); }
 function _fpChatOffered(){ return !!(FP_NATIVE && _fpPlugin() && (_fpBinary('coach') || _fpNegotiated('coach') || _fpDeviceOff())); }
-// Reads the shell's status again (at most every 1.5 s unless forced) and repaints the row and an open sheet.
+// Reads the shell's status again (at most every 1.5 s unless forced) and repaints the row and an open sheet. Under a 61
+// binary also at once whenever the page's own side changed since the last read (_fpAboutSig: it left tabs mode, a
+// piece went off), so the rows never read a fallback the shell has already made from an older status.
 function _fpChatRefresh(force, then){
   var P=_fpPlugin(); if(!P || typeof P.status!=='function'){ if(then) then(null); return; }
   if(then) _fpChat.cbs.push(then);
   if(_fpChat.busy) return;
-  if(!force && _fpChat.st && Date.now()-_fpChat.at<1500){ _fpChatDone(); return; }
+  var sig=_fpBinary('coachHome') || _fpBinary('tabs') ? _fpAboutSig() : '';
+  if(!force && _fpChat.st && Date.now()-_fpChat.at<1500 && sig===_fpChat.sig){ _fpChatDone(); return; }
+  _fpChat.sig=sig;
   _fpChat.busy=true;
   var done=function(st){ _fpChat.busy=false; _fpChat.at=Date.now(); if(st && typeof st==='object') _fpChat.st=st; _fpChatPaint(); _fpChatDone(); };
   try{ Promise.resolve(P.status()).then(done, function(){ done(null); }); }catch(e){ done(null); }
 }
 function _fpChatDone(){ var cbs=_fpChat.cbs; _fpChat.cbs=[]; cbs.forEach(function(f){ try{ f(_fpChat.st); }catch(e){} }); }
 // How the native chat stands, in the owner's words: the row's line, its pill (On, Off, Paused) and the sheet's note.
+// A 61 binary's Native Coach: _fpCoachState.
 function _fpChatState(){
+  if(_fpBinary('coachHome')) return _fpCoachState();
   var st=_fpChat.st, c=(st && st.screens && st.screens.coach) || null, d=_fp.off.coach;
   var when=c && c.at ? _fpStoreWhen(c.at) : '';
   if(_fpDeviceOff()) return {line:'Off \u00b7 the app shows its web chat', pill:'Off', note:'Switched off on this iPhone. Turn it on to use the iPhone\u2019s own chat screen again.'};
@@ -25360,7 +25375,7 @@ function _fpAboutRow(){
         '<path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>'+
       '</svg>'+
     '</div>'+
-    '<div class="settings-row-body"><div class="settings-row-title">Native Coach chat</div><div class="settings-row-sub" id="fp-chat-sub">'+_esc(s.line)+'</div></div>'+
+    '<div class="settings-row-body"><div class="settings-row-title">'+(_fpBinary('coachHome') ? 'Native Coach' : 'Native Coach chat')+'</div><div class="settings-row-sub" id="fp-chat-sub">'+_esc(s.line)+'</div></div>'+
     _fpChatPill(s.pill)+
   '</div>';
 }
@@ -25368,6 +25383,7 @@ function _fpChatPaint(){
   var s=_fpChatState(), sub=document.getElementById('fp-chat-sub'), pill=document.getElementById('fp-chat-pill');
   if(sub) sub.textContent=s.line;
   if(pill) pill.outerHTML=_fpChatPill(s.pill);
+  _fpTabsPaint();   // the Native tab bar's row and sheet read the same status (61)
   var body=document.getElementById('fpChatBody'); if(!body) return;
   var h=_fpChatSheetHTML(); if(h===_fpChat.html) return;
   _fpChat.html=h; body.innerHTML=h; _a11yPass();
@@ -25375,6 +25391,7 @@ function _fpChatPaint(){
 // "0 this launch · 0 in all" for one of the shell's counters.
 function _fpChatCount(x){ x=x||{}; return (x.launch|0)+' this launch \u00b7 '+(x.total|0)+' in all'; }
 function _fpChatSheetHTML(){
+  if(_fpBinary('coachHome')) return _fpCoachSheetHTML();
   var st=_fpChat.st, s=_fpChatState(), c=(st && st.screens && st.screens.coach) || null, cn=(st && st.counters) || {}, off=_fpDeviceOff();
   var out='<div style="margin:0 20px 6px;padding:14px 16px;border-radius:14px;background:var(--card2);border:1px solid var(--border);">'+
     '<div class="kt-mono" style="font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--muted);margin-bottom:6px;">NATIVE COACH CHAT</div>'+
@@ -25411,12 +25428,15 @@ function openNativeChatSheet(){
   overlay.id='fpChatOverlay';
   overlay.className='kt-sheet-overlay';
   _fpChat.html=_fpChatSheetHTML();
+  var b61=_fpBinary('coachHome');
   overlay.innerHTML='<div class="kt-sheet" style="padding:0 0 calc(max(env(safe-area-inset-bottom),16px) + 8px);">'+
     '<div class="kt-sheet-head" style="padding:20px 20px 12px;margin-bottom:0;">'+
-      '<div class="kt-sheet-title" id="fpChatTitle" tabindex="-1">Native Coach chat</div>'+
+      '<div class="kt-sheet-title" id="fpChatTitle" tabindex="-1">'+(b61 ? 'Native Coach' : 'Native Coach chat')+'</div>'+
       '<button class="kt-sheet-x" onclick="closeNativeChatSheet()" aria-label="Close">✕</button>'+
     '</div>'+
-    '<div style="font-size:12px;color:var(--muted);padding:0 20px 12px;line-height:1.5;">The Coach chat as an iPhone screen, over the app. The app keeps the conversation either way: the web chat shows whenever the native one is off.</div>'+
+    '<div style="font-size:12px;color:var(--muted);padding:0 20px 12px;line-height:1.5;">'+(b61
+      ? 'The Coach tab drawn by the iPhone: its home, the connect screen and the chat. The app keeps the conversation either way: the web Coach shows whenever the native one is off.'
+      : 'The Coach chat as an iPhone screen, over the app. The app keeps the conversation either way: the web chat shows whenever the native one is off.')+'</div>'+
     '<div id="fpChatBody">'+_fpChat.html+'</div>'+
   '</div>';
   document.body.appendChild(overlay);
@@ -25427,9 +25447,11 @@ function openNativeChatSheet(){
 }
 function closeNativeChatSheet(){ var el=document.getElementById('fpChatOverlay'); if(el) el.remove(); }
 // "Try the native chat again": the shell clears the crash verdict or the breaker's trip (TrovoShell reset), and the
-// next launch's hello offers the chat again; this launch keeps the web chat.
+// next launch's hello offers the chat again; this launch keeps the web chat. A 61 binary's "Try the native Coach
+// again" resets both pieces the row covers (_fpCoachRetry).
 function _fpChatRetry(){
   var P=_fpPlugin(); if(!P || typeof P.reset!=='function') return;
+  if(_fpBinary('coachHome')){ _fpCoachRetry(P); return; }
   try{ Promise.resolve(P.reset({screen:'coach'})).then(function(st){
     if(st && typeof st==='object' && st.screens){ _fpChat.st=st; _fpChat.at=Date.now(); }
     showToast('The native chat is back from the next launch');
@@ -25439,8 +25461,304 @@ function _fpChatRetry(){
 function toggleNativeChat(){
   try{ if(_fpDeviceOff()) localStorage.removeItem('kt_native_off'); else localStorage.setItem('kt_native_off', '1'); }catch(e){}
   render();
-  showToast(_fpDeviceOff() ? 'Native Coach chat off' : 'Native Coach chat on');
+  if(_fpBinary('coachHome')) showToast(_fpDeviceOff() ? 'Native Coach off' : 'Native Coach on');
+  else showToast(_fpDeviceOff() ? 'Native Coach chat off' : 'Native Coach chat on');
   _fpChatPaint();
+}
+// ── Build 61's About (contract 10.5, D43; P10): Native Coach and Native tab bar ──
+// The page side of the shell's own state per piece: its status (TrovoShell status: per piece on, live, off with its
+// reason, canReset; the root built at scene connect, fellBack, the device switches, the policy file's last fetch and
+// the counters) plus this document's own reasons (_fp.off). Every word the owner reads here is the contract's.
+// The piece that hosts the Coach: coachHome under a live tab root (this document in tabs mode with tabs negotiated, or,
+// before hello has answered, the status's tab root), else coach (60's overlay chat). A root that has fallen back is no
+// live tab root, whether the page heard it yet (it left tabs mode) or only the status says so (screens.off on its way).
+function _fpCoachHost(){
+  var st=_fpChat.st;
+  if(_fp.tabs.left || (st && st.fellBack)) return 'coach';
+  return (_fpTabsLive() || (st && st.root==='tabs')) ? 'coachHome' : 'coach';
+}
+// The page's own side of what the rows say, for _fpChatRefresh: a change reads the shell's status again at once.
+function _fpAboutSig(){
+  var o=[]; for(var k in _fp.off) if(_fp.off[k]) o.push(k+':'+_fp.off[k]);
+  return [_fp.tabs.mode ? 1 : 0, _fp.tabs.left ? 1 : 0, _fp.hello ? 1 : 0].concat(o.sort()).join('|');
+}
+// The Native Coach row under a 61 binary: this iPhone's switch first (it acts at once, whatever the shell says), then
+// the hosting piece live, then the reasons (_fpCoachWhy), then the status not yet read.
+function _fpCoachState(){
+  var host=_fpCoachHost();
+  if(_fpDeviceOff()) return {line:'Off \u00b7 the app shows its web Coach', pill:'Off', note:'Switched off on this iPhone. Turn it on to use the iPhone\u2019s own Coach screens again.'};
+  if(host==='coachHome' && _fpTabsLive() && _fpLive('coachHome') && _fpLive('coach'))
+    return {line:'On \u00b7 the iPhone\u2019s own Coach tab', pill:'On', note:'The iPhone draws the Coach tab: its home, the connect screen and the chat.'};
+  if(host==='coach' && _fpLive('coach')) return {line:'On \u00b7 the iPhone\u2019s own chat screen', pill:'On', note:'The Coach chat opens as an iPhone screen, over the app.'};
+  var r=_fpCoachWhy(host==='coachHome' ? ['coachHome', 'coach'] : ['coach']);
+  if(r) return r;
+  if(!_fpChat.st) return {line:'Checking the native Coach\u2026', pill:'Off', note:''};
+  return {line:'Not available now \u00b7 the app shows its web Coach', pill:'Off', note:''};
+}
+// Why the native Coach is not up, for the pieces it needs (the host first): the status's reason for the next document
+// (60's crash, breaker and policy; page; needs reads the line of the piece needed), then this document's own (60's
+// present and model; the tab bar gone this launch), then on for the next document: back from the next launch, or
+// starting before hello has answered. Null when nothing says.
+function _fpCoachWhy(pieces, depth){
+  var st=_fpChat.st, i, x, d, when, on=false;
+  depth=depth|0;
+  for(i=0;i<pieces.length;i++){
+    x=(st && st.screens && st.screens[pieces[i]]) || null; if(!x) continue;
+    when=x.at ? _fpStoreWhen(x.at) : '';
+    if(x.off==='crash') return {line:'Off: the app closed with it open', pill:'Off',
+      note:'The app closed while the native Coach was open'+(when ? ' (found '+when+')' : '')+', so this version of the app shows its web Coach. Nothing was lost.'};
+    if(x.off==='breaker') return x.trip==='no-hello'
+      ? {line:'Paused: no hello', pill:'Paused', note:'The page didn\u2019t check in with the native Coach in time'+(when ? ' ('+when+')' : '')+', so this version shows the web Coach.'}
+      : {line:'Paused: calls kept failing', pill:'Paused', note:'Calls between the page and the native Coach failed several times in a row'+(when ? ' ('+when+')' : '')+', so this version shows the web Coach.'};
+    if(x.off==='policy') return {line:'Off by the policy file', pill:'Off', note:'The app\u2019s remote switch has the native Coach off for now. It comes back by itself when the switch does.'};
+    if(x.off==='page') return {line:'Off: this version of the page doesn\u2019t use it', pill:'Off', note:'The page the app is running leaves the native Coach out, so the app shows its web Coach. A newer page brings it back.'};
+    if(x.off==='needs' && depth<3){
+      var n=Array.isArray(x.needs) ? x.needs : [], q=null;
+      for(var j=0;j<n.length && !q;j++) q=n[j]==='tabs' || n[j]==='root' ? _fpTabsWhy() : _fpCoachWhy([n[j]], depth+1);
+      if(q) return q;
+    }
+    if(x.on) on=true;
+  }
+  for(i=0;i<pieces.length;i++){
+    d=_fp.off[pieces[i]];
+    if(d==='present') return {line:'Paused: it couldn\u2019t open \u00b7 back from the next launch', pill:'Paused', note:'The iPhone didn\u2019t open the native Coach this time, so the app shows its web Coach until it starts again.'};
+    if(d==='model') return {line:'Paused: it couldn\u2019t be drawn \u00b7 back from the next launch', pill:'Paused', note:'The Coach couldn\u2019t be drawn natively this time, so the app shows its web Coach until it starts again.'};
+    if(d==='tabs' || (d==='needs' && _fp.tabs.left)) return {line:'Off this launch: the tab bar went away \u00b7 back from the next launch', pill:'Off',
+      note:'The iPhone\u2019s own tab bar went away this launch and took the native Coach with it, so the app shows its web Coach until it starts again.'};
+  }
+  if(!on || depth) return null;
+  if(_fp.hello) return {line:'Back from the next launch', pill:'Off', note:'The native Coach is on again from the next time the app starts.'};
+  return {line:'Starting\u2026', pill:'Off', note:''};
+}
+// A state's card at the top of a sheet: its eyebrow, its line (head: the line's id) and its note.
+function _fpStateCard(eyebrow, head, s){
+  return '<div style="margin:0 20px 6px;padding:14px 16px;border-radius:14px;background:var(--card2);border:1px solid var(--border);">'+
+    '<div class="kt-mono" style="font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--muted);margin-bottom:6px;">'+eyebrow+'</div>'+
+    '<div id="'+head+'" style="font-size:16px;font-weight:800;color:var(--text);line-height:1.3;">'+_esc(s.line)+'</div>'+
+    (s.note ? '<div style="font-size:12px;color:var(--muted);margin-top:6px;line-height:1.5;">'+_esc(s.note)+'</div>' : '')+
+  '</div>';
+}
+// A switch row's On/Off pill (_a11yPass reads it for the row's aria-checked).
+function _fpSwitchPill(on){
+  return '<span style="flex-shrink:0;padding:7px 14px;border-radius:12px;font-size:12px;font-weight:700;'+(on?'background:var(--accent);color:var(--on-accent);':'background:var(--card2);color:var(--lite);border:1px solid var(--border);')+'">'+(on?'On':'Off')+'</span>';
+}
+// The Native Coach sheet under a 61 binary: its state, the switch (#fp-chat-switch, kt_native_off: both ways at once),
+// "Try the native Coach again" (#fp-chat-retry) while either piece holds a verdict, a trip or a decline, "Check the
+// switches now" where the Native tab bar row shows, and the shell-wide counters.
+function _fpCoachSheetHTML(){
+  var st=_fpChat.st, s=_fpChatState(), x=(st && st.screens) || {}, off=_fpDeviceOff();
+  var retry=!off && ((x.coachHome && x.coachHome.canReset) || (x.coach && x.coach.canReset));
+  var out=_fpStateCard('NATIVE COACH', 'fpChatHead', s)+'<div style="height:10px;"></div>'+
+    '<div class="settings-row" id="fp-chat-switch" onclick="toggleNativeChat()">'+
+      '<div class="settings-row-body"><div class="settings-row-title">Native Coach</div><div class="settings-row-sub">'+
+        (off ? 'Off on this iPhone \u00b7 the app shows its web Coach' : 'Uses the iPhone\u2019s own Coach screens whenever it can')+'</div></div>'+
+      _fpSwitchPill(!off)+
+    '</div>'+
+    (retry ?
+    '<div class="settings-row" id="fp-chat-retry" onclick="_fpChatRetry()">'+
+      '<div class="settings-row-body"><div class="settings-row-title">Try the native Coach again</div><div class="settings-row-sub">Back from the next launch</div></div>'+
+      '<span class="settings-row-chev">\u203a</span>'+
+    '</div>' : '')+
+    (_fpTabsAboutOffered() ? _fpPolicyRowHTML() : '');
+  return out+_fpSafetyHTML();
+}
+// The shell's counters (contract 10.5), shell-wide, in both 61 sheets: each "stays 0" but the trips and the markers.
+function _fpSafetyHTML(){
+  var st=_fpChat.st, cn=(st && st.counters) || {}, out=_fpStoreEyebrow('SAFETY');
+  if(!st) return out+'<div style="padding:10px 20px;border-top:1px solid var(--border);font-size:13px;color:var(--muted);">Reading the counters\u2026</div>';
+  var trips=cn.trips||{}, marks=cn.markers||{};
+  out+=_fpStoreStat('Left its window while open', _fpChatCount(cn.leftWindow), 'Stays 0: native screens and tab changes never take the app out of its window');
+  out+=_fpStoreStat('Hidden while in use', _fpChatCount(cn.hidden), 'Stays 0: the app keeps showing under native screens and tab changes');
+  out+=_fpStoreStat('Tab changes outside the funnel', _fpChatCount(cn.strays), 'Stays 0: every tab change goes one way');
+  out+=_fpStoreStat('Breaker trips', _fpChatCount(trips), trips.last ? 'Last: '+_fpStoreWhen(trips.last) : 'No hello in time, or calls failing in a row, pauses a native piece for that version');
+  out+=_fpStoreStat('Crash markers', _fpChatCount(marks)+(Array.isArray(st.verdicts) && st.verdicts.length ? ' \u00b7 '+_plural(st.verdicts.length, 'verdict')+' held' : ''),
+    marks.last ? 'Last: '+_fpStoreWhen(marks.last) : 'The app closing during a native screen or a tab change turns that piece off for that version');
+  return out;
+}
+// "Try the native Coach again": reset coachHome, then coach (contract 3.10), one after the other; the second answer is
+// the status the rows read.
+function _fpCoachRetry(P){
+  var fail=null;
+  var take=function(st){ if(st && typeof st==='object' && st.screens){ _fpChat.st=st; _fpChat.at=Date.now(); } };
+  var one=function(s){
+    try{ return Promise.resolve(P.reset({screen:s})).then(take, function(e){ if(!fail) fail=e || new Error('try again'); }); }
+    catch(e){ if(!fail) fail=e; return Promise.resolve(); }
+  };
+  one('coachHome').then(function(){ return one('coach'); }).then(function(){
+    if(fail) showToast('Couldn\u2019t turn it back on \u2014 '+((fail && fail.message) || 'try again'), 'err');
+    else showToast('The native Coach is back from the next launch');
+    _fpChatPaint();
+  });
+}
+// ── Settings > About > Native tab bar (61) ──
+// Shown when the binary has the bar and TrovoShell has setSwitch (contract 10.5), on any root and on any OS: iOS 17 and
+// 18 build the classic root (off 'os'), where the row says so with no switch and no Try again. The switch is the
+// shell's own (FPShell/switches.json through setSwitch): no kt_* key, nothing backed up. Off acts at once (the shell
+// falls back and tells the page with screens.off), on from the next launch.
+function _fpTabsAboutOffered(){ var P=_fpPlugin(); return !!(P && _fpBinary('tabs') && typeof P.setSwitch==='function'); }
+// How the tab bar stands: the reasons in the gate's order (the OS, this iPhone's switch, the policy file, a crash
+// verdict, the breaker, the page build), then the live bar (never once the root fell back: the status can say so before
+// the page has its screens.off), then a fallback or a bar due at the next launch.
+function _fpTabsState(){
+  var st=_fpChat.st, t=(st && st.screens && st.screens.tabs) || null, fb=(st && st.fellBack) || null;
+  var when=t && t.at ? _fpStoreWhen(t.at) : '';
+  if(t && t.off==='os') return {line:'Off: needs iOS 26 or later', pill:'Off', os:true, note:'The iPhone\u2019s own tab bar needs iOS 26 or later, so on this iPhone the app shows its own tab bar.'};
+  if((st && st.switches && st.switches.tabs===false) || (t && t.off==='device')) return {line:'Off on this iPhone', pill:'Off', note:'On again from the next launch once you switch it on.'};
+  if(t && t.off==='policy') return {line:'Off by the policy file', pill:'Off', note:'The app\u2019s remote switch has the native tab bar off for now. It comes back from the next launch after the switch does.'};
+  if(t && t.off==='crash') return {line:'Off: the app closed during a tab change', pill:'Off',
+    note:'The app closed while the tab bar was changing tabs'+(when ? ' (found '+when+')' : '')+', so this version of the app shows its own tab bar. Nothing was lost.'};
+  if(t && t.off==='breaker') return t.trip==='no-hello'
+    ? {line:'Paused: no hello', pill:'Paused', note:'The page didn\u2019t check in with the tab bar in time'+(when ? ' ('+when+')' : '')+', so this version shows the app\u2019s own tab bar.'}
+    : {line:'Paused: calls kept failing', pill:'Paused', note:'Calls between the page and the tab bar failed several times in a row'+(when ? ' ('+when+')' : '')+', so this version shows the app\u2019s own tab bar.'};
+  if((t && t.off==='page') || (fb && (fb.why==='page' || fb.why==='refused')))
+    return {line:'Off: this version of the page doesn\u2019t use it', pill:'Off', note:'The page the app is running doesn\u2019t use the iPhone\u2019s tab bar, so the app shows its own. A newer page brings it back.'};
+  if(!fb && !_fp.tabs.left && (_fpTabsLive() || (t && t.live && st.root==='tabs')))
+    return {line:'On \u00b7 the iPhone\u2019s own tab bar', pill:'On', note:'Log, Progress, Coach and Settings sit under the iPhone\u2019s own tab bar.'};
+  if(fb || _fp.tabs.left || (t && t.off==='needs') || _fpChat.on) return {line:'Back from the next launch', pill:'Off', note:'The iPhone\u2019s own tab bar is on again from the next time the app starts.'};
+  if(t && t.on && !_fp.hello) return {line:'Starting\u2026', pill:'Off', note:''};
+  if(!st) return {line:'Checking the tab bar\u2026', pill:'Off', note:''};
+  return {line:'Not available now \u00b7 the app shows its own tab bar', pill:'Off', note:''};
+}
+// The Native Coach's line when a piece it needs is the bar: the bar's own reason, never its On.
+function _fpTabsWhy(){ var s=_fpTabsState(); return s.pill==='On' ? null : s; }
+function _fpTabsPill(p){
+  return '<span id="fp-tabs-pill" style="flex-shrink:0;padding:7px 14px;border-radius:12px;font-size:12px;font-weight:700;'+(p==='On'?'background:var(--accent);color:var(--on-accent);':'background:var(--card2);color:var(--lite);border:1px solid var(--border);')+'">'+_esc(p)+'</span>';
+}
+function _fpTabsAboutRow(){
+  if(!_fpTabsAboutOffered()) return '';
+  setTimeout(function(){ _fpChatRefresh(false); }, 0);
+  var s=_fpTabsState();
+  return '<div class="settings-row" id="fp-tabs-row" onclick="openNativeTabsSheet()">'+
+    '<div class="settings-row-ic" style="background:var(--card2);">'+
+      '<svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
+        '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 15h18M9 15v5M15 15v5"/>'+
+      '</svg>'+
+    '</div>'+
+    '<div class="settings-row-body"><div class="settings-row-title">Native tab bar</div><div class="settings-row-sub" id="fp-tabs-sub">'+_esc(s.line)+'</div></div>'+
+    _fpTabsPill(s.pill)+
+  '</div>';
+}
+function _fpTabsPaint(){
+  var sub=document.getElementById('fp-tabs-sub'), pill=document.getElementById('fp-tabs-pill'), body=document.getElementById('fpTabsBody');
+  if(!sub && !pill && !body) return;
+  var s=_fpTabsState();
+  if(sub) sub.textContent=s.line;
+  if(pill) pill.outerHTML=_fpTabsPill(s.pill);
+  if(!body) return;
+  var h=_fpTabsSheetHTML(); if(h===_fpChat.thtml) return;
+  _fpChat.thtml=h; body.innerHTML=h; _a11yPass();
+}
+// The sheet: its state, the switch (#fp-tabs-switch) and Try again (#fp-tabs-retry, while a verdict, a trip or a
+// decline holds), neither on iOS 17 or 18; "Check the switches now"; the shell-wide counters.
+function _fpTabsSheetHTML(){
+  var st=_fpChat.st, s=_fpTabsState(), t=(st && st.screens && st.screens.tabs) || null, on=!(st && st.switches && st.switches.tabs===false);
+  var out=_fpStateCard('NATIVE TAB BAR', 'fpTabsHead', s);
+  if(!s.os) out+='<div style="height:10px;"></div>'+
+    '<div class="settings-row" id="fp-tabs-switch" onclick="toggleNativeTabs()">'+
+      '<div class="settings-row-body"><div class="settings-row-title">Native tab bar</div><div class="settings-row-sub">'+
+        (on ? 'Uses the iPhone\u2019s own tab bar whenever it can' : 'Off on this iPhone \u00b7 on again from the next launch')+'</div></div>'+
+      _fpSwitchPill(on)+
+    '</div>'+
+    (t && t.canReset ?
+    '<div class="settings-row" id="fp-tabs-retry" onclick="_fpTabsRetry()">'+
+      '<div class="settings-row-body"><div class="settings-row-title">Try the native tab bar again</div><div class="settings-row-sub">Back from the next launch</div></div>'+
+      '<span class="settings-row-chev">\u203a</span>'+
+    '</div>' : '');
+  return out+_fpPolicyRowHTML()+_fpSafetyHTML();
+}
+// The sheet's bottom padding is .kt-sheet's own (max(env(), 16px) + 8px, as the chat's sheet writes inline), which the
+// NATIVE TAB BAR block replaces in tabs mode: the inline style takes only the top and the sides.
+function openNativeTabsSheet(){
+  if(!_fpTabsAboutOffered()) return;
+  var existing=document.getElementById('fpTabsOverlay'); if(existing) existing.remove();
+  var overlay=document.createElement('div');
+  overlay.id='fpTabsOverlay';
+  overlay.className='kt-sheet-overlay';
+  _fpChat.thtml=_fpTabsSheetHTML();
+  overlay.innerHTML='<div class="kt-sheet" style="padding-top:0;padding-left:0;padding-right:0;">'+
+    '<div class="kt-sheet-head" style="padding:20px 20px 12px;margin-bottom:0;">'+
+      '<div class="kt-sheet-title" id="fpTabsTitle" tabindex="-1">Native tab bar</div>'+
+      '<button class="kt-sheet-x" onclick="closeNativeTabsSheet()" aria-label="Close">✕</button>'+
+    '</div>'+
+    '<div style="font-size:12px;color:var(--muted);padding:0 20px 12px;line-height:1.5;">The iPhone\u2019s own tab bar under Log, Progress, Coach and Settings. The app works the same either way: its own tab bar shows whenever the native one is off.</div>'+
+    '<div id="fpTabsBody">'+_fpChat.thtml+'</div>'+
+  '</div>';
+  document.body.appendChild(overlay);
+  _sheetDrag(overlay, closeNativeTabsSheet);
+  overlay.addEventListener('click', function(e){ if(e.target===overlay) closeNativeTabsSheet(); });
+  _a11yPass();
+  _fpChatRefresh(true);
+}
+function closeNativeTabsSheet(){ var el=document.getElementById('fpTabsOverlay'); if(el) el.remove(); }
+// The switch: setSwitch {screen:'tabs', on} from the state the status gives (read first when there is none yet); one
+// call at a time. Its answer is the status after: off has the shell fall back now (the page then leaves tabs mode on
+// the shell's screens.off), on reads "Back from the next launch".
+function toggleNativeTabs(){
+  var P=_fpPlugin(); if(!P || typeof P.setSwitch!=='function' || _fpChat.sw) return;
+  var st=_fpChat.st;
+  if(!st){ _fpChatRefresh(true, function(s){ if(s) toggleNativeTabs(); }); return; }
+  if(st.screens && st.screens.tabs && st.screens.tabs.off==='os') return;
+  var next=!!(st.switches && st.switches.tabs===false);
+  _fpChat.sw=true;
+  var done=function(){ _fpChat.sw=false; };
+  try{ Promise.resolve(P.setSwitch({screen:'tabs', on:next})).then(function(s){
+    done();
+    if(s && typeof s==='object' && s.screens){ _fpChat.st=s; _fpChat.at=Date.now(); }
+    _fpChat.on=next;
+    showToast(next ? 'Native tab bar on from the next launch' : 'Native tab bar off');
+    _fpChatPaint();
+  }, function(e){ done(); showToast('Couldn\u2019t change it \u2014 '+((e && e.message) || 'try again'), 'err'); }); }catch(e){ done(); }
+}
+// "Try the native tab bar again": the shell clears the bar's verdict, trip or decline (reset), for the next launch.
+function _fpTabsRetry(){
+  var P=_fpPlugin(); if(!P || typeof P.reset!=='function') return;
+  try{ Promise.resolve(P.reset({screen:'tabs'})).then(function(st){
+    if(st && typeof st==='object' && st.screens){ _fpChat.st=st; _fpChat.at=Date.now(); }
+    showToast('The native tab bar is back from the next launch');
+    _fpChatPaint();
+  }, function(e){ showToast('Couldn\u2019t turn it back on \u2014 '+((e && e.message) || 'try again'), 'err'); }); }catch(e){}
+}
+// "Check the switches now" (#fp-policy-check, D43): status {refresh: true} has the shell fetch the policy file now (at
+// most once a minute; it answers once the fetch has ended, or after 10 s), so a flip is picked up at once instead of
+// at the fetch's next turn (15 minutes). Its line says when the switches were last checked (status.policy).
+function _fpPolicyRowHTML(){
+  var st=_fpChat.st, p=(st && st.policy) || null, sub;
+  if(_fpChat.chk) sub='Checking\u2026';
+  else if(!st) sub='Reading the switches\u2026';
+  else if(p && p.at>0) sub='Checked '+_fpAgo(p.at)+_fpPolicyWord(p.result);
+  else sub='Not checked yet';
+  return '<div class="settings-row" id="fp-policy-check" onclick="_fpPolicyCheck()">'+
+    '<div class="settings-row-body"><div class="settings-row-title">Check the switches now</div><div class="settings-row-sub">'+_esc(sub)+'</div></div>'+
+    '<span class="settings-row-chev">\u203a</span>'+
+  '</div>';
+}
+// The fetch's result word (FPCore PolicyState.lastResult) in the owner's words, where it says more than "checked".
+function _fpPolicyWord(r){
+  r=String(r || '');
+  if(r.indexOf('fetch failed')===0) return ' \u00b7 couldn\u2019t reach the file';
+  if(r.indexOf('bad file')===0) return ' \u00b7 the file couldn\u2019t be read';
+  if(r.indexOf('no file')===0) return ' \u00b7 no file found';
+  if(r==='applied') return ' \u00b7 the switches changed';
+  return '';
+}
+// "just now", "N min ago", then the time ("today 3:04 PM").
+function _fpAgo(ms){
+  ms=Number(ms); var d=Date.now()-ms;
+  if(!(ms>0) || !isFinite(d)) return '';
+  if(d<60000) return 'just now';
+  if(d<3600000) return Math.floor(d/60000)+' min ago';
+  return _fpStoreWhen(ms);
+}
+function _fpPolicyCheck(){
+  var P=_fpPlugin(); if(!P || typeof P.status!=='function' || _fpChat.chk) return;
+  _fpChat.chk=true; _fpChatPaint();
+  var done=function(st, failed){
+    _fpChat.chk=false;
+    if(st && typeof st==='object' && st.screens){ _fpChat.st=st; _fpChat.at=Date.now(); }
+    if(failed) showToast('Couldn\u2019t check the switches \u2014 try again', 'err');
+    _fpChatPaint();
+  };
+  try{ Promise.resolve(P.status({refresh:true})).then(function(st){ done(st, false); }, function(){ done(null, true); }); }catch(e){ done(null, true); }
 }
 // 7-day plan summary — widget + reminders share this.
 // kind: what the day is ('lift' | 'run' | 'sport' | 'rest'), so the widget can tell an empty lift
@@ -26328,7 +26646,9 @@ window._trovoOpen=_handleDeepLink;
 //   "log/workout" | "log/run" | "log/body" | "log/sport"
 //   "progress" | "progress/compare" | "progress/records" | "progress/day" | "progress/calendar" | "settings"
 //   "settings/storage" (Settings at its About › Storage row) | "settings/storage-sheet" (the Storage sheet open)
-//   "settings/chat-sheet" (About › Native Coach chat open: how it stands, why it is off, the shell's counters)
+//   "settings/chat-sheet" (About › Native Coach chat open: how it stands, why it is off, the shell's counters; build
+//   61's About › Native Coach) | "settings/tabs-sheet" (build 61: About › Native tab bar open, its switch and the
+//   counters; nothing opens under a binary without the bar)
 //   "coach" (home) | "coach/chat"
 //   "modal/programme" | "modal/build" | "modal/routines" | "modal/nextround"
 //   "overlay/how" | "overlay/privacy"
@@ -26357,6 +26677,7 @@ function _devNavOnce(route){
         if(head==='settings' && sub==='storage'){ var _sr=document.getElementById('fp-store-row'); if(_sr) _sr.scrollIntoView({block:'center'}); }
         if(head==='settings' && sub==='storage-sheet'){ openStorageSheet(); }
         if(head==='settings' && sub==='chat-sheet'){ openNativeChatSheet(); }
+        if(head==='settings' && sub==='tabs-sheet'){ openNativeTabsSheet(); }
         if(head==='progress' && sub==='compare'){ _cmpDevOpen(); }
         if(head==='progress' && sub==='calendar'){ var _cc=document.querySelector('.kt-cal-card'); if(_cc) _cc.scrollIntoView({block:'start'}); }
         if(head==='progress' && sub==='day'){ var _ad=_calActiveDays(); if(_ad.length){ _calNavToDate(_ad[_ad.length-1]); render(); openCalDay(_ad[_ad.length-1]); } }
