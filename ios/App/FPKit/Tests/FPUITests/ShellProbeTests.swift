@@ -30,11 +30,13 @@ final class ShellProbeTests: XCTestCase {
         defer { r.letGo() }
         r.clear()
 
+        func controls(_ v: UIView) -> Int { (v is UIControl ? 1 : 0) + v.subviews.reduce(0) { $0 + controls($1) } }
+        guard controls(r.root.tabBar) > 0 else {
+            throw XCTSkip("this host draws no control under the bar (the probe's tapTab finds them in the app)")
+        }
         let found = ShellProbe.tabControls(r.root, "progress")
         XCTAssertNil(found.why)
-        guard let control = found.controls.first else {
-            throw XCTSkip("this host draws no control for the bar's items (the probe's tapTab finds them in the app)")
-        }
+        let control = try XCTUnwrap(found.controls.first, "the control that draws Progress")
         XCTAssertTrue(found.controls.allSatisfy { c in Self.draws(c, "Progress") }, "every control found draws the item's title")
         control.sendActions(for: .touchUpInside)
         XCTAssertEqual(r.root.selected, "progress", "the control's own action runs the funnel")
