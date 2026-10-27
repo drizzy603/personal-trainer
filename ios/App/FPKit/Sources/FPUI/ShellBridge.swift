@@ -64,8 +64,8 @@ import FPCore
 ///   ("Try the native chat again": the screen's crash verdicts, breaker record and decline go through the link's book,
 ///   for the next document). The counters the owner cannot see in os_log are kept across
 ///   launches (FPCore ShellCounters, UserDefaults `fp.shell.counters`): the web view leaving its window while the app is
-///   active (ShellWebView), the page going hidden under a native screen while the app is in use (the page's
-///   `visibility`), breaker trips and crash markers.
+///   active, and in any app state (ShellWebView), the page going hidden under a native screen while the app is in use
+///   (the page's `visibility`), breaker trips and crash markers.
 ///
 /// FPHost's policy fetch and the store's bootDone reach this through `environment` (the App target sets it: FPUI does
 /// not import FPHost).
@@ -1350,6 +1350,7 @@ public final class ShellBridge: NSObject {
         let page = b.link.pageBuild ?? b.pageBuild
         var launch = launchCounts
         launch.leftWindow = ShellWebView.leftWindowWhileActive
+        launch.leftAny = ShellWebView.leftWindowAny
         var own: [String: Bool] = [:]
         for p in ShellSwitches.pieces where shell.screens.contains(p) { own[p] = switches.isOn(p) }
         let json = ScreenStatus.json(shell: shell.shell, page: page, binary: shell.screens,
@@ -1376,6 +1377,13 @@ public final class ShellBridge: NSObject {
     /// ShellWebView left its window while the app was active (counted there for this launch): kept in the totals.
     func noteLeftWindow(at now: Date = Date()) {
         counters.leftWindow.add(at: now)
+        saveCounters()
+    }
+
+    /// ShellWebView left its window in any app state outside a scene's teardown (counted there for this launch, G23):
+    /// kept in the totals (`counters.leftAny`).
+    func noteLeftAny(at now: Date = Date()) {
+        counters.leftAny.add(at: now)
         saveCounters()
     }
 
@@ -1484,7 +1492,7 @@ public final class ShellBridge: NSObject {
             "negotiated": b.link.link?.screens ?? [], "live": b.link.liveScreens, "pageBuild": b.link.pageBuild ?? NSNull(),
             "documents": b.documents, "bootDones": b.bootDones, "pending": b.pageLink.pending,
             "book": Self.bookJSON(b.link.book), "screens": b.screens.describe(), "markersFound": markersFound,
-            "leftWindow": ShellWebView.leftWindowWhileActive,
+            "leftWindow": ShellWebView.leftWindowWhileActive, "leftWindowAny": ShellWebView.leftWindowAny,
             "gate": gate(page: b.link.pageBuild ?? b.pageBuild, book: b.link.book, tabsRoot: b.link.tabsRoot).on,
             "status": status(b), "root": describeRoot(b),
         ]
@@ -1553,10 +1561,15 @@ public struct ShellInstall: Equatable, Sendable {
 // MARK: - The web view
 
 /// The shell's WKWebView (`SuperoViewController.webView(with:configuration:)`): it counts every time it leaves its
-/// window while the app is active, which nothing in the shell does by design (a native screen goes over it, never in
-/// its place; decision.md section 4), and says so in the log.
+/// window, which nothing in the shell does by design (a native screen goes over it, never in its place; decision.md
+/// section 4; contract 11 I1), and says so in the log. Two counts, this launch's here and in all in Settings > About's
+/// counters: while the app is active (`leftWindowWhileActive`, build 60's), and in any app state (`leftWindowAny`,
+/// build 61's: a move while the app is inactive or in the background, a deep link that foregrounds it included, G23).
+/// A scene's teardown letting the page go counts in neither.
 public final class ShellWebView: WKWebView {
     public private(set) static var leftWindowWhileActive = 0
+    /// Every move out of its window this launch, whatever the app's state, outside a scene's teardown.
+    public private(set) static var leftWindowAny = 0
     /// A scene's teardown is under way (SceneDelegate's `sceneDidDisconnect`, and the Debug replay of a reconnect, which
     /// runs while the app is active): the web view leaving its window then is the teardown letting the page go, never a
     /// fault. SceneDelegate sets it before it lets go of the window and the page, and clears it as the next connection's
@@ -1567,12 +1580,21 @@ public final class ShellWebView: WKWebView {
     /// Where a counted move goes besides this launch's count: Settings > About's totals, across launches (tests set their
     /// own, so the shared bridge's counters and their UserDefaults copy stay as they were).
     static var noteLeftWindow: () -> Void = { ShellBridge.shared.noteLeftWindow() }
+    /// Where a move counted in any app state goes besides this launch's count: About's `leftAny` totals (tests set their
+    /// own, as for `noteLeftWindow`).
+    static var noteLeftAny: () -> Void = { ShellBridge.shared.noteLeftAny() }
 
     public override func willMove(toWindow newWindow: UIWindow?) {
-        if newWindow == nil, window != nil, !Self.sceneEnding, Self.appActive() {
-            Self.leftWindowWhileActive += 1
-            ShellBridge.log.fault("shell: the web view left its window while the app was active (\(Self.leftWindowWhileActive) this launch)")
-            Self.noteLeftWindow()   // Settings > About counts it (in all, across launches)
+        if newWindow == nil, window != nil, !Self.sceneEnding {
+            Self.leftWindowAny += 1
+            Self.noteLeftAny()   // Settings > About counts it (in all, across launches)
+            if Self.appActive() {
+                Self.leftWindowWhileActive += 1
+                ShellBridge.log.fault("shell: the web view left its window while the app was active (\(Self.leftWindowWhileActive) this launch)")
+                Self.noteLeftWindow()
+            } else {
+                ShellBridge.log.fault("shell: the web view left its window while the app was not active (\(Self.leftWindowAny) in any state this launch)")
+            }
         }
         super.willMove(toWindow: newWindow)
     }
