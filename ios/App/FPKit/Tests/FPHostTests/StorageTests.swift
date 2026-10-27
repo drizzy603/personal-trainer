@@ -77,6 +77,20 @@ final class StorageTests: XCTestCase {
         #endif
     }
 
+    /// `-fpOpenURL <url>` (contract 9, 15.3): the cold link SceneDelegate parks, read by the flag's rule for a value, and
+    /// only a URL with a scheme, as a connection's URLs always have. An option in its place is no URL: before, the
+    /// relative URL "-devNav" was parked for the page and the link the tool meant was silently missing.
+    func testTheColdLinkLaunchArgument() {
+        func url(_ a: [String]) -> String? { ShellFlagScript.Dev.openURL(arguments: ["App"] + a)?.absoluteString }
+        XCTAssertEqual(url(["-fpOpenURL", "trovo://share"]), "trovo://share")
+        XCTAssertEqual(url(["-devNav", "log", "-fpOpenURL", "trovo://start", "-fpOffline"]), "trovo://start")
+        XCTAssertNil(url(["-fpOpenURL", "-devNav", "progress"]), "the next option is not a URL")
+        XCTAssertNil(url(["-fpOpenURL"]), "a missing value")
+        XCTAssertNil(url(["-fpOpenURL", ""]), "an empty one")
+        XCTAssertNil(url(["-fpOpenURL", "share"]), "a URL with no scheme")
+        XCTAssertNil(url(["-devNav", "progress"]), "no -fpOpenURL")
+    }
+
     /// With no store open (a test host never opens one), Storage's calls refuse or come back empty, and the status says
     /// so with the switch and the test's state. The switch turned on clears the store's crash verdicts in the breaker
     /// record beside the store (`breakers.json`), which the next launch reads before the UserDefaults copy.

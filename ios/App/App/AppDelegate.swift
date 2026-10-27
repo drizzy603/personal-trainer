@@ -454,9 +454,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     private static func debugOpenURL() -> URL? {
         guard !openURLRead else { return nil }
         openURLRead = true
-        let a = ProcessInfo.processInfo.arguments
-        guard let i = a.firstIndex(of: "-fpOpenURL"), i + 1 < a.count else { return nil }
-        return URL(string: a[i + 1])
+        return ShellFlagScript.Dev.openURL(arguments: ProcessInfo.processInfo.arguments)
     }
 
     /// `-devTheme <room>`: the first frame's room when it is one of the page's rooms (the page paints that room without
