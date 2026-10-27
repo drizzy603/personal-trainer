@@ -200,13 +200,22 @@ extension AppDelegate {
     /// The share extension's write (ShareViewController.send), made from inside the app (a host's write to the group's
     /// defaults can go unseen by the app): the JPEG as `pendingShare.jpg` in the App Group's container (`jpeg` names a
     /// file beside the probe's steps in Documents/fp-probe; with none, a 1600 px photo drawn here, as the extension
-    /// downscales one), the comment as `pendingShareComment` in the group's defaults, the legacy base64 slot removed. A
-    /// build without the App Group's entitlement (the tools' simulator builds, made with CODE_SIGNING_ALLOWED=NO) has no
-    /// group container: the photo then goes to that legacy slot, which TrovoShare's `getPendingShare` reads when no file
-    /// is there (`stored` says which). It opens nothing: a scenario pairs it with `openURL trovo://share`,
-    /// `openURLOnActive` or a return from the background.
+    /// downscales one), the comment as `pendingShareComment` in the group's defaults, the legacy base64 slot removed
+    /// (`stored: file`). A build without the App Group's entitlement has no group container (a simulator build made with
+    /// CODE_SIGNING_ALLOWED=NO, as the tools' were: a simulator build signed to run locally has it): that is an error
+    /// event that writes nothing (`stored: none`), so no scenario tests TrovoShare's fallback read believing it tests the
+    /// extension's file. `legacy: true` asks for that fallback on purpose: the photo goes to the legacy base64
+    /// `pendingShareImage` slot, which `getPendingShare` reads when no file is there and keeps for one release
+    /// (`stored: defaults`). It opens nothing: a scenario pairs it with `openURL trovo://share`, `openURLOnActive` or a
+    /// return from the background.
     private static func writeProbeShare(_ step: [String: Any]) -> [String: Any] {
         guard let defaults = UserDefaults(suiteName: shareGroup) else { return ["error": "no App Group defaults"] }
+        let legacy = step["legacy"] as? Bool == true
+        let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: shareGroup)
+        if container == nil, !legacy {
+            return ["error": "no App Group container in this build (no group entitlement): nothing written; sign the simulator build to run locally, or pass legacy: true for the base64 slot",
+                    "stored": "none", "legacy": false]
+        }
         let jpeg: Data
         var source = "drawn"
         if let name = step["jpeg"] as? String, !name.isEmpty {
@@ -221,21 +230,23 @@ extension AppDelegate {
             jpeg = data
         }
         var stored = "file"
-        if let dir = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: shareGroup) {
+        if legacy {
+            // asked for: the old base64 slot, with no file left to win over it
+            if let dir = container { try? FileManager.default.removeItem(at: dir.appendingPathComponent("pendingShare.jpg")) }
+            defaults.set(jpeg.base64EncodedString(), forKey: "pendingShareImage")
+            stored = "defaults"
+        } else if let dir = container {
             do {
                 try jpeg.write(to: dir.appendingPathComponent("pendingShare.jpg"), options: .atomic)
             } catch {
-                return ["error": "pendingShare.jpg could not be written"]
+                return ["error": "pendingShare.jpg could not be written", "stored": "none", "legacy": false]
             }
             defaults.removeObject(forKey: "pendingShareImage")
-        } else {
-            defaults.set(jpeg.base64EncodedString(), forKey: "pendingShareImage")
-            stored = "defaults"
         }
         let comment = step["comment"] as? String ?? ""
         defaults.set(comment, forKey: "pendingShareComment")
         defaults.synchronize()
-        return ["jpeg": source, "bytes": jpeg.count, "stored": stored, "commentLength": comment.count]
+        return ["jpeg": source, "bytes": jpeg.count, "stored": stored, "legacy": legacy, "commentLength": comment.count]
     }
 
     /// A 1600 x 1200 stand-in photo, JPEG at the extension's quality (0.8).
