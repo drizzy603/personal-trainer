@@ -1564,12 +1564,15 @@ public final class ShellWebView: WKWebView {
     public static var sceneEnding = false
     /// Whether the app is in use now (tests set their own).
     static var appActive: () -> Bool = { UIApplication.shared.applicationState == .active }
+    /// Where a counted move goes besides this launch's count: Settings > About's totals, across launches (tests set their
+    /// own, so the shared bridge's counters and their UserDefaults copy stay as they were).
+    static var noteLeftWindow: () -> Void = { ShellBridge.shared.noteLeftWindow() }
 
     public override func willMove(toWindow newWindow: UIWindow?) {
         if newWindow == nil, window != nil, !Self.sceneEnding, Self.appActive() {
             Self.leftWindowWhileActive += 1
             ShellBridge.log.fault("shell: the web view left its window while the app was active (\(Self.leftWindowWhileActive) this launch)")
-            ShellBridge.shared.noteLeftWindow()   // Settings > About counts it (in all, across launches)
+            Self.noteLeftWindow()   // Settings > About counts it (in all, across launches)
         }
         super.willMove(toWindow: newWindow)
     }
