@@ -25495,13 +25495,13 @@ function _fpCoachState(){
   if(!_fpChat.st) return {line:'Checking the native Coach\u2026', pill:'Off', note:''};
   return {line:'Not available now \u00b7 the app shows its web Coach', pill:'Off', note:''};
 }
-// Why the native Coach is not up, for the pieces it needs (the host first): the status's reason for the next document
-// (60's crash, breaker and policy; page; needs reads the line of the piece needed), then this document's own (60's
-// present and model; the tab bar gone this launch), then on for the next document: back from the next launch, or
-// starting before hello has answered. Null when nothing says.
-function _fpCoachWhy(pieces, depth){
+// Why the native Coach is not up, for the pieces it rests on (the host first; under a live tab root the Coach tab and
+// the chat it hosts, so a piece off for needs reads as the piece it needs, contract 10.5): the status's reason for the
+// next document (60's crash, breaker and policy; page), then this document's own (60's present and model; the tab bar
+// gone this launch), then on for the next document: back from the next launch, or starting before hello has answered.
+// Null when nothing says.
+function _fpCoachWhy(pieces){
   var st=_fpChat.st, i, x, d, when, on=false;
-  depth=depth|0;
   for(i=0;i<pieces.length;i++){
     x=(st && st.screens && st.screens[pieces[i]]) || null; if(!x) continue;
     when=x.at ? _fpStoreWhen(x.at) : '';
@@ -25512,11 +25512,6 @@ function _fpCoachWhy(pieces, depth){
       : {line:'Paused: calls kept failing', pill:'Paused', note:'Calls between the page and the native Coach failed several times in a row'+(when ? ' ('+when+')' : '')+', so this version shows the web Coach.'};
     if(x.off==='policy') return {line:'Off by the policy file', pill:'Off', note:'The app\u2019s remote switch has the native Coach off for now. It comes back by itself when the switch does.'};
     if(x.off==='page') return {line:'Off: this version of the page doesn\u2019t use it', pill:'Off', note:'The page the app is running leaves the native Coach out, so the app shows its web Coach. A newer page brings it back.'};
-    if(x.off==='needs' && depth<3){
-      var n=Array.isArray(x.needs) ? x.needs : [], q=null;
-      for(var j=0;j<n.length && !q;j++) q=n[j]==='tabs' || n[j]==='root' ? _fpTabsWhy() : _fpCoachWhy([n[j]], depth+1);
-      if(q) return q;
-    }
     if(x.on) on=true;
   }
   for(i=0;i<pieces.length;i++){
@@ -25526,7 +25521,7 @@ function _fpCoachWhy(pieces, depth){
     if(d==='tabs' || (d==='needs' && _fp.tabs.left)) return {line:'Off this launch: the tab bar went away \u00b7 back from the next launch', pill:'Off',
       note:'The iPhone\u2019s own tab bar went away this launch and took the native Coach with it, so the app shows its web Coach until it starts again.'};
   }
-  if(!on || depth) return null;
+  if(!on) return null;
   if(_fp.hello) return {line:'Back from the next launch', pill:'Off', note:'The native Coach is on again from the next time the app starts.'};
   return {line:'Starting\u2026', pill:'Off', note:''};
 }
@@ -25619,8 +25614,6 @@ function _fpTabsState(){
   if(!st) return {line:'Checking the tab bar\u2026', pill:'Off', note:''};
   return {line:'Not available now \u00b7 the app shows its own tab bar', pill:'Off', note:''};
 }
-// The Native Coach's line when a piece it needs is the bar: the bar's own reason, never its On.
-function _fpTabsWhy(){ var s=_fpTabsState(); return s.pill==='On' ? null : s; }
 function _fpTabsPill(p){
   return '<span id="fp-tabs-pill" style="flex-shrink:0;padding:7px 14px;border-radius:12px;font-size:12px;font-weight:700;'+(p==='On'?'background:var(--accent);color:var(--on-accent);':'background:var(--card2);color:var(--lite);border:1px solid var(--border);')+'">'+_esc(p)+'</span>';
 }
