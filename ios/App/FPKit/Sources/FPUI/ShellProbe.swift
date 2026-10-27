@@ -307,9 +307,9 @@ final class ShellProbe {
                 state(label: label) { next() }
                 return
             }
-            // the label VoiceOver reads (delta 14.10): UIKit's and SwiftUI's accessibility bundles loaded, then the
-            // runtime on (in that order: bundles loaded once it is on name no SwiftUI field), then a moment for SwiftUI
-            // to build its elements (as a first press waits)
+            // the label VoiceOver reads (delta 14.10): UIKit's and SwiftUI's accessibility bundles loaded and the runtime
+            // on, then a moment for SwiftUI to build its elements (as a first press waits); the state then asks the top
+            // screen for its elements before it reads the label (SwiftUI names a field only once they were asked for)
             if Self.axBundles == nil { event("axBundles", ["loaded": Self.loadAccessibilityBundles()]) }
             Self.enableAccessibility()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
