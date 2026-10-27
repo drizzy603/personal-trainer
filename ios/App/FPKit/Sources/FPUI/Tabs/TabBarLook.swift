@@ -11,8 +11,11 @@ import FPCore
 ///   Content Viewer shows on a long press at the accessibility text sizes (the bar itself keeps its size, D45).
 /// - `paper` gives the bar `.light` and Lime `.dark`, set in both rooms and never left `.unspecified` (iOS 27.0 read the
 ///   bar's own trait as light with no override, probe61 question 7). The same style goes on the Coach tab's navigation
-///   controller, and never on the window, the root or a slot: the web view's traits, its keyboards and the page's
-///   `prefers-color-scheme` stay the phone's (`maps/shell.md:331`).
+///   controller and on the bar's container (RootTabController's `paintBarContainer`: the glass platter's content takes
+///   its style from there, not from the bar), and never on the window, the root or a slot: the web view's traits, its
+///   keyboards and the page's `prefers-color-scheme` stay the phone's (`maps/shell.md:331`).
+/// - The glass bar draws its unselected items in its own colour: on iOS 27.0 neither `unselectedItemTintColor` nor a
+///   UITabBarAppearance's normal item colours change them (H9's by-hand run). `idle` is set all the same.
 /// - The room's `bg` is the ground the Coach tab shows while WAITING and while held (contract 1.4, 8.1).
 enum TabBarLook {
     /// The glyph of each tab, in the bar's order (contract 1.2).

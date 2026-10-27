@@ -775,6 +775,46 @@ final class RootTabControllerTests: XCTestCase {
 
     // MARK: 7. The room
 
+    /// Every view UIKit draws the glass bar with wears the room's style whatever the phone's (found in H9's by-hand run on
+    /// iOS 27.0: the bar's own override reached the bar but not its platter's content, which took the window's style, so
+    /// Lime on a phone in light mode drew light glass with black items and its selected item all but unreadable, and
+    /// Heavyweight on a phone in dark mode dark glass). The room's style goes on the bar's container too, the bar's
+    /// ancestor directly under the root's view, which never holds the web view; the web view and the root keep the
+    /// phone's. The host's own appearance stands for the phone's (a window's override does not reach the root here), and
+    /// one of the two rooms is always unlike it, so the case that showed the defect always runs.
+    func test07bTheGlassWearsTheRoomWhateverThePhone() throws {
+        var unlike = 0
+        for look in [Self.lime, Self.heavy] {
+            let r = rig(first: "progress", mode: .native, look: look)
+            let room: UIUserInterfaceStyle = look.paper ? .light : .dark
+            let phone = r.window.traitCollection.userInterfaceStyle
+            if phone != room { unlike += 1 }
+            let container = try XCTUnwrap(r.root.barContainer, "\(look.room.id): the bar sits in a container under the root's view")
+            XCTAssertTrue(container.superview === r.root.view)
+            XCTAssertFalse(r.webView.isDescendant(of: container), "the container never holds the web view")
+            for s in r.root.slots { XCTAssertFalse(s.view.isDescendant(of: container), "nor a slot") }
+            if container !== r.root.tabBar {
+                XCTAssertEqual(container.overrideUserInterfaceStyle, room, "\(look.room.id): the container wears the room")
+            }
+            for tab in ShellTabs.ids {
+                r.root.select(tab, source: .page(intent: nil))
+                r.root.view.layoutIfNeeded()
+                var drawn: [UIView] = []
+                func walk(_ v: UIView) { drawn.append(v); v.subviews.forEach(walk) }
+                walk(r.root.tabBar)
+                XCTAssertGreaterThan(drawn.count, 4, "\(look.room.id): UIKit draws the bar with views of its own")
+                let off = drawn.filter { $0.traitCollection.userInterfaceStyle != room }.map { NSStringFromClass(type(of: $0)) }
+                XCTAssertEqual(off, [], "\(look.room.id) \(tab) on a phone in \(TabBarLook.word(phone)) mode: every view of the bar wears the room")
+                XCTAssertEqual(r.webView.traitCollection.userInterfaceStyle, phone, "\(look.room.id) \(tab): the web view keeps the phone's style")
+                XCTAssertEqual(r.root.traitCollection.userInterfaceStyle, phone, "\(look.room.id) \(tab): so does the root")
+            }
+            XCTAssertEqual(r.root.overrideUserInterfaceStyle, .unspecified, "never the root")
+            for s in r.root.slots { XCTAssertEqual(s.overrideUserInterfaceStyle, .unspecified, "never a slot") }
+            XCTAssertEqual(r.window.overrideUserInterfaceStyle, .unspecified, "never the window")
+        }
+        XCTAssertEqual(unlike, 1, "one room is unlike the phone's appearance")
+    }
+
     func test07Room() throws {
         var heavyRig: RootRig?
         for (look, style, tint) in [(Self.lime, UIUserInterfaceStyle.dark, "#f4f4f1"), (Self.heavy, .light, "#0a43f5")] {

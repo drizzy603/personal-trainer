@@ -232,6 +232,7 @@ public final class RootTabController: UITabBarController, UITabBarControllerDele
 
     public override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        paintBarContainer()
         if !inRun, let dest = pendingPlace, dest === super.selectedViewController {
             place(in: dest)
             applyWebVisibility()
@@ -662,6 +663,7 @@ public final class RootTabController: UITabBarController, UITabBarControllerDele
     public func apply(_ look: TabsModel) {
         self.look = look
         TabBarLook.paint(tabBar, look: look)
+        paintBarContainer()
         for (i, id) in ShellTabs.ids.enumerated() { TabBarLook.dress(slots[i].tabBarItem, tab: id, look: look) }
         let bg = TabBarLook.background(look)
         coachSlot.nav.overrideUserInterfaceStyle = TabBarLook.style(look)
@@ -670,6 +672,30 @@ public final class RootTabController: UITabBarController, UITabBarControllerDele
         coachSlot.waiting.background = bg
         coachSlot.waiting.paper = look.paper
         setNeedsStatusBarAppearanceUpdate()
+    }
+
+    /// The view UIKit draws the glass bar in: the bar's ancestor directly under this controller's view (iOS 26's tab
+    /// container), or the bar itself when it sits there; nil while the bar is not under this view.
+    var barContainer: UIView? {
+        var v: UIView = tabBar
+        while let s = v.superview {
+            if s === view { return v }
+            v = s
+        }
+        return nil
+    }
+
+    /// The room's style on the bar's container (delta 14.7; found by H9's by-hand run on iOS 27.0). The bar's own override
+    /// reaches the bar but not its glass platter's content, which takes its style from the container: without this, Lime
+    /// on a phone in light mode drew light glass with black items and its selected item all but unreadable, and
+    /// Heavyweight on a phone in dark mode dark glass. The container never holds the web view or a slot (checked each time),
+    /// so their traits, the web keyboards and the page's `prefers-color-scheme` stay the phone's. Again at every layout
+    /// pass, in case UIKit hosts the bar anew.
+    private func paintBarContainer() {
+        guard let c = barContainer, c !== tabBar, !webView.isDescendant(of: c),
+              !slots.contains(where: { $0.viewIfLoaded?.isDescendant(of: c) == true }) else { return }
+        let style = TabBarLook.style(look)
+        if c.overrideUserInterfaceStyle != style { c.overrideUserInterfaceStyle = style }
     }
 
     // MARK: The fallback
@@ -774,6 +800,7 @@ public final class RootTabController: UITabBarController, UITabBarControllerDele
                 "slotInset": Double(selectedViewController?.viewIfLoaded?.safeAreaInsets.bottom ?? 0),
                 "tint": look.tint.css,
                 "style": TabBarLook.word(tabBar.overrideUserInterfaceStyle),
+                "containerStyle": barContainer.map { TabBarLook.word($0.overrideUserInterfaceStyle) } ?? NSNull(),
                 "minimize": minimizeWord,
             ] as [String: Any],
             "coach": [
