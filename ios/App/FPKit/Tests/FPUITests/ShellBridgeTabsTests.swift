@@ -1846,6 +1846,49 @@ final class ShellBridgeTabsTests: XCTestCase {
         await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in probe.runPhase(steps) { c.resume() } }
     }
 
+    /// Contract 15.3 and 8.1 step 7 (the H11 review): the probe hears each VoiceOver screen change under the funnel run
+    /// whose step 7 it is. A tap to Progress, then the owner's re-tap before the page has drawn it: the move is heard once
+    /// its `tabs.select` is answered, under the move's seq, never the re-tap's (a re-tap posts nothing of its own), and
+    /// each run is a `funnel` event of its seq. Entering the NATIVE Coach tab is heard at once under its run; ScreenHost's
+    /// own post for the chat pushed onto it is heard too, `by: screens`, with no run.
+    func test29TheProbeHearsEachScreenChangeUnderItsRun() async throws {
+        let (bridge, _, heard) = probed()
+        let s = try await scene(first: "log", bridge: bridge)
+        let root = try XCTUnwrap(s.root)
+        XCTAssertEqual(heard.all("funnel").first?["atAdopt"] as? Bool, true, "the first frame's run, at the adoption")
+        await setHow(s, "tabs.select", ["late:600"])
+        tap(s, "progress")
+        let move = root.seq
+        tap(s, "progress")
+        XCTAssertEqual(root.seq, move + 1, "the re-tap took the next seq")
+        try await expect("the move heard once the page answered: \(s.posts)") { s.posts == ["web"] }
+        try await sleep(0.3)
+        let changes = heard.all("screenChanged")
+        XCTAssertEqual(changes.count, 1, "the move, once; the re-tap nothing: \(changes)")
+        XCTAssertEqual(changes.first?["seq"] as? Int, move, "under the move's seq")
+        XCTAssertEqual(changes.first?["rootSeq"] as? Int, move + 1, "the root's own seq is the re-tap's by then")
+        XCTAssertEqual(changes.first?["by"] as? String, "root")
+        XCTAssertEqual(changes.first?["why"] as? String, "run")
+        XCTAssertEqual(changes.first?["target"] as? String, "web")
+        XCTAssertEqual(changes.first?["selected"] as? String, "progress")
+        let runs = heard.all("funnel").filter { $0["atAdopt"] == nil }
+        XCTAssertEqual(runs.map { $0["seq"] as? Int }, [move, move + 1])
+        XCTAssertEqual(runs.last?["again"] as? Bool, true)
+
+        root.setHome(s.home)
+        tap(s, "coach")
+        XCTAssertEqual(heard.last("screenChanged")?["seq"] as? Int, root.seq, "a NATIVE Coach tab: its run, at once")
+        XCTAssertEqual(heard.last("screenChanged")?["target"] as? String, "native")
+        _ = try await message(s, "model", ["screen": "coach", "rev": 1, "json": try coachModelJSON(rev: 1)]).get()
+        _ = try await message(s, "present", ["screen": "coach"]).get()
+        try await expect("ScreenHost's own post heard", within: 10) { heard.last("screenChanged")?["by"] as? String == "screens" }
+        let pushed = try XCTUnwrap(heard.last("screenChanged"))
+        XCTAssertTrue(pushed["seq"] is NSNull, "no funnel run made it")
+        XCTAssertEqual(pushed["why"] as? String, "screens")
+        XCTAssertEqual(pushed["target"] as? String, "native")
+        XCTAssertEqual(pushed["selected"] as? String, "coach")
+    }
+
     /// `tapTab` through the probe's own step (the H11 review, uikit lens): a bar a web sheet hid is tapped by no one, so the
     /// step is an error event and nothing moves; shown again, the same step taps Progress through UIKit's path.
     func test31TheProbesTapTabTapsOnlyABarAFingerCanReach() async throws {

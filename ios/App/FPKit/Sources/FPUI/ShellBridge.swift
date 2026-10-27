@@ -378,6 +378,7 @@ public final class ShellBridge: NSObject {
         for s in ShellProbe.shared?.documentStartScripts ?? [] {
             ucc.addUserScript(WKUserScript(source: s, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         }
+        relayScreensToProbe(screens, webView: webView)
         #endif
         // the root (contract 2.2): the tab root iff the scene allows one and the bar's own checks pass for this page build,
         // read after this launch's markers reached the book (a `tabs@` verdict gives the classic root)
@@ -440,20 +441,46 @@ public final class ShellBridge: NSObject {
     /// The probe's view of the tab root (contract 15.3; 11-shell.md H11), while a probe runs (the tests set their own): a
     /// `funnel` event per funnel run, the root's Debug `onFunnelRun` (the runs it made before this adoption, the first
     /// frame's among them, logged here once, marked `atAdopt`), and a `screenChanged` event per VoiceOver screen change it
-    /// posts (8.1 step 7), with its selection, seq and Coach mode then and what it announced (`web`, `native`, `none`).
+    /// posts (8.1 step 7, the root's Debug `onScreenChanged`): `seq` the funnel run whose post it is (null for the Coach
+    /// tab's mode and the fallback, which no run made), `why`, and the root's own `rootSeq`, selection and Coach mode then.
     @available(iOS 26.0, *)
     private func relayToProbe(_ root: RootTabController) {
         guard let probe = ShellProbe.shared else { return }
         for run in root.funnelRuns { probe.event("funnel", run.json.merging(["atAdopt": true]) { a, _ in a }) }
         root.onFunnelRun = { run in ShellProbe.shared?.event("funnel", run.json) }
-        let post = root.postScreenChanged
-        let web = root.webView
-        root.postScreenChanged = { [weak root, weak web] argument in
+        root.onScreenChanged = { [weak root] argument, run, why in
+            var o = Self.probeScreenChange(argument, web: root?.webView, root: root)
+            o["by"] = "root"
+            o["seq"] = run ?? NSNull()
+            o["why"] = why
+            ShellProbe.shared?.event("screenChanged", o)
+        }
+    }
+
+    /// What a `screenChanged` event says of a post: its target (`web`, `native`, `none`) and the tab root's state then.
+    @available(iOS 26.0, *)
+    private static func probeScreenChange(_ argument: Any?, web: WKWebView?, root: RootTabController?) -> [String: Any] {
+        var target = "native"
+        if argument == nil { target = "none" } else if let w = web, (argument as AnyObject?) === w { target = "web" }
+        return ["target": target, "selected": root?.selected ?? NSNull(), "rootSeq": root?.seq ?? NSNull(),
+                "coachMode": root?.coachMode.rawValue ?? NSNull()]
+    }
+
+    /// ScreenHost's own VoiceOver screen changes (a native screen up or down, the stack's new top after a push or pop, the
+    /// chat that ended a hold), while a probe runs: `screenChanged` events `by: "screens"`, with no run of the funnel.
+    private func relayScreensToProbe(_ screens: ScreenHost, webView: WKWebView) {
+        guard ShellProbe.shared != nil else { return }
+        let post = screens.postScreenChanged
+        screens.postScreenChanged = { [weak self, weak webView] argument in
             post(argument)
-            var target = "native"
-            if argument == nil { target = "none" } else if let w = web, (argument as AnyObject?) === w { target = "web" }
-            ShellProbe.shared?.event("screenChanged", ["target": target, "selected": root?.selected ?? NSNull(), "seq": root?.seq ?? NSNull(),
-                                                      "coachMode": root?.coachMode.rawValue ?? NSNull()])
+            var o: [String: Any] = ["target": argument == nil ? "none" : "native"]
+            if #available(iOS 26.0, *) {
+                o = Self.probeScreenChange(argument, web: webView, root: self?.binding?.tabRoot as? RootTabController)
+            }
+            o["by"] = "screens"
+            o["seq"] = NSNull()
+            o["why"] = "screens"
+            ShellProbe.shared?.event("screenChanged", o)
         }
     }
     #endif

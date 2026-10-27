@@ -174,6 +174,13 @@ public final class RootTabController: UITabBarController, UITabBarControllerDele
 #if DEBUG
     /// Every funnel run, for the probe's `funnel` event (H11).
     public var onFunnelRun: ((FunnelRun) -> Void)?
+    /// Every VoiceOver screen change the root posts, for the probe's `screenChanged` event (contract 15.3: a funnel run's
+    /// event with when its `.screenChanged` was posted): the argument, the seq of the funnel run whose step 7 it is (nil
+    /// when no run made it: the Coach tab's mode changing under the owner, the fallback), and why: `run` (the run's own,
+    /// at once or once its page has drawn the tab), `hold` (the run's hold ran out), `mode`, `fallback`. Never the
+    /// root's seq at the post: a re-tap takes the next seq and posts nothing of its own (8.1 step 7), so a web tab heard
+    /// after a re-tap is still its move's.
+    public var onScreenChanged: ((_ argument: Any?, _ run: Int?, _ why: String) -> Void)?
 #endif
 
     /// The hold's budget (tests shorten it).
@@ -311,7 +318,7 @@ public final class RootTabController: UITabBarController, UITabBarControllerDele
         let run = seq
         if enteringStack {
             announce = nil
-            if !held { postScreenChanged(coachSlot.nav.topViewController?.view) }
+            if !held { post(coachSlot.nav.topViewController?.view, run: run, why: "run") }
         } else {
             announce = source == .initial ? nil : (run, tab)
             if case .page = source { announceWeb(seq: run) }
@@ -406,7 +413,16 @@ public final class RootTabController: UITabBarController, UITabBarControllerDele
         guard let a = announce, a.seq == s else { return }
         announce = nil
         guard selected == a.tab, !(a.tab == "coach" && coachMode != .web), webView.window != nil else { return }
-        postScreenChanged(webView)
+        post(webView, run: s, why: "run")
+    }
+
+    /// VoiceOver's screen change (contract 8.1 step 7, D45) for the funnel run `run` (nil: none made it), said by `why`
+    /// (`onScreenChanged`'s words).
+    private func post(_ argument: Any?, run: Int?, why: String) {
+        postScreenChanged(argument)
+#if DEBUG
+        onScreenChanged?(argument, run, why)
+#endif
     }
 
     // MARK: UIKit's routes in
@@ -483,9 +499,9 @@ public final class RootTabController: UITabBarController, UITabBarControllerDele
             setNeedsStatusBarAppearanceUpdate()
             announce = nil
             if m == .web {
-                postScreenChanged(webView)
+                post(webView, run: nil, why: "mode")
             } else if !held {
-                postScreenChanged(coachSlot.nav.topViewController?.view)
+                post(coachSlot.nav.topViewController?.view, run: nil, why: "mode")
             }
         }
         hooks.coachShown(shown && m != .web)
@@ -542,7 +558,8 @@ public final class RootTabController: UITabBarController, UITabBarControllerDele
         heldView?.alpha = 1
         heldView = nil
         guard post, fellBack == nil, selected == "coach", coachMode == .native else { return }
-        postScreenChanged(coachSlot.nav.topViewController?.view)
+        // the run that entered the tab and started the hold: every later move ends it first, unheard
+        self.post(coachSlot.nav.topViewController?.view, run: runs.last(where: \.moved)?.seq, why: "hold")
         hooks.coachShown(true)
     }
 
@@ -745,7 +762,7 @@ public final class RootTabController: UITabBarController, UITabBarControllerDele
         inBarChange = false
         _ = barMetrics()
         setNeedsStatusBarAppearanceUpdate()
-        if stackShown { postScreenChanged(webView) }
+        if stackShown { post(webView, run: nil, why: "fallback") }
         hooks.coachShown(false)
         hooks.section(false)
         Self.log.info("tabs: the tab root fell back (\(why.rawValue, privacy: .public)): the bar is hidden for this scene")
