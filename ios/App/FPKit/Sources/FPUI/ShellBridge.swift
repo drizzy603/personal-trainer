@@ -1557,9 +1557,16 @@ public struct ShellInstall: Equatable, Sendable {
 /// its place; decision.md section 4), and says so in the log.
 public final class ShellWebView: WKWebView {
     public private(set) static var leftWindowWhileActive = 0
+    /// A scene's teardown is under way (SceneDelegate's `sceneDidDisconnect`, and the Debug replay of a reconnect, which
+    /// runs while the app is active): the web view leaving its window then is the teardown letting the page go, never a
+    /// fault. SceneDelegate sets it before it lets go of the window and the page, and clears it as the next connection's
+    /// first step, so a later move counts again.
+    public static var sceneEnding = false
+    /// Whether the app is in use now (tests set their own).
+    static var appActive: () -> Bool = { UIApplication.shared.applicationState == .active }
 
     public override func willMove(toWindow newWindow: UIWindow?) {
-        if newWindow == nil, window != nil, UIApplication.shared.applicationState == .active {
+        if newWindow == nil, window != nil, !Self.sceneEnding, Self.appActive() {
             Self.leftWindowWhileActive += 1
             ShellBridge.log.fault("shell: the web view left its window while the app was active (\(Self.leftWindowWhileActive) this launch)")
             ShellBridge.shared.noteLeftWindow()   // Settings > About counts it (in all, across launches)
