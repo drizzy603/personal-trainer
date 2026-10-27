@@ -11,8 +11,9 @@
 //   or later" offers no switch and no Try again, and its switch sends nothing; "Check the switches now" repaints both
 //   rows and the open sheet from status {refresh: true}'s answer and says when and how the switches were last checked.
 // - The real flows: the tab root's "On" twice (the bar, the Coach tab), 60's overlay under coach61, this iPhone's
-//   Native Coach switch, a broken coachHome model, a present refused, the page's own way out ("the tab bar went away"),
-//   "Starting..." before hello answers.
+//   Native Coach switch, a broken coachHome model, the chat's present refused (under the native Coach tab, where
+//   coachHome stays negotiated, and as 60's overlay), the page's own way out ("the tab bar went away", the status read
+//   again at once although its cache was fresh), "Starting..." before hello answers.
 // - The stable ids, each once where contract 10.5 puts it; the tab bar's switch (one setSwitch from a click on
 //   #fp-tabs-switch; the shell's fallback takes the page out of tabs mode; on again reads "Back from the next launch";
 //   offered under coach61 too, where the policy file still holds); Try again (#fp-tabs-retry resets tabs,
@@ -283,11 +284,15 @@ serial('the tab root: both rows on; this iPhone\'s Native Coach switch both ways
       _coachHomeModel = real;
       await __again();
       r.model = { rows: __rows(), off: _fp.off.coachHome };
-      // the page leaves tabs mode on its own once its hello asked for the bar (the failsafe's way): dismiss tabs
-      _fpTabsLeave('test', true); await __w(30);
-      await __again();
+      // the page leaves tabs mode on its own once its hello asked for the bar (the failsafe's way): dismiss tabs. The
+      // status read a moment ago is fresh (its 1.5 s cache), yet the leave's own render reads it again at once: the
+      // page's side changed, so the rows never stand on the status from before the shell fell back.
+      _fpChat.at = Date.now();
+      const n = __fpShell.of('status').length;
+      _fpTabsLeave('test', true);
+      await __until(() => __fpShell.of('status').length > n && !_fpChat.busy, 1000); await __w(0);
       r.left = { rows: __rows(), mode: _fp.tabs.mode, dismiss: __fpShell.of('dismiss').filter((a) => a.screen === 'tabs').length,
-        fellBack: __fpShell.state().scene.fellBack && __fpShell.state().scene.fellBack.why };
+        fellBack: __fpShell.state().scene.fellBack && __fpShell.state().scene.fellBack.why, reread: __fpShell.of('status').length > n };
       return r;
     });
     assert(J(out.on) === J({ tabs: ['On · the iPhone’s own tab bar', 'On'], coach: ['On · the iPhone’s own Coach tab', 'On'] }), 'the tab root, both on: ' + J(out.on));
@@ -297,7 +302,7 @@ serial('the tab root: both rows on; this iPhone\'s Native Coach switch both ways
     assert(J(out.back.rows) === J(out.on) && out.back.toast === 'Native Coach on', 'and back on at once: ' + J(out.back));
     assert(out.model.off === 'model' && J(out.model.rows.coach) === '["Paused: it couldn’t be drawn · back from the next launch","Paused"]',
       'a broken coachHome model: ' + J(out.model));
-    assert(!out.left.mode && out.left.dismiss === 1 && out.left.fellBack === 'page'
+    assert(!out.left.mode && out.left.dismiss === 1 && out.left.fellBack === 'page' && out.left.reread
       && J(out.left.rows.coach) === '["Off this launch: the tab bar went away · back from the next launch","Off"]'
       && J(out.left.rows.tabs) === '["Off: this version of the page doesn’t use it","Off"]',
       'the page\'s own way out: the Native Coach went with the bar, the bar declined by this page build: ' + J(out.left));
@@ -310,6 +315,30 @@ serial('before hello answers, under the tab root: both rows "Starting..."', asyn
     await app.page.waitForFunction(() => typeof render === 'function' && window._fp && _fp.tabs.mode, null, { timeout: 15000 });
     const out = await ev(app, async () => { await __again(); return { rows: __rows(), hello: !!_fp.hello, mode: _fp.tabs.mode }; });
     assert(!out.hello && out.mode && J(out.rows) === J({ tabs: ['Starting…', 'Off'], coach: ['Starting…', 'Off'] }), 'Starting...: ' + J(out));
+  } finally { await app.close(); }
+});
+
+// The chat refused while the native Coach tab is up: the page gives the Coach tab back with it (D3), coachHome still
+// negotiated, so the row reads the chat's reason, never the Coach tab's On.
+serial('under the tab root, the chat\'s present refused: the Native Coach reads "it couldn\'t open", not the Coach tab\'s On', async () => {
+  const app = await pageBoot('tabs', { seed: { kt_apikey: 'sk-ant-test', kt_coach_msgs: '[]' },
+    init: '(() => { window.fetch = async () => new Response(JSON.stringify({ id: "m", type: "message", role: "assistant", content: [{ type: "text", text: "{}" }], stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 } }), { status: 200 }); })();' });
+  try {
+    await ready(app);
+    const out = await ev(app, async () => {
+      await __until(() => _fp.shown.coachHome);
+      const r = { home: !!_fp.shown.coachHome };
+      __fpShell.refuse.present = 'not-native: test';
+      switchTab('coach'); coachView = 'chat'; render();
+      await __until(() => _fp.off.coach === 'present'); await __w(30);
+      await __again();
+      r.after = { rows: __rows(), off: Object.assign({}, _fp.off), home: !!_fp.shown.coachHome, liveHome: _fpLive('coachHome') };
+      return r;
+    });
+    assert(out.home && out.after.off.coach === 'present' && !out.after.off.coachHome && out.after.liveHome && !out.after.home,
+      'the chat refused; coachHome still negotiated, the Coach tab given back: ' + J(out));
+    assert(J(out.after.rows.coach) === '["Paused: it couldn’t open · back from the next launch","Paused"]'
+      && J(out.after.rows.tabs) === '["On · the iPhone’s own tab bar","On"]', 'the Native Coach says why, the bar stays on: ' + J(out.after.rows));
   } finally { await app.close(); }
 });
 
