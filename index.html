@@ -21075,10 +21075,11 @@ async function sendCoachMessage(o){
 
 // The chat's own buttons (an empty chat's suggestions, a reply's %% actions) send their words as if
 // typed: through the composer while the web chat shows it (Send's path, the photo it shows included),
-// and with no composer on screen straight to coachSend, with that photo.
+// and with no composer on screen straight to coachSend, with that photo. Straight to coachSend too
+// while the box holds words the native composer handed over (_fpBoxHeld): those stay the owner's.
 function sendCoachChip(txt){
   var inp=document.getElementById('coach-input');
-  if(inp){ inp.value=txt; sendCoachMessage(); return; }
+  if(inp && !_fpBoxHeld(inp, txt)){ inp.value=txt; sendCoachMessage(); return; }
   coachSend(txt, {usePending:true});
 }
 // The app's own prompts (Today's card, the plateau, progression, recovery and weekly-review cards),
@@ -21089,13 +21090,17 @@ function sendCoachChip(txt){
 // its question goes. While a reply is in flight the prompt waits for the owner's Send: in the box (as
 // on next) or as the composer's draft (the native chat's, coachPrefill), and sent as written it keeps
 // its label and writes its stamp then (it went with neither, so the card asked again: a second +5).
+// While the box holds words the native composer handed over (_fpBoxHeld) the prompt never goes
+// through it: sent as Send would send it (the photo it shows included), or during a reply put in
+// front of those words as a native composer takes a page draft (coachPrefill).
 // {ok}: whether the question went now.
 var _coachWaiting=null;   // {text, seed, stamp}: the app's prompt the next send of exactly those words takes up
 function _coachAsk(text, o){
   o=(o && typeof o==='object') ? o : {};
   var t=String(text==null?'':text), inp=document.getElementById('coach-input'), n0=_coachSentN;
   _coachWaiting={text:t.trim(), seed:o.seed ? String(o.seed) : null, stamp:Array.isArray(o.stamp) ? o.stamp : null};
-  if(inp){ inp.value=t; sendCoachMessage(o); }
+  if(inp && _fpBoxHeld(inp, t)){ if(!coachLoading) coachSend(t, {seed:o.seed, usePending:true}); else coachPrefill(t); }
+  else if(inp){ inp.value=t; sendCoachMessage(o); }
   else if(!coachLoading) coachSend(t, o);
   else coachPrefill(t);
   return {ok:_coachSentN>n0};
@@ -21109,6 +21114,9 @@ function _coachAsk(text, o){
 // is negotiated and wants only a key (after Connect it opens with them), or hello is still out (a chat negotiated a
 // moment later opens with them, build 60's overlay included; contract 9, D46). coach.draftTaken or a send from either
 // composer spends them once; a document that never negotiates the chat keeps them in the web composer.
+// A box that holds words the native composer handed over (_fpBoxHeld) gets the draft in front of them, a new line
+// between (putBack, the native composer's own rule for a page draft), never in their place; with no box the words wait
+// in kt_coach_handover and come back beside the draft when the box is drawn (_restoreCoachDraft).
 function coachPrefill(text){
   var t0=String(text==null?'':text);
   if(_fpWant('coach')){
@@ -21117,7 +21125,8 @@ function coachPrefill(text){
     return null;
   }
   if((_fpLive('coach') && !getApiKey()) || (FP_NATIVE && _fpHelloOut())) _fp.draft={text:t0, nonce:'d'+(++_fp.seq)+'.'+_fpBoot};
-  var ta=_fillComposer(text);
+  var box=document.getElementById('coach-input');
+  var ta=_fillComposer(_fpBoxHeld(box, t0) ? _fpPutBack(box.value, t0) : text);
   if(ta) return ta;
   var t=String(text==null?'':text);
   _coachDraft={ v:t, s:t.length, e:t.length, focus:false };
@@ -24217,8 +24226,15 @@ function _restoreCoachDraft(){
   // drain, Health auto-log, coach card) with the box focused but blank used
   // to drop focus, which closed the keyboard and bounced the dock back in.
   if(_coachDraft===undefined) _coachDraft=_fpDraftStart();
-  if(!_coachDraft || (!_coachDraft.v && !_coachDraft.focus)) return;
   var el = document.getElementById('coach-input');
+  // A box drawn empty while words the native composer handed over wait (kt_coach_handover) shows them: a page draft
+  // that took the copy's place under the native chat (coachPrefill) comes back beside them, never over them, so the
+  // next capture keeps both in the key. With no key the copy is as it was.
+  if(el && !el.value && _coachDraft){
+    var hv=_fpPutBack(_coachDraft.v, _fpHandover());
+    if(hv!==_coachDraft.v) _coachDraft={ v:hv, s:hv.length, e:hv.length, focus:_coachDraft.focus };
+  }
+  if(!_coachDraft || (!_coachDraft.v && !_coachDraft.focus)) return;
   if(!el) return;
   if(_coachDraft.v && !el.value){
     el.value = _coachDraft.v;
@@ -24869,8 +24885,11 @@ function _fpPushSoon(){
 // (Storage's Put back never offers stale words), mirrored to the native copy as every kt_* write is. While it exists
 // it follows the web composer (render's draft capture, the page hidden); it goes once the composer is emptied, once
 // its words are sent from either composer, or once a native composer takes them back as the page's draft
-// (coach.draftTaken). At boot the web composer starts from it. So the words always sit in at least one durable place,
-// and in one composer at a time.
+// (coach.draftTaken). At boot the web composer starts from it. Text the page writes for the owner never takes their
+// place: a page draft goes in front of them in the box (coachPrefill, putBack: the native composer's rule for a page
+// draft), a prompt or a chip goes without them (_coachAsk, sendCoachChip: _fpBoxHeld), a box drawn from a copy a page
+// draft took over gets them back beside it (_restoreCoachDraft), and a later hand-over merges over them too
+// (_fpTakeDraft). So the words always sit in at least one durable place, and in one composer at a time.
 // CoachStore's putBack (FPUI/Coach/CoachStore.swift; the shared vectors Fixtures/draft/putback.json): the words,
 // trimmed, go into the composer: words empty after trimming leave it as it is, a composer empty after trimming becomes
 // the words, one that already holds them (a UTF-16 match) is left as it is, any other becomes the words, a line feed,
@@ -24907,6 +24926,13 @@ function _fpHandoverFollow(box, prev){
   if(v.trim()){ if(v!==k){ try{ localStorage.setItem('kt_coach_handover', v); }catch(e){} } }
   else if(String(prev==null ? '' : prev).trim()) _fpHandoverDrop();
 }
+// The web composer's box holds words while handed-over words wait (the key is there), other than t (the text the page
+// is about to write or send): they stay the owner's. False with no key, so the web composer is as it always was.
+function _fpBoxHeld(box, t){
+  if(!box || _fpHandover()==null) return false;
+  var v=String(box.value==null ? '' : box.value).trim();
+  return !!v && v!==String(t==null ? '' : t).trim();
+}
 // Sent, from either composer: the words are spent (the rule beside the one that spends _fp.draft, coachSend).
 function _fpHandoverSpent(msg){
   var k=_fpHandover();
@@ -24922,10 +24948,12 @@ function _fpHandoverOffer(){
   _fp.ho={nonce:_fp.draft.nonce, text:t};
 }
 // screens.off {screen:'coach', draft}: the words into the web composer and the key, the key first. False when the
-// write failed (quota): then the web composer is as it was and the words stay native.
+// write failed (quota): then the web composer is as it was and the words stay native. The composer is its box, or with
+// none its copy with the words an earlier hand-over left in the key (a page draft under the native chat may have taken
+// the copy's place: coachPrefill), so a hand-over never writes over them.
 function _fpTakeDraft(words){
   var box=document.getElementById('coach-input');
-  var cur=box ? box.value : (_coachDraft ? String(_coachDraft.v || '') : '');
+  var cur=box ? box.value : _fpPutBack(_coachDraft ? String(_coachDraft.v || '') : '', _fpHandover());
   var merged=_fpPutBack(cur, words);
   if(!_fpHandoverPut(merged)) return false;
   _coachDraft={ v:merged, s:merged.length, e:merged.length, focus:false };

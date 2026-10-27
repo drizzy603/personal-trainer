@@ -30,6 +30,12 @@
 //   native chat as its draft and leaves on coach.draftTaken with the web copy (one composer at a time, a trailing line
 //   too), follows the box (a render, the page hidden), and leaves on a send from either composer and on an emptied
 //   box; a failed write answers without took and changes nothing; under STORE=shadow the native copy has the key.
+// - The page's own text never takes their place: with the web chat on screen coachPrefill puts its draft in front of
+//   them (putBack), a Today card's question, a chip and a seeded prompt (label and stamp kept) go without them, and a
+//   prompt during a reply waits in front of them (tabs and coach61; with no key the composer is as it always was);
+//   under the native chat a page draft leaves them in the key, a later hand-over merges over them (every shared vector
+//   runs with the composer's words in the key too), and a web chat the page itself brings back shows them beside the
+//   draft, then hands both to the native chat as one draft.
 // - confirm and toast.undo answer before their action runs (D14); a spent id answers stale.
 // - Setup keeps its answers: the setup chat has Cancel and no Back, a tab change dismisses it with setup kept and the
 //   Coach tab's model saying resume, and Coach presents it again; the intake error says "top left".
@@ -467,13 +473,20 @@ serial('screens.off: coach with a draft is taken by the putBack rule (an empty c
       // device-only bookkeeping: no backup list, no export; Storage's Put back leaves it out
       r.lists = { backup: BACKUP_KEYS.indexOf('kt_coach_handover'), raw: RAW_STRING_KEYS.indexOf('kt_coach_handover'), book: _fpBookkeeping('kt_coach_handover'),
         exported: Object.prototype.hasOwnProperty.call(buildBackupJSON(), 'kt_coach_handover'), named: Object.prototype.hasOwnProperty.call(_FP_KEY_NAMES, 'kt_coach_handover') };
-      // every shared vector through the handler: the composer off screen (Log), the words handed over
+      // every shared vector through the handler: the composer off screen (Log), the words handed over; once with no
+      // key (the composer's words are the owner's own) and once with the composer's words in the key, as the key
+      // follows the composer after an earlier hand-over (a blank composer leaves no key): the handler merges over the
+      // key's words too
       switchTab('log'); await __w(30);
       r.vectors = [];
       for (const c of VECTORS.cases) {
-        _coachDraft = { v: c.composer, s: 0, e: 0, focus: false };
-        const a = await FPScreens.call('screens.off', { screen: 'coach', why: 'failures', draft: c.words });
-        r.vectors.push({ name: c.name, a, got: _coachDraft.v, key: __key(), want: c.result, page: _fpPutBack(c.composer, c.words) });
+        for (const held of [false, true]) {
+          if (held && !c.composer.trim()) continue;
+          if (held) localStorage.setItem('kt_coach_handover', c.composer); else localStorage.removeItem('kt_coach_handover');
+          _coachDraft = { v: c.composer, s: 0, e: 0, focus: false };
+          const a = await FPScreens.call('screens.off', { screen: 'coach', why: 'failures', draft: c.words });
+          r.vectors.push({ name: c.name + (held ? ' (the key holds the composer)' : ''), a, got: _coachDraft.v, key: __key(), want: c.result, page: _fpPutBack(c.composer, c.words) });
+        }
       }
       return r;
     }, { WORDS, VECTORS });
@@ -490,7 +503,8 @@ serial('screens.off: coach with a draft is taken by the putBack rule (an empty c
     if (app.store) assert(out.shadow === WORDS + '\nmy own', 'STORE=shadow: the native copy has the key (mirrored): ' + J(out.shadow));
     assert(out.lists.backup < 0 && out.lists.raw < 0 && out.lists.book && !out.lists.exported && !out.lists.named,
       'device-only: in no backup list, not exported, bookkeeping, no Put back name: ' + J(out.lists));
-    assert(out.vectors.length === VECTORS.cases.length && VECTORS.cases.length >= 20, 'every vector ran: ' + out.vectors.length);
+    assert(VECTORS.cases.length >= 20 && out.vectors.length === VECTORS.cases.length + VECTORS.cases.filter((c) => c.composer.trim()).length,
+      'every vector ran, with and without the key: ' + out.vectors.length);
     for (const v of out.vectors) {
       assert(v.got === v.want && v.page === v.want && J(v.a) === '{"ok":true,"took":true}' && v.key === (v.want.trim() ? v.want : null),
         'putback.json "' + v.name + '": ' + J(v));
@@ -655,6 +669,175 @@ serial('the words follow the web composer: more typing is rewritten at the next 
     }, WORDS);
     assert(J(out.answer) === '{"ok":true}' && out.composer === WORDS && out.input === out.before && out.draft === out.before && out.key === null && !out.mode,
       'a failed write: no took, the words stay native, the web composer as it was: ' + J(out));
+  } finally { await app.close(); }
+});
+
+serial('the page\'s own text never writes over the handed-over words (I16, P-D15): with the web chat on screen coachPrefill puts its draft in front of them (putBack), a Today card\'s question, a chip and a seeded prompt go without touching them (label and stamp kept), a prompt during a reply waits in front of them, under tabs and coach61; with no key the composer is as it always was', async () => {
+  const P = 'Build my Arms day: 4 or 5 exercises', PW = P + '\n' + WORDS;
+  // tabs, the Coach tab web (needs): with no key the page's own text replaces the box and a chip sends it as before;
+  // then the native composer's words are handed over and every way the page writes or sends leaves them in the box and
+  // the key
+  let app = await pageBoot('tabs');
+  try {
+    await ready(app);
+    const out = await ev(app, async ({ WORDS, P }) => {
+      const r = {};
+      const box = () => document.getElementById('coach-input');
+      const where = () => ({ input: __screen().input, draft: _coachDraft.v, key: __key() });
+      const lastUser = () => coachMessages.filter((m) => m.role === 'user').slice(-1)[0];
+      await FPScreens.call('screens.off', { screen: 'coachHome', why: 'needs' }); await __w(30);
+      switchTab('coach'); openCoachChat(); await __w(40);
+      box().value = 'my own';
+      r.noKey = { ta: coachPrefill(P) === box(), input: __screen().input };
+      box().value = 'my own';
+      sendCoachChip('What should I train?'); await __idle();
+      Object.assign(r.noKey, { chipInput: __screen().input, chipSent: lastUser().content, key: __key() });
+      r.took = await FPScreens.call('screens.off', { screen: 'coach', why: 'failures', draft: WORDS }); await __w(40);
+      r.handed = where();
+      // Build day's "Ask the coach" and a share's comment (coachPrefill): the draft in front of the words, the key
+      // following
+      r.prefill = { ta: coachPrefill(P) === box(), input: __screen().input };
+      render(); await __w(20);
+      Object.assign(r.prefill, where());
+      // a Today card's action (coachCardAction, then _coachAsk): its question goes, the box keeps the words
+      coachCardAction('Swap in dips'); await __idle();
+      r.card = Object.assign({ sent: lastUser().content, seed: lastUser()._seed || null }, where());
+      // a chip (sendCoachChip): its words go, the box keeps the words
+      sendCoachChip('How was my week?'); await __idle();
+      r.chip = Object.assign({ sent: lastUser().content }, where());
+      // the plateau card's way (_coachAsk with a label and a stamp): sent as written, with its label, the stamp
+      // written, and the photo the composer shows goes with it as Send's path would send it
+      pendingImage = { data: 'AAAA', mediaType: 'image/jpeg', previewUrl: 'data:image/jpeg;base64,AAAA' };
+      _coachAsk('Propose ONE concrete programme change', { seed: 'Plateau check', stamp: ['kt_last_plateau_week', 7] }); await __idle();
+      const u = lastUser(), parts = Array.isArray(u.content) ? u.content : [];
+      r.seeded = Object.assign({ sent: (parts.find((p) => p.type === 'text') || {}).text, photo: parts.some((p) => p.type === 'image'), pending: pendingImage,
+        seed: u._seed, stamp: lsGet('kt_last_plateau_week') }, where());
+      // a prompt while a reply is in flight: it waits in front of the words for the owner's Send, as a native
+      // composer's draft would
+      sendCoachChip('First');
+      _coachAsk('Review my week', { seed: 'Weekly review' });
+      r.waiting = { loading: !!coachLoading, input: __screen().input };
+      await __idle(); render(); await __w(20);
+      Object.assign(r.waiting, { sent: lastUser().content }, where());
+      // the box is the composer: words the owner took out of it since the last paint stay out when a hand-over comes
+      box().value = 'rewritten';
+      r.boxWins = { a: await FPScreens.call('screens.off', { screen: 'coach', why: 'failures', draft: 'more words' }) };
+      await __w(30);
+      Object.assign(r.boxWins, where());
+      return r;
+    }, { WORDS, P });
+    assert(out.noKey.ta && out.noKey.input === P && out.noKey.chipInput === '' && out.noKey.chipSent === 'What should I train?' && out.noKey.key === null,
+      'no key: the page\'s draft replaces the box and a chip sends through it, as always: ' + J(out.noKey));
+    assert(J(out.took) === '{"ok":true,"took":true}' && J(out.handed) === J({ input: WORDS, draft: WORDS, key: WORDS }), 'the words handed over: ' + J(out));
+    assert(out.prefill.ta && out.prefill.input === PW && out.prefill.draft === PW && out.prefill.key === PW, 'coachPrefill: its draft in front of the words: ' + J(out.prefill));
+    assert(out.card.sent === 'Swap in dips' && out.card.seed === null && J([out.card.input, out.card.draft, out.card.key]) === J([PW, PW, PW]),
+      'a card\'s question goes (as the owner\'s words, as before), the words stay: ' + J(out.card));
+    assert(out.chip.sent === 'How was my week?' && J([out.chip.input, out.chip.draft, out.chip.key]) === J([PW, PW, PW]), 'a chip goes, the words stay: ' + J(out.chip));
+    assert(out.seeded.sent === 'Propose ONE concrete programme change' && out.seeded.photo && out.seeded.pending === null && out.seeded.seed === 'Plateau check'
+      && out.seeded.stamp === 7 && J([out.seeded.input, out.seeded.key]) === J([PW, PW]), 'a seeded prompt keeps its label, stamp and photo, the words stay: ' + J(out.seeded));
+    const RW = 'Review my week\n' + PW;
+    assert(out.waiting.loading && out.waiting.input === RW && out.waiting.sent === 'First' && J([out.waiting.draft, out.waiting.key]) === J([RW, RW]),
+      'a prompt during a reply waits in front of the words: ' + J(out.waiting));
+    const MR = 'more words\nrewritten';
+    assert(J(out.boxWins.a) === '{"ok":true,"took":true}' && J([out.boxWins.input, out.boxWins.draft, out.boxWins.key]) === J([MR, MR, MR]),
+      'a hand-over merges over the box as it is, not over the key\'s older copy: ' + J(out.boxWins));
+  } finally { await app.close(); }
+  // coach61 (60's overlay chat under 61's flag): the chat taken away with the words, then the same writes on the web
+  // chat
+  app = await pageBoot('coach61');
+  try {
+    await ready(app);
+    const out = await ev(app, async ({ WORDS, P }) => {
+      const lastUser = () => coachMessages.filter((m) => m.role === 'user').slice(-1)[0];
+      const where = () => ({ input: __screen().input, key: __key() });
+      switchTab('coach'); openCoachChat(); await __w(40);
+      const r = { native: !!_fp.shown.coach, took: await FPScreens.call('screens.off', { screen: 'coach', why: 'failures', draft: WORDS }) };
+      await __w(40);
+      r.handed = where();
+      coachPrefill(P); render(); await __w(20);
+      r.prefill = where();
+      coachCardAction('Swap in dips'); await __idle();
+      r.card = Object.assign({ sent: lastUser().content }, where());
+      sendCoachChip('How was my week?'); await __idle();
+      r.chip = Object.assign({ sent: lastUser().content }, where());
+      return r;
+    }, { WORDS, P });
+    assert(out.native && J(out.took) === '{"ok":true,"took":true}' && J(out.handed) === J({ input: WORDS, key: WORDS }), 'coach61: the words handed over: ' + J(out));
+    assert(J(out.prefill) === J({ input: PW, key: PW }) && out.card.sent === 'Swap in dips' && out.card.input === PW && out.card.key === PW
+      && out.chip.sent === 'How was my week?' && out.chip.input === PW && out.chip.key === PW, 'coach61: the words stay through a prefill, a card and a chip: ' + J(out));
+  } finally { await app.close(); }
+});
+
+serial('the handed-over words outlast a page draft under the native chat (I16, P-D15): a later hand-over merges over them as well as over the web copy, and a web chat the page itself brings back shows them beside the draft; switched on again the native chat gets both as one draft, and once taken nothing comes back', async () => {
+  const P = 'Build my Arms day', WP = WORDS + '\n' + P;
+  // the key on the device, the native chat up with the words as its draft (the mock never takes one); coachPrefill
+  // under the native chat makes the page's draft and the web copy; the shell then falls back with its composer's own
+  // words
+  let app = await pageBoot('tabs', { seed: { kt_coach_handover: WORDS } });
+  try {
+    await ready(app);
+    const out = await ev(app, async (P) => {
+      const r = {};
+      const draft = () => { const m = __last('coach'); return m && m.composer.draft ? m.composer.draft.text : null; };
+      switchTab('coach'); openCoachChat(); await __w(40);
+      r.offered = draft();
+      coachPrefill(P); await __w(40);
+      r.page = { draft: draft(), copy: _coachDraft.v, key: __key() };
+      await __fpShell.fallBack('failures', 'typed natively'); await __w(60);
+      const off = __fpShell.sent.find((s) => s[0] === 'screens.off' && s[1].screen === 'coach');
+      r.after = { answer: off && off[2], composer: __fpShell.composer, mode: _fp.tabs.mode, input: __screen().input, draft: _coachDraft.v, key: __key() };
+      return r;
+    }, P);
+    const M = 'typed natively\n' + WP;
+    assert(out.offered === WORDS && J(out.page) === J({ draft: P, copy: P, key: WORDS }), 'under the native chat: the page\'s draft, the words in the key: ' + J(out));
+    assert(J(out.after.answer) === '{"ok":true,"took":true}' && out.after.composer === '' && !out.after.mode
+      && J([out.after.input, out.after.draft, out.after.key]) === J([M, M, M]), 'the hand-over merges over the key\'s words and the web copy: ' + J(out.after));
+  } finally { await app.close(); }
+  // the same start; the About switch off brings the web chat back (the page's own withdrawal: nothing handed over)
+  app = await pageBoot('tabs', { seed: { kt_coach_handover: WORDS } });
+  try {
+    await ready(app);
+    const out = await ev(app, async (P) => {
+      const r = {};
+      switchTab('coach'); openCoachChat(); await __w(40);
+      coachPrefill(P); await __w(40);
+      toggleNativeChat(); await __w(60);
+      r.web = { shown: !!_fp.shown.coach, input: __screen().input, draft: _coachDraft.v };
+      render(); await __w(20);
+      r.web.key = __key();
+      toggleNativeChat(); await __w(60);
+      const m = __last('coach'), d = m && m.composer.draft;
+      r.on = { draft: d && d.text, a: d ? await FPScreens.call('coach.draftTaken', { nonce: d.nonce }) : null, key: __key(), web: _coachDraft.v };
+      toggleNativeChat(); await __w(60);
+      r.off = { input: __screen().input, key: __key() };
+      return r;
+    }, P);
+    assert(!out.web.shown && J([out.web.input, out.web.draft, out.web.key]) === J([WP, WP, WP]), 'the web chat shows the words beside the page\'s draft, and the key keeps both: ' + J(out.web));
+    assert(out.on.draft === WP && out.on.a && out.on.a.ok && out.on.key === null && out.on.web === '', 'switched on: both as one draft, taken: the key and the web copy go: ' + J(out.on));
+    assert(J(out.off) === J({ input: '', key: null }), 'switched off again: nothing comes back: ' + J(out.off));
+  } finally { await app.close(); }
+  // the same start; the native composer takes the page's draft (paints under the native chat leave the web copy as the
+  // draft, so it goes), then the words at their own next offer (the key goes): switched off, the web composer is empty
+  app = await pageBoot('tabs', { seed: { kt_coach_handover: WORDS } });
+  try {
+    await ready(app);
+    const out = await ev(app, async (P) => {
+      const r = {};
+      switchTab('coach'); openCoachChat(); await __w(40);
+      coachPrefill(P); await __w(40);
+      render(); await __w(20);
+      const d1 = __last('coach').composer.draft;
+      r.p = { draft: d1 && d1.text, a: await FPScreens.call('coach.draftTaken', { nonce: d1.nonce }), copy: _coachDraft.v, key: __key() };
+      render(); await __w(40);
+      const d2 = __last('coach').composer.draft;
+      r.k = { draft: d2 && d2.text, a: d2 ? await FPScreens.call('coach.draftTaken', { nonce: d2.nonce }) : null, copy: _coachDraft.v, key: __key() };
+      toggleNativeChat(); await __w(60);
+      r.off = { input: __screen().input, key: __key() };
+      return r;
+    }, P);
+    assert(out.p.draft === P && out.p.a.ok && out.p.copy === '' && out.p.key === WORDS, 'the page\'s draft taken: the web copy goes, the words wait in the key: ' + J(out.p));
+    assert(out.k.draft === WORDS && out.k.a && out.k.a.ok && out.k.copy === '' && out.k.key === null, 'the words offered again and taken: the key goes: ' + J(out.k));
+    assert(J(out.off) === J({ input: '', key: null }), 'switched off: nothing comes back twice: ' + J(out.off));
   } finally { await app.close(); }
 });
 
