@@ -1845,6 +1845,37 @@ final class ShellBridgeTabsTests: XCTestCase {
     private func runSteps(_ probe: ShellProbe, _ steps: [[String: Any]]) async {
         await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in probe.runPhase(steps) { c.resume() } }
     }
+
+    /// `tapTab` through the probe's own step (the H11 review, uikit lens): a bar a web sheet hid is tapped by no one, so the
+    /// step is an error event and nothing moves; shown again, the same step taps Progress through UIKit's path.
+    func test31TheProbesTapTabTapsOnlyABarAFingerCanReach() async throws {
+        let (bridge, probe, heard) = probed()
+        let s = try await scene(first: "log", bridge: bridge)
+        let root = try XCTUnwrap(s.root)
+        try await sleep(0.5)
+        root.view.layoutIfNeeded()
+        guard !ShellProbe.tabControls(root, "progress").controls.isEmpty else {
+            throw XCTSkip("this host draws no control under the bar (the probe's tapTab finds them in the app)")
+        }
+        _ = try await sheets(s, open: true)
+        XCTAssertTrue(root.isTabBarHidden)
+        let runs = root.funnelRuns.count
+        await runSteps(probe, [["op": "tapTab", "tab": "progress"]])
+        let refused = try XCTUnwrap(heard.last("tapTab"))
+        XCTAssertEqual(refused["activated"] as? Bool, false)
+        XCTAssertEqual(refused["error"] as? String, "the bar is hidden (a sheet is open, or the root fell back): no finger can tap progress")
+        XCTAssertEqual(root.selected, "log", "nothing tapped")
+        XCTAssertEqual(root.funnelRuns.count, runs, "no funnel run")
+
+        _ = try await sheets(s, open: false)
+        try await sleep(0.8)
+        await runSteps(probe, [["op": "tapTab", "tab": "progress"]])
+        let tapped = try XCTUnwrap(heard.last("tapTab"))
+        XCTAssertEqual(tapped["activated"] as? Bool, true, "\(tapped)")
+        XCTAssertNil(tapped["error"])
+        XCTAssertEqual(root.selected, "progress")
+        XCTAssertEqual(root.funnelRuns.last?.source, .tap)
+    }
     #endif
 }
 

@@ -643,8 +643,36 @@ final class ShellProbe {
         return (found, found.isEmpty ? "no control under the bar draws \(title)" : nil)
     }
 
-    /// `tapTab {tab}` / `retapTab`: the first control that draws the tab's title, sent `.touchUpInside`; `activated` when
-    /// one funnel run of source `tap` follows (within 1 s), and for `retapTab` when that run is the re-tap (`again`).
+    /// Where a finger on the tab's item lands (delta 14.2; the H11 review): no control while the bar is hidden (a sheet is
+    /// open, or the root fell back) or the root is not in a window; else the root's window hit-tested at the centre of the
+    /// first control that draws the item's title, which must land inside the bar and in one of those controls (UIKit
+    /// draws each item twice: the hit picks the copy a finger reaches). Only the root's window is asked: the keyboard's
+    /// own window is not (T19 taps a tab while the keys are up), and a view over the bar inside the window (a presented
+    /// controller) stops the tap as it would stop a finger. `copies` the controls that draw the title, `why` what stopped.
+    @available(iOS 26.0, *)
+    static func tapTarget(_ root: RootTabController, _ tab: String) -> (control: UIControl?, copies: Int, why: String?) {
+        let found = tabControls(root, tab)
+        let copies = found.controls.count
+        guard let first = found.controls.first else { return (nil, 0, found.why ?? "not found") }
+        guard !root.isTabBarHidden else {
+            return (nil, copies, "the bar is hidden (a sheet is open, or the root fell back): no finger can tap \(tab)")
+        }
+        guard let window = root.view.window else { return (nil, copies, "the tab root is not in a window") }
+        let centre = first.convert(CGPoint(x: first.bounds.midX, y: first.bounds.midY), to: window)
+        let landed = window.hitTest(centre, with: nil)
+        guard let hit = landed, hit.isDescendant(of: root.tabBar) else {
+            let on = landed.map { String(describing: type(of: $0)) } ?? "nothing"
+            return (nil, copies, "a finger on \(tab) lands outside the bar (on \(on))")
+        }
+        guard let control = found.controls.first(where: { hit.isDescendant(of: $0) }) else {
+            return (nil, copies, "a finger on \(tab) lands in the bar outside the controls that draw its title")
+        }
+        return (control, copies, nil)
+    }
+
+    /// `tapTab {tab}` / `retapTab`: the control a finger on the tab's item lands in (`tapTarget`), sent `.touchUpInside`;
+    /// `activated` when one funnel run of source `tap` follows (within 1 s), and for `retapTab` when that run is the
+    /// re-tap (`again`). Nothing a finger could not reach is tapped.
     private func tapTab(_ op: String, _ step: [String: Any], done: @escaping ([String: Any]) -> Void) {
         guard #available(iOS 26.0, *), let root = tabRoot else {
             return done(["tab": step["tab"] ?? NSNull(), "activated": false, "error": "no tab root (the scene's root is classic)"])
@@ -652,14 +680,15 @@ final class ShellProbe {
         let again = op == "retapTab"
         let tab = again ? root.selected : (step["tab"] as? String ?? "")
         guard ShellTabs.isTab(tab) else { return done(["tab": tab, "activated": false, "error": "no tab \(tab)"]) }
-        let found = Self.tabControls(root, tab)
-        guard let control = found.controls.first else {
-            return done(["tab": tab, "activated": false, "error": found.why ?? "not found"])
+        let target = Self.tapTarget(root, tab)
+        guard let control = target.control else {
+            return done(["tab": tab, "activated": false, "copies": target.copies, "selected": root.selected, "seq": root.seq,
+                         "error": target.why ?? "not found"])
         }
         let seq0 = root.seq
         control.sendActions(for: .touchUpInside)
         waitRun(root, after: seq0, deadline: Date().addingTimeInterval(1)) { runs in
-            var o: [String: Any] = ["tab": tab, "copies": found.controls.count, "selected": root.selected, "seq": root.seq,
+            var o: [String: Any] = ["tab": tab, "copies": target.copies, "selected": root.selected, "seq": root.seq,
                                     "runs": runs.map(\.json), "strays": root.strays]
             let taps = runs.filter { $0.source == .tap }
             if runs.count == 1, let run = taps.first {

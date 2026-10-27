@@ -18,16 +18,28 @@ final class ShellProbeTests: XCTestCase {
         try await WebKitWarmUp.ensure()
     }
 
-    /// `tapTab` (delta 14.2): the item whose accessibility label is the model's `a11y`, then the control under the bar that
-    /// draws the item's title, never a control's own label or class. Labels that differ from the titles, as a page's model
-    /// may send them, prove the two lookups; `.touchUpInside` on the control is the owner's tap: one funnel run from a tap,
-    /// no stray, and on the selected tab the re-tap (`again`).
+    /// Turns the run loop for `seconds`, laying the root out at each turn (UIKit lays the bar's buttons out over the
+    /// first passes after the window shows).
+    @available(iOS 26.0, *)
+    private func settle(_ r: RootRig, _ seconds: Double = 0.5) {
+        let end = Date().addingTimeInterval(seconds)
+        while Date() < end {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+            r.root.view.layoutIfNeeded()
+        }
+    }
+
+    /// `tapTab` (delta 14.2): the item whose accessibility label is the model's `a11y`, then the controls under the bar
+    /// that draw the item's title, never a control's own label or class, then the copy a finger at their centre lands in.
+    /// Labels that differ from the titles, as a page's model may send them, prove the two lookups; `.touchUpInside` on the
+    /// control is the owner's tap: one funnel run from a tap, no stray, and on the selected tab the re-tap (`again`).
     func testTapTabFindsTheControlThroughTheItemsLabelAndTitle() throws {
         guard #available(iOS 26.0, *) else { throw XCTSkip("the tab root exists only on iOS 26 and later (D39)") }
         var look = TabsModel.defaults(for: .heavyweight)
         look.items = look.items.map { TabsModel.Item(id: $0.id, title: $0.title, a11y: "Open " + $0.title) }
         let r = RootRig(first: "log", look: look)
         defer { r.letGo() }
+        settle(r)
         r.clear()
 
         func controls(_ v: UIView) -> Int { (v is UIControl ? 1 : 0) + v.subviews.reduce(0) { $0 + controls($1) } }
@@ -36,8 +48,15 @@ final class ShellProbeTests: XCTestCase {
         }
         let found = ShellProbe.tabControls(r.root, "progress")
         XCTAssertNil(found.why)
-        let control = try XCTUnwrap(found.controls.first, "the control that draws Progress")
+        XCTAssertFalse(found.controls.isEmpty, "the controls that draw Progress")
         XCTAssertTrue(found.controls.allSatisfy { c in Self.draws(c, "Progress") }, "every control found draws the item's title")
+        let target = ShellProbe.tapTarget(r.root, "progress")
+        XCTAssertNil(target.why)
+        XCTAssertEqual(target.copies, found.controls.count)
+        let control = try XCTUnwrap(target.control, "the copy a finger on Progress lands in")
+        XCTAssertTrue(found.controls.contains { $0 === control })
+        let centre = control.convert(CGPoint(x: control.bounds.midX, y: control.bounds.midY), to: r.window)
+        XCTAssertTrue(r.window.hitTest(centre, with: nil)?.isDescendant(of: control) == true, "where a finger lands")
         control.sendActions(for: .touchUpInside)
         XCTAssertEqual(r.root.selected, "progress", "the control's own action runs the funnel")
         XCTAssertEqual(r.runs.count, 1)
@@ -45,7 +64,8 @@ final class ShellProbeTests: XCTestCase {
         XCTAssertEqual(r.runs.last?.moved, true)
 
         // the selected tab again: the owner's re-tap
-        let again = try XCTUnwrap(ShellProbe.tabControls(r.root, "progress").controls.first)
+        settle(r, 0.2)
+        let again = try XCTUnwrap(ShellProbe.tapTarget(r.root, "progress").control)
         again.sendActions(for: .touchUpInside)
         XCTAssertEqual(r.runs.count, 2)
         XCTAssertEqual(r.runs.last?.source, .tap)
@@ -65,6 +85,50 @@ final class ShellProbeTests: XCTestCase {
     private static func draws(_ v: UIView, _ title: String) -> Bool {
         if let l = v as? UILabel, l.text == title { return true }
         return v.subviews.contains { draws($0, title) }
+    }
+
+    /// `tapTab` taps only what a finger could (the H11 review, uikit lens): `sendActions` skips hit-testing, so a bar a
+    /// web sheet has hidden, or one a view covers inside the window, would still have run a "tap" through the funnel, a
+    /// selection the owner cannot make. Neither gives a control (nothing is tapped, the selection stays); the bar shown
+    /// and uncovered again does.
+    func testTapTabTapsNothingAFingerCouldNotReach() throws {
+        guard #available(iOS 26.0, *) else { throw XCTSkip("the tab root exists only on iOS 26 and later (D39)") }
+        let r = RootRig(first: "log", look: TabsModel.defaults(for: .heavyweight))
+        defer { r.letGo() }
+        settle(r)
+        guard !ShellProbe.tabControls(r.root, "progress").controls.isEmpty else {
+            throw XCTSkip("this host draws no control under the bar (the probe's tapTab finds them in the app)")
+        }
+        XCTAssertNotNil(ShellProbe.tapTarget(r.root, "progress").control, "the bar shown: a finger reaches Progress")
+
+        // a web sheet hides the bar (contract 3.4): no finger can tap it
+        _ = r.root.setSheets(open: true)
+        settle(r)
+        XCTAssertTrue(r.root.isTabBarHidden)
+        r.clear()
+        let hidden = ShellProbe.tapTarget(r.root, "progress")
+        XCTAssertNil(hidden.control, "a hidden bar is tapped by no one")
+        XCTAssertEqual(hidden.why, "the bar is hidden (a sheet is open, or the root fell back): no finger can tap progress")
+        XCTAssertGreaterThan(hidden.copies, 0, "the controls are still there: only a finger cannot reach them")
+        XCTAssertEqual(r.root.selected, "log")
+        XCTAssertTrue(r.runs.isEmpty)
+
+        // shown again, then covered inside the window (as a presented controller covers it): nothing either
+        _ = r.root.setSheets(open: false)
+        settle(r, 0.8)
+        XCTAssertFalse(r.root.isTabBarHidden)
+        XCTAssertNotNil(ShellProbe.tapTarget(r.root, "progress").control, "shown again")
+        let cover = UIView(frame: r.window.bounds)
+        cover.backgroundColor = .systemBackground
+        r.window.addSubview(cover)
+        let covered = ShellProbe.tapTarget(r.root, "progress")
+        XCTAssertNil(covered.control, "a finger lands on what covers the bar")
+        XCTAssertEqual(covered.why?.hasPrefix("a finger on progress lands outside the bar"), true, covered.why ?? "nil")
+        cover.removeFromSuperview()
+        let back = try XCTUnwrap(ShellProbe.tapTarget(r.root, "progress").control, "uncovered: a finger reaches it again")
+        back.sendActions(for: .touchUpInside)
+        XCTAssertEqual(r.root.selected, "progress")
+        XCTAssertEqual(r.runs.map(\.source), [.tap])
     }
 
     /// The state's `input` (contract 5 K1, K4; 15.3; delta 14.10): the key field is the secure input, the composer any
