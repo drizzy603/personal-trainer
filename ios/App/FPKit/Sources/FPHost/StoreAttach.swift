@@ -135,13 +135,18 @@ public final class StoreAttach: NSObject {
     var debug = DebugOptions()
     #endif
     private static var proxyKey: UInt8 = 0
+    /// The policy file (FPPolicy): started at the launch, and its switches in force, which the gate reads (tests set
+    /// their own, so no fetch is made and the switches are the test's).
+    var startPolicy: @MainActor () -> Void = { FPPolicy.shared.start() }
+    var policyInForce: @MainActor () -> Policy = { FPPolicy.shared.effective }
 
-    /// `directory`: the store's folder (tests pass their own; the app's is `Application Support/FPStore`).
-    init(defaults: UserDefaults = .standard, directory: URL? = nil) {
+    /// `directory`: the store's folder (tests pass their own; the app's is `Application Support/FPStore`). `shellBuild`:
+    /// this binary's build (tests pass their own; the app's CFBundleVersion).
+    init(defaults: UserDefaults = .standard, directory: URL? = nil, shellBuild: String? = nil) {
         self.defaults = defaults
         let info = Bundle.main.infoDictionary
-        shellBuild = (info?["CFBundleVersion"] as? String) ?? "0"
-        shellNumber = Int(shellBuild) ?? 0
+        self.shellBuild = shellBuild ?? (info?["CFBundleVersion"] as? String) ?? "0"
+        shellNumber = Int(self.shellBuild) ?? 0
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         let folder = directory ?? support.appendingPathComponent("FPStore", isDirectory: true)
         self.directory = folder
@@ -161,7 +166,7 @@ public final class StoreAttach: NSObject {
         debug = DebugOptions(arguments: ProcessInfo.processInfo.arguments)
         if let off = debug.deviceSwitchOff { defaults.set(off, forKey: Self.deviceSwitchKey) }
         #endif
-        FPPolicy.shared.start()
+        startPolicy()
         book = Self.loadBook(directory: directory, defaults: defaults)
         #if DEBUG
         if debug.clearVerdicts { book.clearDisabled(piece: CrashMarker.Piece.store.name) }
@@ -417,7 +422,7 @@ public final class StoreAttach: NSObject {
     /// The gate at a document start: StoreGate over the device switch, the policy in force, the crash verdicts and
     /// the store breaker.
     private func gate(page: String?) -> (code: String, why: String)? {
-        let off = StoreGate.evaluate(deviceOff: defaults.bool(forKey: Self.deviceSwitchKey), policy: FPPolicy.shared.effective,
+        let off = StoreGate.evaluate(deviceOff: defaults.bool(forKey: Self.deviceSwitchKey), policy: policyInForce(),
                                      book: book, shellBuild: shellBuild, pageBuild: page)
         switch off {
         case nil: return nil

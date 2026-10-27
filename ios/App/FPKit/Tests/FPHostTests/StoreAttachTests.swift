@@ -1,5 +1,6 @@
 #if os(iOS)
 import Foundation
+import WebKit
 import XCTest
 import FPCore
 import FPStore
@@ -187,6 +188,139 @@ final class StoreAttachTests: XCTestCase {
         XCTAssertNil(attach.store)
         XCTAssertNil(attach.firstFrameRoom())
         XCTAssertFalse(FileManager.default.fileExists(atPath: dir.path), "nothing opened or written")
+    }
+
+    /// One StoreAttach as SceneDelegate meets it (H9 step 6), on a folder, UserDefaults and policy of the test's own (no
+    /// fetch is made), shell build 61: a store an earlier launch left (the page's raw `kt_theme`) and, beside it, the
+    /// breaker record that launch left. `bind(page:)` installs a web view serving that page build, as capacitorDidLoad
+    /// does: the first install is the launch (the store opens, or stays closed for a crash verdict). The web views are
+    /// never loaded (install only adds scripts and a message handler), so nothing waits on WebKit.
+    @MainActor
+    private final class Launch {
+        let attach: StoreAttach
+        let dir: URL
+        let defaults: UserDefaults
+        private let suite: String
+        var policy = Policy.defaults
+        private var views: [(WKWebView, FakeCapacitorDelegate)] = []
+
+        init(theme: String?, book: BreakerBook? = nil) throws {
+            dir = FileManager.default.temporaryDirectory.appendingPathComponent("StoreAttachTests-\(UUID().uuidString)", isDirectory: true)
+            suite = "StoreAttachTests-\(UUID().uuidString)"
+            defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+            let store = dir.appendingPathComponent("store", isDirectory: true)
+            if let theme {
+                let earlier = KTStore.open(KTStore.Config(directory: store, build: 61))
+                XCTAssertEqual(earlier.state, .ready)
+                XCTAssertTrue(earlier.answer(head: "hello", payload: "null").hasPrefix(#"{"mode":"shadow""#))
+                XCTAssertEqual(earlier.answer(head: "w 1:1", payload: KTWire.quote(KTKey("kt_theme")) + "\n" + KTWire.quote(Array(theme.utf16))),
+                               KTProtocol.Answer.ok.rawValue)
+                earlier.close()
+            }
+            if let book { XCTAssertTrue(StoreAttach.saveBook(book, directory: store, defaults: defaults)) }
+            attach = StoreAttach(defaults: defaults, directory: store, shellBuild: "61")
+            attach.startPolicy = {}
+            attach.policyInForce = { [weak self] in self?.policy ?? .defaults }
+        }
+
+        /// A web view serving `page` (its folder's build.txt), bound as capacitorDidLoad binds one.
+        @discardableResult
+        func bind(page: String) throws -> WKWebView {
+            let folder = dir.appendingPathComponent("page-\(page)", isDirectory: true)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try Data("\(page)\n".utf8).write(to: folder.appendingPathComponent("build.txt"))
+            let inner = FakeCapacitorDelegate()
+            let view = WKWebView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+            view.uiDelegate = inner
+            views.append((view, inner))
+            attach.install(webView: view, pageFolder: folder)
+            return view
+        }
+
+        func end() {
+            attach.store?.close()
+            defaults.removePersistentDomain(forName: suite)
+            try? FileManager.default.removeItem(at: dir)
+        }
+    }
+
+    /// The instance SceneDelegate calls reads its own store, binding and gate (contract 6.1, H9 step 6): the owner's room
+    /// as an earlier launch left it in the store, for the page bound now, with the gate StoreAttach answers hellos with.
+    /// The device switch, the policy's facade and no page bound give nil (the caller draws Heavyweight), and the room
+    /// comes back with the switch, the policy and a page bound again. Nothing is written.
+    func testTheFirstFrameRoomOfTheInstanceIsTheStoresForTheBoundPageWhileTheGateIsOn() throws {
+        let dark = try Launch(theme: "dark")
+        defer { dark.end() }
+        XCTAssertNil(dark.attach.firstFrameRoom(), "before the first install no store is open")
+        let view = try dark.bind(page: "P1")
+        let store = try XCTUnwrap(dark.attach.store, "the first install opened the store")
+        XCTAssertEqual(store.state, .ready)
+        XCTAssertNotNil(dark.attach.binding, "the page is bound")
+        let before = store.values()
+        XCTAssertEqual(dark.attach.firstFrameRoom(), "dark", "the owner's room as the store holds it")
+
+        dark.defaults.set(true, forKey: StoreAttach.deviceSwitchKey)
+        XCTAssertNil(dark.attach.firstFrameRoom(), "Storage's Native copy switch off: the store may lag WebKit")
+        dark.attach.setDeviceSwitch(on: true)
+        XCTAssertEqual(dark.attach.firstFrameRoom(), "dark")
+
+        dark.policy = Policy(facade: .off)
+        XCTAssertNil(dark.attach.firstFrameRoom(), "the policy file's facade off")
+        dark.policy = .defaults
+        XCTAssertEqual(dark.attach.firstFrameRoom(), "dark")
+
+        dark.attach.sceneDisconnected(webView: view)
+        XCTAssertNil(dark.attach.binding)
+        XCTAssertNotNil(dark.attach.store, "the store stays open for the process")
+        XCTAssertNil(dark.attach.firstFrameRoom(), "no page bound")
+        try dark.bind(page: "P1")
+        XCTAssertEqual(dark.attach.firstFrameRoom(), "dark", "the next page bound")
+        XCTAssertEqual(store.values(), before, "nothing was written")
+
+        let heavy = try Launch(theme: "heavyweight")
+        defer { heavy.end() }
+        try heavy.bind(page: "P1")
+        XCTAssertEqual(heavy.attach.firstFrameRoom(), "heavyweight")
+        let none = try Launch(theme: nil)
+        defer { none.end() }
+        try none.bind(page: "P1")
+        XCTAssertEqual(none.attach.store?.state, .ready)
+        XCTAssertNil(none.attach.firstFrameRoom(), "no kt_theme in the store")
+    }
+
+    /// The breaker record the last launch left: an unfinished boot (this launch runs without the facade) and a crash
+    /// verdict for the page bound now give nil, the gate asked for that page; a verdict for the launch's own page leaves
+    /// the store closed.
+    func testTheFirstFrameRoomOfTheInstanceFollowsTheBreakerRecord() throws {
+        var unfinished = BreakerBook()
+        unfinished.store.documentStart(pageBuild: "P1", at: Date())
+        let boot = try Launch(theme: "dark", book: unfinished)
+        defer { boot.end() }
+        try boot.bind(page: "P1")
+        XCTAssertEqual(boot.attach.store?.state, .ready, "an unfinished boot leaves the store open")
+        XCTAssertTrue(boot.attach.book.store.skipping, "this launch runs without the facade")
+        XCTAssertNil(boot.attach.firstFrameRoom(), "the last document never finished booting: the store may lag WebKit")
+
+        var verdictQ = BreakerBook()
+        verdictQ.recordStaleMarkers([CrashMarker(piece: .store, pageBuild: "Q", shellBuild: "61")], at: Date())
+        let other = try Launch(theme: "dark", book: verdictQ)
+        defer { other.end() }
+        try other.bind(page: "P1")
+        XCTAssertEqual(other.attach.store?.state, .ready, "a verdict for another page build leaves the store open")
+        XCTAssertEqual(other.attach.firstFrameRoom(), "dark", "the verdict is for another pair")
+        try other.bind(page: "Q")
+        XCTAssertNotNil(other.attach.store)
+        XCTAssertEqual(other.attach.binding?.pageBuild, "Q", "a newer web view serving page Q took the binding over")
+        XCTAssertNil(other.attach.firstFrameRoom(), "a store crash verdict for the page bound now")
+
+        var verdictP1 = BreakerBook()
+        verdictP1.recordStaleMarkers([CrashMarker(piece: .store, pageBuild: "P1", shellBuild: "61")], at: Date())
+        let closed = try Launch(theme: "dark", book: verdictP1)
+        defer { closed.end() }
+        try closed.bind(page: "P1")
+        XCTAssertNil(closed.attach.store, "a verdict for the launch's own pair leaves the store closed")
+        XCTAssertNotNil(closed.attach.storeClosedWhy)
+        XCTAssertNil(closed.attach.firstFrameRoom())
     }
 
     /// The facade the shell injects is in the app's FPStore bundle, and its flag is protocol 1 for this shell.
