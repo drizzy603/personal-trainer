@@ -40,9 +40,10 @@ prompt channel, and the shipped facade
 page. Every write goes to WebKit first and is mirrored to the mock store; each
 `app.close()` checks that the store, WebKit and the page's reads hold the same
 values (a difference fails the spec as `store drift`). Per-spec results must equal
-the classic run's. CI runs it as its own job (beside classic, the contract run and
-both at once, below); `publish.sh` adds the shadow run when the facade, the mock or
-the harness changed.
+the classic run's. CI runs it as its own mode (beside classic, the two inert modes and
+shadow + inert61, each in two shards: `.github/workflows/tests.yml`); `publish.sh`
+adds the shadow run when the facade, the mock or the harness changed, and the two
+inert runs when the page's bridge to the shell or the harness changed.
 
 `boot({store: 'shadow'})` turns it on for one boot whatever STORE says
 (`store: 'classic'` turns it off). Specs 119 and 120 drive the mock through
