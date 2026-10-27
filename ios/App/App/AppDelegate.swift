@@ -150,8 +150,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 extension AppDelegate {
     /// The App Group the share extension writes to (ShareViewController.send) and TrovoShare reads from.
     private static let shareGroup = "group.app.kt.trainer"
-    /// The open `openURLOnActive` armed, until the scene next enters the foreground.
-    private static var armedOpen: NSObjectProtocol?
+    /// The URL `openURLOnActive` armed, opened when the scene next enters the foreground (`fireArmedOpen`).
+    private static var armedURL: URL?
 
     /// ShellBridge.debugHooks' `openURL`, `openURLOnActive`, `share` and `sceneCycle`; `replay` is StoreProbe's.
     static func installProbeHooks(replay: @escaping @MainActor (UIWindowScene) -> String?) {
@@ -161,15 +161,7 @@ extension AppDelegate {
         }
         ShellBridge.debugHooks["openURLOnActive"] = { step in
             guard let url = probeURL(step) else { return ["error": "no url with a scheme"] }
-            if let armed = armedOpen { NotificationCenter.default.removeObserver(armed) }
-            armedOpen = NotificationCenter.default.addObserver(forName: UIScene.willEnterForegroundNotification, object: nil, queue: .main) { _ in
-                MainActor.assumeIsolated {
-                    if let armed = armedOpen { NotificationCenter.default.removeObserver(armed) }
-                    armedOpen = nil
-                    let opened = openThroughDelegate(url)
-                    ShellBridge.probeEvent("openURLOnActive", ["url": url.absoluteString, "fired": true, "opened": opened])
-                }
-            }
+            armedURL = url
             return ["url": url.absoluteString, "armed": true]
         }
         ShellBridge.debugHooks["share"] = { step in writeProbeShare(step) }
@@ -182,6 +174,22 @@ extension AppDelegate {
             guard let root = replay(scene) else { return ["error": "the scene's delegate cannot replay a connection"] }
             return ["root": root]
         }
+    }
+
+    /// `openURLOnActive`'s open, from SceneDelegate's `sceneWillEnterForeground`: where a widget's link lands. Measured
+    /// on iOS 27.0 (the H11 review: another app's open of trovo://start while this app was in the background), the link
+    /// comes in the scene update that brings the scene forward, and UIKit hands it to `scene(_:openURLContexts:)` before
+    /// the scene's `willEnterForeground`, so before every foreground observer: the scene's (WebKit's among them) and the
+    /// application's (ShellBridge's `setForeground` and hello deadline, StoreAttach's, PolicyFetch's fetch on return).
+    /// The scene delegate's call comes before UIKit posts either notification, so the armed link is opened there, through
+    /// the delegate as SceneDelegate's `open` opens a real one; never on a notification or a later turn, which would run
+    /// after observers the real link runs before. One difference stays: the app reads as background (2) here, where
+    /// UIKit's own delivery reads inactive (1).
+    static func fireArmedOpen() {
+        guard let url = armedURL else { return }
+        armedURL = nil
+        let opened = openThroughDelegate(url)
+        ShellBridge.probeEvent("openURLOnActive", ["url": url.absoluteString, "fired": true, "opened": opened])
     }
 
     /// The step's `url`: a URL with a scheme, or nil.
@@ -574,6 +582,12 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         connect(windowScene, urls: [], activity: nil)
         if #available(iOS 26.0, *), window?.rootViewController is RootTabController { return "tabs" }
         return "classic"
+    }
+
+    /// The probe's `openURLOnActive` (AppDelegate.fireArmedOpen): an armed link opened before any foreground observer
+    /// runs, where a real link's `scene(_:openURLContexts:)` comes.
+    func sceneWillEnterForeground(_ scene: UIScene) {
+        AppDelegate.fireArmedOpen()
     }
 
     /// Whether the process's first connection has read -fpOpenURL.
