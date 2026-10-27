@@ -374,6 +374,7 @@ serial('the stable ids, each once where contract 10.5 puts it; Try again: #fp-ta
       };
       r.safety = [__txt('#fpChatBody'), __txt('#fpTabsBody')];
       r.titles = [__txt('#fpChatTitle'), __txt('#fpTabsTitle')];
+      r.intros = ['#fpChatOverlay', '#fpTabsOverlay'].map((o) => __txt(document.querySelector(o + ' .kt-sheet-head').nextElementSibling));
       // Try again, the tab bar's
       const n0 = __fpShell.of('reset').length;
       $('fp-tabs-retry').click();
@@ -392,6 +393,8 @@ serial('the stable ids, each once where contract 10.5 puts it; Try again: #fp-ta
     assert(w.overlays && w.chatSheet && w.tabsSheet && J(w.checks) === '[1,1]', 'the sheets on <body>, each with its switch, Try again and Check the switches now: ' + J(w));
     assert(J(w.roles) === '["button","button","switch","switch","button","button"]' && J(w.checked) === '["true","true"]', 'controls, the switches as switches: ' + J(w));
     assert(J(out.titles) === '["Native Coach","Native tab bar"]', 'the sheets\' titles: ' + J(out.titles));
+    assert(out.intros[0] === 'The Coach tab drawn by the iPhone: its home, the connect screen and the chat. The app keeps the conversation either way: the web Coach shows whenever the native one is off.'
+      && /^The iPhone.s own tab bar under Log, Progress, Coach and Settings\. /.test(out.intros[1]), 'the sheets\' intros (contract 10.5\'s for the Native Coach): ' + J(out.intros));
     for (const s of out.safety) {
       assert(/Left its window while open Stays 0: native screens and tab changes never take the app out of its window 0 this launch . 0 in all/.test(s)
         && /Hidden while in use Stays 0: the app keeps showing under native screens and tab changes 0 this launch . 0 in all/.test(s)
