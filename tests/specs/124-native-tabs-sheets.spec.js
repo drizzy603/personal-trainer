@@ -108,6 +108,7 @@ serial('every overlay kind is announced under the tab root: one {open:true} as i
         ['progress', 'openSportLogEditor', () => openSportLogEditor(4343)],
         ['settings', 'openExLib', () => openExLib()],
         ['settings', 'openNativeChatSheet', () => openNativeChatSheet()],
+        ['settings', 'openNativeTabsSheet', () => openNativeTabsSheet()],
         ['settings', '_ktConfirm', () => _ktConfirm({ title: 'Sure?', onConfirm: function () {} })],
         ['log', 'discardRunnerDraft', () => discardRunnerDraft()],
         ['log', 'confirmCloseRunner', inRunner(() => { runnerCompleteSet(); confirmCloseRunner(); }), null, () => closeDeckRunner()],
