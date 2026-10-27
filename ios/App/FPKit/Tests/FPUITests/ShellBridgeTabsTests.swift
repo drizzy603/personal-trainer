@@ -132,6 +132,9 @@ final class ShellBridgeTabsTests: XCTestCase {
     }
 
     override func tearDown() async throws {
+        #if DEBUG
+        ShellProbe.shared = nil   // the tests' probe of the probe cases (29-33)
+        #endif
         for s in scenes { s.letGo() }
         scenes = []
         for suite in suites { UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
@@ -1817,6 +1820,32 @@ final class ShellBridgeTabsTests: XCTestCase {
         XCTAssertNil(root.fellBack)
         XCTAssertTrue(b.link.isLive("tabs"))
     }
+
+    #if DEBUG
+    // MARK: 29-33. The probe through the bridge (11-shell.md H11; its review)
+
+    /// What the tests' probe heard: its events, as their log lines.
+    private final class Heard {
+        var events: [[String: Any]] = []
+        func all(_ ev: String) -> [[String: Any]] { events.filter { $0["ev"] as? String == ev } }
+        func last(_ ev: String) -> [String: Any]? { all(ev).last }
+    }
+
+    /// A build 61 bridge with the tests' probe as `ShellProbe.shared`, set before the scene binds so the bridge relays to
+    /// it (`tearDown` takes it away).
+    private func probed() -> (bridge: ShellBridge, probe: ShellProbe, heard: Heard) {
+        let bridge = makeBridge()
+        let heard = Heard()
+        let probe = ShellProbe(bridge: bridge) { heard.events.append($0) }
+        ShellProbe.shared = probe
+        return (bridge, probe, heard)
+    }
+
+    /// Runs `steps` as one phase of the tests' probe, until it ends.
+    private func runSteps(_ probe: ShellProbe, _ steps: [[String: Any]]) async {
+        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in probe.runPhase(steps) { c.resume() } }
+    }
+    #endif
 }
 
 /// The stand-in page never came up: the case fails there, saying so.

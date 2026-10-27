@@ -91,6 +91,11 @@ final class ShellProbe {
     /// `sceneDestroy`'s request in flight: its refusal or its 3 s timeout, whichever comes first, decides and moves on.
     private var sceneAsk = 0
 
+    /// The tests' probe (`init(bridge:sink:)`): every event goes here, as the log line's object, instead of a file.
+    private var sink: (([String: Any]) -> Void)?
+    /// Said once when the phase `runPhase` started ends (its last step done, or a step that ends the phase).
+    private var phaseEnded: (() -> Void)?
+
     /// Scripts the shell adds at document start while probing: the page's visibilitychange events, counted from the
     /// document's start.
     let documentStartScripts = [
@@ -136,6 +141,30 @@ final class ShellProbe {
         event("probe", ["steps": steps, "phases": phases.count, "pid": Int(getpid()), "args": ProcessInfo.processInfo.arguments])
     }
 
+    /// The tests' probe (FPUITests; set it as `shared` before the bridge binds a web view, so the bridge relays to it, and
+    /// back to nil after): no steps file, no log file, every event handed to `sink` as the object its log line would hold
+    /// (written and read back as JSON, so a field the log could not carry fails there too).
+    init(bridge: ShellBridge, sink: @escaping ([String: Any]) -> Void) {
+        self.bridge = bridge
+        dir = FileManager.default.temporaryDirectory.appendingPathComponent("fp-probe-tests", isDirectory: true)
+        log = nil
+        self.sink = sink
+    }
+
+    /// Runs `steps` now as one phase (the tests' probe); `ended` once its last step is done, or once a step ends the phase
+    /// early (a new document, a scene's teardown).
+    func runPhase(_ steps: [[String: Any]], ended: @escaping () -> Void) {
+        phaseEnded = ended
+        running = true
+        run(steps, 0)
+    }
+
+    private func endedPhase() {
+        let ended = phaseEnded
+        phaseEnded = nil
+        ended?()
+    }
+
     /// Milliseconds since the probe started, at `d`.
     private func ms(_ d: Date = Date()) -> Int { Int(d.timeIntervalSince(t0) * 1000) }
 
@@ -153,6 +182,10 @@ final class ShellProbe {
         let clean = Self.jsonSafe(o)
         guard JSONSerialization.isValidJSONObject(clean),
               var data = try? JSONSerialization.data(withJSONObject: clean, options: [.sortedKeys]) else { return }
+        if let sink {
+            if let line = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { sink(line) }
+            return
+        }
         data.append(0x0A)
         log?.write(data)
     }
@@ -279,6 +312,7 @@ final class ShellProbe {
                 Self.restoreAccessibility()
                 event("done")
             }
+            endedPhase()
             return
         }
         let step = steps[i]
@@ -288,6 +322,7 @@ final class ShellProbe {
         let endPhase: () -> Void = { [weak self] in
             self?.running = false
             self?.armBootFallback()
+            self?.endedPhase()
         }
         let b = bridge.binding
         switch op {
@@ -533,6 +568,7 @@ final class ShellProbe {
             Self.restoreAccessibility()
             event("done")
             running = false
+            endedPhase()
         default:
             event("unknownStep", ["op": op])
             next()
