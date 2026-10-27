@@ -762,6 +762,35 @@ public final class StoreAttach: NSObject {
         (Self.jsonObject(status()) as? [String: Any]) ?? [:]
     }
 
+    // MARK: The first frame's room (build 61, contract 6.1)
+
+    /// The room the tab bar wears in the first frame, before any TabsModel (SceneDelegate, after the web view's
+    /// `loadViewIfNeeded`, so the store has opened and the page being served is bound): the owner's `kt_theme` as the
+    /// store holds it, read once inside the store's marker. Nothing is written. Nil (the caller draws Heavyweight) when
+    /// the store is closed or not ready, when no page is bound, or when StoreGate is off for the page being served (the
+    /// device switch, the policy's facade, a crash verdict, an unfinished boot): the store may lag WebKit then.
+    public func firstFrameRoom() -> String? {
+        let marker = self.marker
+        return Self.firstFrameRoom(store: store, bound: binding != nil, gateOff: gate(page: binding?.pageBuild) != nil) { store in
+            marker.around { store.value("kt_theme") }
+        }
+    }
+
+    /// `firstFrameRoom()`'s rule with what it reads passed in (tests): a ready store, a bound page and the gate on (asked
+    /// only then), then the theme's room.
+    static func firstFrameRoom(store: KTStore?, bound: Bool, gateOff: @autoclosure () -> Bool, theme: (KTStore) -> U16?) -> String? {
+        guard let store, bound, case .ready = store.state, !gateOff() else { return nil }
+        return room(fromTheme: theme(store))
+    }
+
+    /// The page's `kt_theme` (a RAW_STRING_KEYS key: the plain string, no JSON quotes) as a room id: `heavyweight` or
+    /// `dark` when its UTF-16 units are exactly that, else nil (`lime`, a retired or unknown room, empty, a lone
+    /// surrogate, absent).
+    nonisolated public static func room(fromTheme value: U16?) -> String? {
+        guard let value else { return nil }
+        return ["heavyweight", "dark"].first { value == Array($0.utf16) }
+    }
+
     // MARK: Helpers
 
     /// The page build a served folder holds: build.txt, else the `<meta name="build">` of its index.html.

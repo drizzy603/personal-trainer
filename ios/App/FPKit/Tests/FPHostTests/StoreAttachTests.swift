@@ -101,6 +101,94 @@ final class StoreAttachTests: XCTestCase {
         XCTAssertEqual(StoreAttach.loadBook(directory: dir, defaults: defaults).store.armed?.page, "q", "no file: the copy")
     }
 
+    /// The first frame's room (contract 6.1): the page's raw `kt_theme`, taken only when its UTF-16 units read exactly one
+    /// of the page's two rooms.
+    func testTheFirstFrameRoomMapsTheThemeExactly() {
+        func room(_ s: String) -> String? { StoreAttach.room(fromTheme: Array(s.utf16)) }
+        XCTAssertEqual(room("heavyweight"), "heavyweight")
+        XCTAssertEqual(room("dark"), "dark", "Lime's id in the page")
+        XCTAssertNil(room("lime"), "the native name of the room is not the page's id")
+        XCTAssertNil(room("auto"), "a retired room (the page migrates it to Heavyweight)")
+        XCTAssertNil(room("midnight"), "an unknown room")
+        XCTAssertNil(room("Dark"), "case counts")
+        XCTAssertNil(room(" dark"))
+        XCTAssertNil(room("\"dark\""), "a RAW_STRING_KEYS key holds the plain string, never JSON")
+        XCTAssertNil(room(""), "empty")
+        XCTAssertNil(StoreAttach.room(fromTheme: nil), "absent")
+        XCTAssertNil(StoreAttach.room(fromTheme: [0xD800]), "a lone surrogate")
+        XCTAssertNil(StoreAttach.room(fromTheme: Array("dark".utf16) + [0xDC00]), "the room and a lone surrogate after it")
+    }
+
+    /// The room comes from a ready store only, for a bound page the gate leaves on (the store may lag WebKit otherwise),
+    /// read through the store's own value; a closed store, a store that is not ready, no page and each StoreGate reason
+    /// give nil (the caller draws Heavyweight). Nothing is written.
+    func testTheFirstFrameRoomNeedsAReadyStoreABoundPageAndTheGateOn() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("StoreAttachTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = KTStore.open(KTStore.Config(directory: dir.appendingPathComponent("ready", isDirectory: true), build: 61))
+        XCTAssertEqual(store.state, .ready)
+        XCTAssertTrue(store.answer(head: "hello", payload: "null").hasPrefix(#"{"mode":"shadow""#))
+        let read: (KTStore) -> U16? = { $0.value("kt_theme") }
+        XCTAssertNil(StoreAttach.firstFrameRoom(store: store, bound: true, gateOff: false, theme: read), "no kt_theme in the store yet")
+        XCTAssertEqual(store.answer(head: "w 1:1", payload: KTWire.quote(KTKey("kt_theme")) + "\n" + KTWire.quote(Array("dark".utf16))),
+                       KTProtocol.Answer.ok.rawValue)
+        XCTAssertEqual(StoreAttach.firstFrameRoom(store: store, bound: true, gateOff: false, theme: read), "dark", "the store's own value")
+        let before = store.values()
+        XCTAssertNil(StoreAttach.firstFrameRoom(store: nil, bound: true, gateOff: false, theme: read), "a closed store")
+        XCTAssertNil(StoreAttach.firstFrameRoom(store: store, bound: false, gateOff: false, theme: read), "no page bound")
+
+        // each StoreGate reason (the gate's own inputs, as StoreAttach evaluates it for the page being served) turns it off
+        func gate(_ deviceOff: Bool, _ policy: Policy, _ book: BreakerBook, page: String = "p") -> StoreGate.Off? {
+            StoreGate.evaluate(deviceOff: deviceOff, policy: policy, book: book, shellBuild: "61", pageBuild: page)
+        }
+        var verdict = BreakerBook()
+        verdict.recordStaleMarkers([CrashMarker(piece: .store, pageBuild: "p", shellBuild: "61")], at: Date())
+        var unfinished = BreakerBook()
+        unfinished.store.documentStart(pageBuild: "p", at: Date())
+        XCTAssertFalse(unfinished.store.launch(at: Date()), "a document that never finished booting")
+        let device = gate(true, .defaults, BreakerBook())
+        XCTAssertEqual(device, .deviceSwitch)
+        let policy = gate(false, Policy(facade: .off), BreakerBook())
+        XCTAssertEqual(policy, .policy)
+        let crash = gate(false, .defaults, verdict)
+        guard case .crashMarker? = crash else { return XCTFail("a store verdict for the pair: \(String(describing: crash))") }
+        let boot = gate(false, .defaults, unfinished)
+        XCTAssertEqual(boot, .unfinishedBoot)
+        for (why, off) in [("the device switch", device), ("the policy's facade", policy), ("a crash verdict", crash), ("an unfinished boot", boot)] {
+            XCTAssertNil(StoreAttach.firstFrameRoom(store: store, bound: true, gateOff: off != nil, theme: read), why)
+        }
+        let on = gate(false, .defaults, verdict, page: "q")
+        XCTAssertNil(on, "another page build is another pair")
+        XCTAssertEqual(StoreAttach.firstFrameRoom(store: store, bound: true, gateOff: on != nil, theme: read), "dark")
+        var gateAsked = false
+        XCTAssertNil(StoreAttach.firstFrameRoom(store: nil, bound: true, gateOff: { gateAsked = true; return false }(), theme: read))
+        XCTAssertFalse(gateAsked, "with no store the gate (the policy, the book) is never asked")
+
+        // a store that is not ready (rule 1: a file it cannot read) is never read
+        let garbled = dir.appendingPathComponent("garbled", isDirectory: true)
+        try FileManager.default.createDirectory(at: garbled, withIntermediateDirectories: true)
+        try Data(repeating: 0x5A, count: 4096).write(to: garbled.appendingPathComponent(KTStore.fileName))
+        let unreadable = KTStore.open(KTStore.Config(directory: garbled, build: 61))
+        guard case .unreadable = unreadable.state else { return XCTFail("a garbled file reads as unreadable: \(unreadable.state)") }
+        var asked = false
+        XCTAssertNil(StoreAttach.firstFrameRoom(store: unreadable, bound: true, gateOff: false) { _ in asked = true; return Array("dark".utf16) })
+        XCTAssertFalse(asked, "a store that is not ready is never read")
+        XCTAssertEqual(store.values(), before, "nothing was written")
+    }
+
+    /// The instance reads nothing while no store has opened (a test host never opens one): the caller draws Heavyweight.
+    func testTheFirstFrameRoomIsNilWithoutAStore() throws {
+        let suite = "StoreAttachTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("StoreAttachTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let attach = StoreAttach(defaults: defaults, directory: dir)
+        XCTAssertNil(attach.store)
+        XCTAssertNil(attach.firstFrameRoom())
+        XCTAssertFalse(FileManager.default.fileExists(atPath: dir.path), "nothing opened or written")
+    }
+
     /// The facade the shell injects is in the app's FPStore bundle, and its flag is protocol 1 for this shell.
     func testTheFacadeAndItsFlag() throws {
         let src = try XCTUnwrap(KTFacade.source())
