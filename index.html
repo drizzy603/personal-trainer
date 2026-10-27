@@ -97,6 +97,93 @@ window.addEventListener('unhandledrejection', function(e){
     }
   }catch(e){}
 })();
+// ── Native tab bar (build 61, shell contract v1 2.3) ─────────────────────────
+// The page's off switches and its one tabs-mode test live here, ahead of #tabs and the first paint; the main script
+// calls the same _fpTabsTest(), so the two can never disagree. FP_NATIVE: every native screen (false gives every
+// shell the web screens again, by OTA); FP_TABS: the native tab bar alone. Without the shell's flag (the browser, the
+// PWA, shells up to 59) or with build 60's TrovoShell (no selectTab or sheets) nothing below does anything.
+var FP_NATIVE=true, FP_TABS=true, FP_TAB_IDS=['log','progress','coach','settings'];
+// The flag's tabs object when this document runs in tabs mode, else null (any throw is null).
+function _fpTabsTest(){
+  try{
+    if(!FP_NATIVE || !FP_TABS) return null;
+    var f=window.__FP_SHELL;
+    if(!f || typeof f!=='object' || (f.v|0)<1) return null;
+    var t=f.tabs, b=t && typeof t==='object' ? t.bar : null;
+    if(!t || typeof t!=='object' || FP_TAB_IDS.indexOf(t.selected)<0 || !b || typeof b!=='object') return null;
+    var ok=function(n){ return typeof n==='number' && isFinite(n) && n>=0; };
+    if(!ok(b.h) || !ok(b.safe)) return null;
+    var C=window.Capacitor;
+    if(!(C && typeof C.isNativePlatform==='function' && C.isNativePlatform() && C.getPlatform && C.getPlatform()==='ios')) return null;
+    var P=C.Plugins && C.Plugins.TrovoShell;
+    if(!P || typeof P.selectTab!=='function' || typeof P.sheets!=='function') return null;
+    return t;
+  }catch(e){ return null; }
+}
+// The glass bar's height on every iPhone the tab root runs on (iOS 26 and later, Face ID or Home button; contract delta
+// 14.1): --fp-bar-up and _fp.tabs.up until the shell has measured the bar shown (the CSS fallbacks say 83px too).
+var FP_BAR_UP=83;
+// The bar's numbers on <html> (contract 7.2), in CSS px = points / z (the Larger Text zoom), rounded to 0.01; the two
+// maxima are computed here, never with CSS max() (see the env()/min() trap noted at the tab bar's CSS). bar null
+// removes all five. up: the bar's height while shown (--fp-bar-up, never 0).
+function _fpBarVars(bar, up, z){
+  var st=document.documentElement.style, names=['--fp-bar-h','--fp-safe-b','--fp-sheet-b','--fp-clear','--fp-bar-up'];
+  if(!bar){ for(var i=0;i<names.length;i++) st.removeProperty(names[i]); return; }
+  z=(typeof z==='number' && z>0) ? z : 1;
+  var px=function(v){ return (Math.round((+v||0)/z*100)/100)+'px'; };
+  var h=+bar.h||0, s=+bar.safe||0;
+  st.setProperty('--fp-bar-h', px(h));
+  st.setProperty('--fp-safe-b', px(s));
+  st.setProperty('--fp-sheet-b', px(Math.max(s, 16)));
+  st.setProperty('--fp-clear', px(Math.max(h, s)));
+  st.setProperty('--fp-bar-up', px(up>0 ? up : FP_BAR_UP));
+}
+// On a pass: html.fp-tabs and the bar's prediction before the first paint, and the failsafe: no hello answer within
+// 16 s of visible time (hidden time does not count, as the shell's own deadline counts foreground time only) and the
+// page leaves tabs mode on its own, telling the shell (dismiss tabs), so a page whose main script never got going
+// still ends with one bar, its own. Visible time runs from a tick or a visibilitychange that saw the page visible to
+// the next tick that sees it visible, or to the visibilitychange that hides it; a stretch whose end is hidden never
+// counts. No stretch counts more than 1 s (four ticks): a suspension that no visibilitychange reported, or a tick a busy
+// page held back, only makes the failsafe later. Leaving early would cost the native bar for this page build (the
+// shell records the decline), so the count errs late.
+(function(){
+  try{ if(window.__fpTabsFailT){ clearInterval(window.__fpTabsFailT); window.__fpTabsFailT=null; } }catch(e){}
+  var t=_fpTabsTest(); if(!t) return;
+  var root=document.documentElement;
+  try{ root.classList.add('fp-tabs'); _fpBarVars(t.bar, t.bar.h>0 ? t.bar.h : FP_BAR_UP, 1); }catch(e){ return; }
+  var now=function(){ return (window.performance && performance.now) ? performance.now() : Date.now(); };
+  var vis=0, last=document.visibilityState==='visible' ? now() : null;
+  var add=function(at){ if(last!==null) vis+=Math.min(1000, Math.max(0, at-last)); };
+  try{
+    document.addEventListener('visibilitychange', function(){
+      if(!window.__fpTabsFailT) return;
+      var at=now();
+      if(document.visibilityState==='visible'){ if(last===null) last=at; }
+      else { add(at); last=null; }
+    });
+  }catch(e){}
+  window.__fpTabsFailT=setInterval(function(){
+    if(window.__fpTabsAnswered){ clearInterval(window.__fpTabsFailT); window.__fpTabsFailT=null; return; }
+    var at=now();
+    if(document.visibilityState==='visible'){ add(at); last=at; } else last=null;
+    if(vis < (typeof window.__fpTabsFailsafeMs==='number' ? window.__fpTabsFailsafeMs : 16000)) return;
+    clearInterval(window.__fpTabsFailT); window.__fpTabsFailT=null;
+    // The main script's own way out when it got as far as its state (its function declarations exist even when it
+    // threw at run time, so only _fp says it ran). Whatever that did (it may have had nothing to leave, or thrown), the
+    // class and the variables go and the shell hears dismiss tabs once, from here when the way out did not send it.
+    // Then _fp.tabs.told says so too, and the chat goes off with the fallback only when this document's hello asked
+    // for tabs (_fp.tabs.asked; _fpTabsLeave says why).
+    try{ if(window._fp && window._fp.tabs) _fpTabsLeave('no-hello', true); }catch(e){}
+    try{ root.classList.remove('fp-tabs'); _fpBarVars(null); }catch(e){}
+    try{
+      if(!window.__fpTabsTold){
+        window.__fpTabsTold=true;
+        try{ if(window._fp && _fp.tabs){ _fp.tabs.told=true; if(_fp.tabs.asked && _fp.off && !_fp.off.coach) _fp.off.coach='tabs'; } }catch(e){}
+        Promise.resolve(window.Capacitor.Plugins.TrovoShell.dismiss({screen:'tabs'})).catch(function(){});
+      }
+    }catch(e){}
+  }, 250);
+})();
 </script>
 <title>Fitness Programmer</title>
 <link rel="manifest" href="manifest.json"/>
@@ -1004,6 +1091,13 @@ html[data-room="dark"] .kt-chat-prog-btn{color:var(--lite);text-decoration:under
    over --t-swap while the sheet springs up over --t-move. */
 .kt-sheet-overlay,.kt-close-sheet,.ex-modal-bg,#runner-ex-edit-modal{animation:ktFadeIn var(--t-swap) ease-out;}
 .kt-sheet,.kt-close-sheet-inner,.ex-modal-sheet,#runner-ex-edit-sheet{animation:ktSheetIn var(--t-move) var(--ease-spring);}
+/* Build 61's hold (shell contract v1 3.4): under the native tab bar an overlay that hides the bar waits at its first
+   keyframe for the shell's answer (50 ms at most), so the bar is gone before the sheet's first frame. Unseen and
+   untouchable, never display or visibility: openers focus their title at once, and a hidden element cannot keep focus.
+   _fpSheetsSync puts fp-hold on the overlay's root and _fpSheetsRelease takes it off; the spring then plays from its
+   start. */
+html.fp-tabs .fp-hold{opacity:0!important;pointer-events:none!important;}
+html.fp-tabs .fp-hold,html.fp-tabs .fp-hold *{animation-play-state:paused!important;}
 /* M-02 tab-crossfade + M-03 statement-settle + M-04 bars-grow — all gated by
    the kt-tab-in class render() sets on #screen only when the route changed,
    so in-tab repaints never replay them. Hero first, stat band 60ms later
@@ -2084,6 +2178,43 @@ html[data-room="heavyweight"] body:has(.kt-sheet-overlay) #toast{top:calc(max(en
    status bar it covered the Back row, the avatar poking out above it, and the top of the eyebrow.
    --toast-head, set by _toastPlace, is where the header ends inside #app. */
 html.kt-chat body #toast{top:calc(var(--vv-top,0px) + var(--toast-head,max(env(safe-area-inset-top),16px)) + 8px);bottom:auto;}
+/* NATIVE TAB BAR (tabs mode) */
+/* Build 61's tab root (shell contract v1 2.3, 7.3): the shell's bar is the tabs. Every rule here is scoped to
+   html.fp-tabs, which the head script sets before the first paint and the way out removes, so classic CSS stays
+   byte for byte. The page's own bar goes (and leaves the VoiceOver tree with it). */
+html.fp-tabs #tabs{display:none!important;}
+/* The page under the native bar (contract 7.3, P-D2). Each clearance classic builds from --tab-h, --tab-gap and
+   --tab-bottom-clear is --fp-bar-up here: the bar's height while shown, in CSS px at the Larger Text zoom, never 0, so
+   a sheet that hides the bar re-lays out nothing. Inside calc() only, never with env(), max() or min() (the parser
+   trap noted at --tab-h); the fallback is the glass bar's 83pt on every iPhone (contract delta 14.1). Each surface
+   keeps its classic gap above the bar's top: #screen's scroll end 24 (classic 110, the dock's top 86 + 24). */
+html.fp-tabs #screen{padding-bottom:calc(var(--fp-bar-up,83px) + 24px);}
+/* The toast 8 above the bar, Heavyweight's 14. Both selectors are (1,1,1), the room's through :where(), so the
+   chat's rule and the sheet-open ones keep winning: under the chat's header, at the top over a .kt-sheet-overlay. */
+html.fp-tabs #toast{bottom:calc(var(--fp-bar-up,83px) + 8px);}
+html.fp-tabs:where([data-room="heavyweight"]) #toast{bottom:calc(var(--fp-bar-up,83px) + 14px);}
+/* The web chat's column (a Coach tab the page draws): its foot 8 above the bar, also while a hardware keyboard types
+   (the native bar never slides away); with the keys up they cover the bar and #app lies over the visual viewport, so
+   classic's 8 above the keys stays (written last: chat-typing is on whenever kb-open is). */
+html.fp-tabs.kt-chat #screen,html.fp-tabs.chat-typing.kt-chat #screen{padding-bottom:calc(var(--fp-bar-up,83px) + 8px);}
+html.fp-tabs.kb-open.kt-chat #screen{padding-bottom:var(--tab-gap);}
+/* The runner stays under the bar and is not announced (contract D8): its root ends at the bar's top (the strip keeps
+   its 14 inside it), and the seal below it is the bar's height (an inline height: !important). */
+html.fp-tabs #runner-root{bottom:var(--fp-bar-up,83px);}
+html.fp-tabs #runner-seal{height:var(--fp-bar-up,83px)!important;}
+/* Overlays pad from the shell's numbers, never env(safe-area-inset-bottom) (contract 7.4, D40, P-D14): under the tab
+   root env() is the bar's cover while the bar shows and reaches WebKit late when it hides, so a sheet padded with it
+   would open about 49 px too tall, then jump. --fp-sheet-b (max(safe, 16) / z) where classic reads max(env(), 16px),
+   --fp-safe-b where it reads env(..., 0px), each keeping its + 8, + 28 or + 16; !important beats the inline paddings.
+   Add a line here for every new overlay padded with env(). openCFMovePicker's .kt-sheet keeps its inline bottom 0
+   (it reads no env(): its list pads). The runner's Edit sheet and its superset picker draw one root into
+   #runner-ex-edit-sheet; its exercise picker draws two, the list padding itself. */
+html.fp-tabs .kt-sheet:not(#cfPickerOverlay>.kt-sheet),html.fp-tabs .ex-modal-sheet,html.fp-tabs .kt-close-sheet-inner{
+  padding-bottom:calc(var(--fp-sheet-b,34px) + 8px)!important;}
+html.fp-tabs #runner-ex-edit-sheet>div:only-child{padding-bottom:calc(var(--fp-safe-b,34px) + 28px)!important;}
+html.fp-tabs #runner-ex-picker-list{padding-bottom:calc(var(--fp-safe-b,34px) + 16px)!important;}
+html.fp-tabs #cfPickerList{padding-bottom:var(--fp-sheet-b,34px)!important;}
+/* END NATIVE TAB BAR */
 </style>
 </head>
 <body>
@@ -2233,13 +2364,65 @@ var _cmpReturnFocus=null; // element focused when the sheet opened
 // Message ids (_mid, _coachMid): the native chat addresses a message by id, never by index (the
 // 60-message cap shifts every index by one). In memory only: saveCoachHistory keeps a whitelist.
 var _midSeq=0, _midTag=(Math.random().toString(36).slice(2,6)||'m0');
-// Native screens (shell contract v1, plan task C3; the bridge is by _nativeJSON). FP_NATIVE is the
-// page's own off switch: false gives every shell the web screens again, by OTA. Nothing here acts
-// without the shell's flag (window.__FP_SHELL) and its TrovoShell plugin: the browser, the PWA and
-// every shell before 60 run the page exactly as before.
-var FP_NATIVE=true, FP_CONTRACT=1, FP_SCREENS=['coach'];
+// Native screens (shell contract v1, plan task C3; the bridge is by _nativeJSON). FP_NATIVE (the
+// page's own off switch: false gives every shell the web screens again, by OTA), FP_TABS and
+// FP_TAB_IDS live in the head script beside _fpTabsTest, which needs them before this script runs.
+// Nothing here acts without the shell's flag (window.__FP_SHELL) and its TrovoShell plugin: the
+// browser, the PWA and every shell before 60 run the page exactly as before. FP_SCREENS is what
+// hello names in tabs mode (whatever kt_native_off says, contract 3.2), in the order _fpSync declares
+// them: the native Coach tab before the chat it hosts, the bar never presented; classic mode names
+// ['coach'] alone, as build 60's page did.
+var FP_CONTRACT=1, FP_SCREENS=['coachHome','coach','tabs'];
 var _fpBoot='b'+Date.now()+'-'+_midTag;   // this document: a reload is a new boot, and its ids and confirms are new
-var _fp={hello:null, v:0, off:{}, shown:{}, covered:false, rev:0, pushT:null, confirms:{}, undos:{}, seq:0, speech:null, draft:null, taking:false};
+// declared: the page's last word on coachHome ('present' | 'dismiss'); sig: the last coachHome and tabs models pushed,
+// at rev 0 (a model goes again only when it changed); modelsT: their deferred check; ho: the handed-over words offered
+// to the native composer as the page's draft ({nonce, text}), whose coach.draftTaken lets kt_coach_handover go.
+var _fp={hello:null, v:0, off:{}, shown:{}, covered:false, rev:0, pushT:null, confirms:{}, undos:{}, seq:0, speech:null, draft:null, taking:false,
+  declared:{}, sig:{}, modelsT:null, ho:null,
+  tabs:{mode:false, left:false, told:false, why:'', seq:0, rev:0, bar:null, up:0, req:0, pend:0, asked:false}};
+// Settings > About's Native Coach row (_fpAboutRow): its status, here ahead of the first render, which in tabs mode can be
+// Settings (the boot tab, contract 2.4): declared beside the row, it was still undefined there and the boot stopped.
+var _fpChat={st:null, at:0, busy:false, cbs:[], html:null};
+// fp-tabs boot block: tabs mode is decided once per document, by the head script's test (contract 2.3). On a pass the
+// page boots on the tab this web view showed last (fp_tab, written by every local switch in tabs mode), else the
+// flag's; the flag's selection counts as seq 0 and its bar as rev 0. Booted on an fp_tab that is not the flag's tab,
+// the page has seen no seq for the tab it shows (-1), so hello's reply wins even at seq 0 (contract 2.4): the shell
+// still shows the flag's tab when that fp_tab's selectTab never reached it. A throw here leaves tabs mode on its own
+// and the boot goes on in classic mode, so no tabs-only error stops the first render and the OTA confirm.
+try{
+  (function(){
+    var root=document.documentElement, t=_fpTabsTest();
+    if(!t){
+      if(root.classList.contains('fp-tabs')){ root.classList.remove('fp-tabs'); _fpBarVars(null); }
+      _fpFailStop();
+      return;
+    }
+    var T=_fp.tabs;
+    T.mode=true;
+    T.bar={h:+t.bar.h||0, safe:+t.bar.safe||0};
+    T.up=T.bar.h>0 ? T.bar.h : FP_BAR_UP;
+    root.classList.add('fp-tabs'); _fpBarApply();   // as the head set them before the first paint
+    var saved=null;
+    try{ saved=sessionStorage.getItem('fp_tab'); }catch(e){}
+    currentTab=FP_TAB_IDS.indexOf(saved)>=0 ? saved : t.selected;
+    if(currentTab!==t.selected) T.seq=-1;
+    _syncTabButtons(currentTab);
+  })();
+}catch(e){
+  try{ _trapErr('fp-tabs boot: '+((e && e.message) || e)); }catch(e2){}
+  try{
+    if(_fpTabsTest() || document.documentElement.classList.contains('fp-tabs')){ _fp.tabs.mode=true; _fpTabsLeave('boot', true, true); }
+    else _fpFailStop();
+  }catch(e2){   // the way out itself threw: strip and tell the shell as the head script's failsafe does
+    try{ document.documentElement.classList.remove('fp-tabs'); _fpBarVars(null); _fpFailStop(); }catch(e3){}
+    try{
+      if(!window.__fpTabsTold){
+        window.__fpTabsTold=true; try{ _fp.tabs.told=true; }catch(e4){}
+        Promise.resolve(window.Capacitor.Plugins.TrovoShell.dismiss({screen:'tabs'})).catch(function(){});
+      }
+    }catch(e3){}
+  }
+}
 var coachMessages    = (function(){try{var s=localStorage.getItem('kt_coach_msgs');return _coachMids(s?JSON.parse(s):[]);}catch(e){return [];}}());
 var coachLoading  = false;
 // Generation counter for the Stop button — bumping it makes any in-flight
@@ -5936,7 +6119,22 @@ function renderHealthQuickLog(compact){
 }
 
 // ── Tab & Week ────────────────────────────────────────────────────────────────
-function switchTab(tab) {
+// Every page path into a tab. In tabs mode the native bar is the tabs: the shell hears the selection first
+// (selectTab, with the intent the page is about to show in it: 'chat' or 'intake'), then the page switches at once.
+// tabs.select, hello's answer, a take-over and screens.off switch locally only (no echo, contract 3.3).
+function switchTab(tab, o) {
+  if(_fp.tabs.mode) _fpSelectTab(tab, o && o.intent);
+  _switchTabLocal(tab);
+}
+// The .tab buttons follow the tab (also while the native bar hides them, so the way out shows them right).
+function _syncTabButtons(tab){
+  document.querySelectorAll('.tab').forEach(function(t){
+    var _sel=t.getAttribute('data-tab')===tab;
+    t.classList.toggle('active', _sel);
+    if(_sel) t.setAttribute('aria-current','page'); else t.removeAttribute('aria-current');
+  });
+}
+function _switchTabLocal(tab) {
   if(tab!=='progress' && (cmpOn || document.getElementById('cmpSheetOverlay'))) _cmpExit();
   // The day sheet belongs to Progress: the widget's Start (trovo://start) opened the Log tab and
   // the runner under it, with its Delete buttons mid-screen.
@@ -5949,16 +6147,14 @@ function switchTab(tab) {
   // The Coach tab opens on the hub (342bfd9), except over a reply still in flight: coming back to
   // it mid-reply showed the hub, with the answer out of sight.
   if(tab==='coach'&&!intakeMode&&!coachLoading) coachView='home';
-  document.querySelectorAll('.tab').forEach(function(t){
-    var _sel=t.getAttribute('data-tab')===tab;
-    t.classList.toggle('active', _sel);
-    if(_sel) t.setAttribute('aria-current','page'); else t.removeAttribute('aria-current');
-  });
+  _syncTabButtons(tab);
   if(tab==='log'&&logSubTab==='workout') requestWakeLock(); else releaseWakeLock();
   if(window._chatTypingOff) _chatTypingOff();
   // A draft captured with focus must not re-focus the box (and hide the dock)
   // when the chat is reopened later through a tab switch.
   if(tab!=='coach' && typeof _coachDraft==='object' && _coachDraft) _coachDraft.focus=false;
+  // In tabs mode a reload of this web view boots on the tab it showed (contract 2.4).
+  if(_fp.tabs.mode){ try{ sessionStorage.setItem('fp_tab', tab); }catch(e){} }
   render();
   paintRunner();
 }
@@ -6159,9 +6355,11 @@ function render() {
   // and the innerHTML swap would destroy the draft.
   var _ci = document.getElementById('coach-input');
   if(_ci){
+    var _ciWas = _coachDraft ? _coachDraft.v : '';
     _coachDraft = { v:_ci.value, s:_ci.selectionStart||0, e:_ci.selectionEnd||0,
       focus:document.activeElement===_ci };
     if(_fp.draft && _ci.value!==_fp.draft.text) _fp.draft=null;   // the web composer took the native chat's draft and has sent or changed it
+    _fpHandoverFollow(_ci, _ciWas);   // the handed-over words (kt_coach_handover) follow the box, and go once it is emptied
   }
   var screen = document.getElementById('screen');
   // Snapshot every typed-but-unsaved form value in #screen (body weight,
@@ -6996,7 +7194,10 @@ function coachCardAction(label){
     if(act && act.type==='lift' && act.dayName){ openDeckRunner(act.dayName); return; }
   }
   if(/pace|run/.test(low)){ switchTab('log'); switchLogSub('run'); return; }
-  coachView='chat'; currentTab='coach'; render();
+  // Through the tab switch, as every other way into the chat: it lights the Coach tab, leaves COMPARE, closes the day
+  // sheet and releases the workout's wake lock (assigning currentTab skipped all four), and in tabs mode the shell
+  // hears the selection first, with the chat it is about to show (contract 3.3).
+  switchTab('coach',{intent:'chat'}); coachView='chat'; render();
   _coachAsk(l);
 }
 // Local-only fallback that never blocks the screen.
@@ -7156,8 +7357,8 @@ function handleCoachCardAsk(ev){
   if(!v) return;
   if(coachLoading) return;   // never start a second concurrent turn
   // Pipe the question into the Coach tab as a fresh user message (never through the composer: a
-  // draft there stays the owner's).
-  switchTab('coach');
+  // draft there stays the owner's). intent 'chat': a native Coach tab waits for the chat, never the hub first.
+  switchTab('coach',{intent:'chat'});
   coachView = 'chat';
   coachCardAskOpen = false;
   coachSend(v, {errNote:function(em){ return 'Coach didn\'t respond ('+em+'). Tap a chip or send the message again.'; }});
@@ -7829,7 +8030,7 @@ function startPlateauFix(){
     '. Propose ONE concrete programme change to break the '+pl[0].name+' plateau '+
     '(variation swap, intensity/rep-scheme change, or a deload) and apply it to my routine with your tools. '+
     'Briefly explain why, then make the edit.';
-  switchTab('coach');
+  switchTab('coach',{intent:'chat'});
   openCoachChat();
   // The week's stamp goes with its question: one that waits for a reply in flight (in the composer)
   // is stamped when the owner sends it, and the card stays until then.
@@ -7884,7 +8085,7 @@ function startProgression(){
     pl.map(function(x){ return x.name+' '+x.sets+' sets @ '+fmtW(x.weight)+' (RPE '+x.rpe+')'; }).join('; ')+
     '. Propose a +'+_plateBarDisp()+' '+_uW()+' progression on each from this week on and apply it to my routine with your tools. '+
     'Briefly note why, then make the edits.';
-  switchTab('coach');
+  switchTab('coach',{intent:'chat'});
   openCoachChat();
   _coachAsk(msg, {seed:_seedLabel, stamp:['kt_last_prog_week', currentWeek]});   // the stamp goes with its question
 }
@@ -8014,7 +8215,7 @@ function startRecoveryAdjust(){
   var msg='My readiness today is '+r.score+'/100'+(bits.length?' ('+bits.join(', ')+')':'')+
     '. Today is '+(act.dayName||'a training day')+'. Propose ONE adjustment — lighter loads (about 10% off, cap RPE 7) '+
     'or swapping today with an easier or rest day — and apply it to my routine with your tools. Briefly explain, then make the edit.';
-  switchTab('coach');
+  switchTab('coach',{intent:'chat'});
   openCoachChat();
   _coachAsk(msg, {seed:_seedLabel, stamp:['kt_readiness_adj_seen', todayISO()]});   // the stamp goes with its question
 }
@@ -9595,23 +9796,54 @@ function runnerSetRpe(val){
   var v = parseInt(val);
   if(!isNaN(v) && v >= 1 && v <= 10){ runnerRpe[ex.name] = v; _saveRunnerDraft(); }
 }
+// The shared photo and its comment (the share extension's), read by the deep link trovo://share at once, by the boot
+// at +2.5 s and by every return at +0.6 s. TrovoShare.getPendingShare deletes what it returns
+// (CapApp/TrovoSharePlugin.swift), so one reader at a time (_shareBusy, cleared in finally): a call while another
+// reads, or waits to, reads nothing. Under the shell's bridge the read first waits for hello's answer or failure, or
+// the page leaving tabs mode, at most 3 s of visible time (contract 9, D46): the chat it opens is then the one hello
+// negotiated (no web chat drawn before build 60's overlay covers it), and a hello that never answers strands nothing,
+// because coachPrefill keeps the comment for the native composer too while hello is out.
+var _shareBusy=false;
+// hello went to the shell (its flag and TrovoShell) and has neither answered nor failed.
+function _fpHelloOut(){
+  var P=_fpPlugin();
+  return !!(P && P.hello) && !_fp.hello && window.__fpTabsAnswered!==true;
+}
+// Resolves once hello is no longer out or the page has left tabs mode, or after ms of visible time (hidden time does
+// not count, and a late tick counts at most 1 s, so the wait only errs late); at once with nothing to wait for.
+function _fpAfterHello(ms){
+  return new Promise(function(res){
+    var out=function(){ return _fpHelloOut() && !_fp.tabs.left; };
+    if(!out()){ res(); return; }
+    var now=function(){ return (window.performance && performance.now) ? performance.now() : Date.now(); };
+    var vis=0, last=document.visibilityState==='visible' ? now() : null;
+    var t=setInterval(function(){
+      var at=now();
+      if(document.visibilityState==='visible'){ if(last!==null) vis+=Math.min(1000, Math.max(0, at-last)); last=at; } else last=null;
+      if(out() && vis<ms) return;
+      clearInterval(t); res();
+    }, 50);
+  });
+}
 async function checkPendingShare(){
   if(!isNativeIOS()) return;
   var TS = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.TrovoShare;
-  if(!TS) return;
+  if(!TS || typeof TS.getPendingShare!=='function' || _shareBusy) return;
+  _shareBusy=true;
   try {
+    await _fpAfterHello(3000);
     var r = await TS.getPendingShare();
     if(!r || !r.imageBase64) return;
     pendingImage = {data: r.imageBase64, mediaType: 'image/jpeg', previewUrl: 'data:image/jpeg;base64,'+r.imageBase64};
     // Through the tab switch: it leaves COMPARE and closes the day sheet (either sat over the
     // chat, with its Delete buttons mid-screen) and lights the Coach tab. Then the chat itself.
-    switchTab('coach');
+    switchTab('coach',{intent:'chat'});
     coachView = 'chat';
     render();
     if(r.comment){
       setTimeout(function(){ coachPrefill(r.comment); }, 200);
     }
-  } catch(e){}
+  } catch(e){} finally { _shareBusy=false; }
 }
 // The set that follows this rest: the same exercise, or a superset's first
 // half when the pair returns to it.
@@ -12230,7 +12462,7 @@ function _bdCommit(){
 }
 function _bdAskCoach(){
   var lbl=_dayLabel(_bdSlot||'Arms'); closeBuildDay();
-  switchTab('coach'); coachView='chat'; render();
+  switchTab('coach',{intent:'chat'}); coachView='chat'; render();
   // Drafted, not sent: the owner reads it and taps Send. Focus only for a desktop keyboard: on a
   // touch screen a scripted focus raises no keyboard (the box sat focused with no keys).
   setTimeout(function(){ var ta=coachPrefill('Build my '+lbl+' day: 4 or 5 exercises that fit my equipment and the rest of my programme, with loads from my history, progressing across the remaining weeks.'); if(ta && !_coarsePointer()) ta.focus(); }, 150);
@@ -13782,7 +14014,10 @@ function renderLog() {
     var _hasKey = !!getApiKey();
     // With a key, the AI's custom intake stays the headline; without one the
     // built-in starter plan is — nobody dead-ends on a key they don't have.
-    var _ctaAction = _hasKey ? "switchTab('coach');startRoutineIntake();" : "openStarterIntake();";
+    // intent 'intake': a native Coach tab waits for setup's chat, never the hub first (contract 3.3). Lime's rules read
+    // the text of the links' handlers below (switchTab('coach'), switchTab('settings'), openStarterIntake()), which
+    // stays exact; none reads this one.
+    var _ctaAction = _hasKey ? "switchTab('coach',{intent:'intake'});startRoutineIntake();" : "openStarterIntake();";
     var _ctaTitle  = _hasKey ? 'Meet your coach' : 'Build my starter plan';
     var _heroBody  = _hasKey
       ? 'Ten questions, two minutes. The Coach writes a 12-week plan around your gear, your schedule, your sports — then this tab runs it.'
@@ -14074,6 +14309,7 @@ function closeProgrammeModal(){
 
 function showManualCopy(txt) {
   var overlay=document.createElement('div');
+  overlay.className='kt-manual-copy';   // under the native tab bar it hides the bar (_FP_COVER_SEL); no rule styles it
   overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
   overlay.innerHTML='<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px;width:100%;max-width:400px;">'+
     '<p style="color:var(--lite);font-size:13px;margin-bottom:10px;">Select all and copy:</p>'+
@@ -16015,7 +16251,7 @@ function _buildWeekReviewMsg(){
 }
 function startWeeklyReview(){
   if(!getApiKey()){ openLocalWeekReview(); return; }
-  switchTab('coach'); openCoachChat();
+  switchTab('coach',{intent:'chat'}); openCoachChat();
   _coachAsk(_buildWeekReviewMsg(), {seed:'Weekly review', stamp:['kt_last_review_week', currentWeek]});   // the stamp goes with its question
 }
 function dismissWeeklyReview(){ lsSet('kt_last_review_week', currentWeek); render(); }
@@ -18546,7 +18782,7 @@ async function _runRoutineIntake(){
     // truncating long intakes.
     await runCoachTurn(buildIntakeSystemPrompt(),COACH_SONNET,24576);
   }catch(err){
-    _pushCoach({role:'assistant', content:'Intake hit a snag ('+(err&&err.message||'network error')+'). Reply again or cancel from the top right.', _error:true, _local:true});
+    _pushCoach({role:'assistant', content:'Intake hit a snag ('+(err&&err.message||'network error')+'). Reply again or cancel from the top left.', _error:true, _local:true});
     saveCoachHistory();
   }finally{
     coachLoading=false;
@@ -20356,11 +20592,14 @@ function resetCustomRoutine(){
 
 function setApiKey(k){if(k)localStorage.setItem('kt_apikey',k.trim());else localStorage.removeItem('kt_apikey');}
 
+// The one invalid-key toast: the Coach tab's connect screen, Settings > AI Coach and the native connect screen
+// (coachHome.setKey) say the same.
+var _KEY_BAD='Invalid key — Anthropic keys start with sk-ant-';
 function saveApiKey(){
   var inp=document.getElementById('coach-key-input');
   if(!inp)return;
   var k=inp.value.trim();
-  if(!k||!k.startsWith('sk-ant-')){showToast('Invalid key — Anthropic keys start with sk-ant-','err');return;}
+  if(!k||!k.startsWith('sk-ant-')){showToast(_KEY_BAD,'err');return;}
   setApiKey(k);
   showToast('API key saved');
   _pingApiKey(k);
@@ -20765,6 +21004,7 @@ function coachSend(text, o){
     if(_coachDraft && String(_coachDraft.v||'').trim()===msg) _coachDraft={ v:'', s:0, e:0, focus:false };
     _fp.draft=null;
   }
+  _fpHandoverSpent(msg);   // and so are the words the native composer handed over (kt_coach_handover)
   saveCoachHistory();
   coachLoading=true; _coachTurnAt=Date.now();
   streamingContent='';
@@ -20859,6 +21099,10 @@ function _coachAsk(text, o){
 // composer's draft for the chat's next paint. Under the native chat it is the model's composer.draft
 // (with a nonce: the native composer takes it once, then coach.draftTaken). Returns the web box when it
 // went there, so the caller can focus it for a desktop keyboard.
+// While the native chat may still take the words they wait as its draft too, beside the web composer's copy: the chat
+// is negotiated and wants only a key (after Connect it opens with them), or hello is still out (a chat negotiated a
+// moment later opens with them, build 60's overlay included; contract 9, D46). coach.draftTaken or a send from either
+// composer spends them once; a document that never negotiates the chat keeps them in the web composer.
 function coachPrefill(text){
   var t0=String(text==null?'':text);
   if(_fpWant('coach')){
@@ -20866,6 +21110,7 @@ function coachPrefill(text){
     _coachDraft={ v:t0, s:t0.length, e:t0.length, focus:false };   // the web composer has it too, if the web chat comes back first
     return null;
   }
+  if((_fpLive('coach') && !getApiKey()) || (FP_NATIVE && _fpHelloOut())) _fp.draft={text:t0, nonce:'d'+(++_fp.seq)+'.'+_fpBoot};
   var ta=_fillComposer(text);
   if(ta) return ta;
   var t=String(text==null?'':text);
@@ -21071,147 +21316,176 @@ function _coachDayMeta(){
     ? 'WK 01 · STARTS MON'
     : 'WK '+String(currentWeek).padStart(2,'0')+' · DAY '+dayIdx;
 }
-function renderCoach(){
-  var apiKey=getApiKey();
-  var wd3=getWkData();
-  var _msw=_coachModelSwitch();
-  var modelNext=_msw.next;
-  var modelLabel=_msw.label, modelSwitch=_msw.a11y;
-  var firstNameC = getUserFirstName();
-  var crC = getCustomRoutine();
-  var avSeedC = firstNameC || '?';
-  var avInitialC = _initialOf(avSeedC);
-  var totalWksC = getTotalWeeks();
-  var weekdayC = ['MON','TUE','WED','THU','FRI','SAT','SUN'][(new Date().getDay()+6)%7];
-  // Editorial header: mono eyebrow + lime-gradient avatar.
-  var header = '<div class="kt-meta-row">'+
-    '<div class="kt-meta-label">COACH · WK '+
-      String(currentWeek).padStart(2,'0')+' / '+totalWksC+
-      (wd3 && wd3.bName ? ' · '+_esc(String(wd3.bName).toUpperCase()) : '')+
+// ── The Coach tab's models (build 61, contract 6.1-6.2): the page builds them, the native bar and the native Coach
+// tab draw them, and the web hub and connect screen are drawn from the same content (_coachHomeHTML), as the chat's
+// HTML is drawn from _cmbModel, so web and native cannot disagree. Both builders are top-level with no side effects:
+// boot is this document's, rev the caller's (a push takes ++_fp.rev; the golden dump fixes both, contract 3.7).
+// The hub's type sizes (contract 6.2, D33): 16 flat home* sizes per room, at the large text size, from the room CSS.
+// CoachHomeModel's tokens.type carries them beside the chat's sizes, in a copy: _COACH_TOKENS and every CoachModel stay
+// as they are. FPCore compiles the same values (Tokens.swift); spec 126 holds the page to the contract's table. Two of
+// them are not today's Heavyweight CSS, which draws the group heads and the CTA label at 10 px (the room's
+// font-size:10px rule): they change with the contract and FPCore, together.
+var _COACH_HOME_TYPE={
+  heavyweight:{homeMeta:10, homeAvatar:13, homeGreet:15, homeTitle:74, homeTitleMin:54, homeBody:15, homeGroupHead:9,
+    homeRowTitle:14, homeRowSub:11.5, homeFieldLabel:9, homeField:16, homeCtaLabel:9, homeCtaTitle:18, homeCtaArrow:22,
+    homeHelp:12, homeLink:14},
+  dark:{homeMeta:10, homeAvatar:13, homeGreet:14, homeTitle:56, homeTitleMin:43, homeBody:14, homeGroupHead:9,
+    homeRowTitle:14, homeRowSub:11.5, homeFieldLabel:9, homeField:16, homeCtaLabel:9, homeCtaTitle:18, homeCtaArrow:22,
+    homeHelp:12, homeLink:14}
+};
+// Text for an HTML text node: & < > (a quote reads the same unescaped; _esc escapes quotes too, for attributes).
+function _escT(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+// The hub's line for the newest message: its text (a photo alone reads [Image]), %% marker lines dropped (a structured
+// reply's grammar is not prose), cut at 65 characters with an ellipsis. Whole characters: an emoji is never split (the
+// 65-unit slice before build 61 could leave half of one), and ASCII text is cut where that slice cut it.
+function _coachHomePreview(msg){
+  var s='';
+  if(msg && typeof msg.content==='string') s=msg.content;
+  else if(msg && Array.isArray(msg.content)){
+    var tb=msg.content.find(function(b){ return b && b.type==='text'; });
+    s=tb ? String(tb.text==null ? '' : tb.text) : '[Image]';
+  }
+  var ch=_chars(s.split('\n').filter(function(l){
+    return l.trim() && !/^%%(type|metric|takeaway|action):/.test(l.trim());
+  }).join(' '));
+  return ch.length>65 ? ch.slice(0,65).join('')+'…' : ch.join('');
+}
+// What the Coach tab's root shows, the content of the Coach home model below: the connect screen with no key (even
+// during setup), else the hub. renderCoach() draws the web hub and connect screen from it (_coachHomeHTML) and the
+// model wraps it in the room's colours and type, so web and native cannot disagree. renderCoach() never builds the
+// whole model: its tokens read _COACH_TOKENS, which the script defines after the boot's first paint (a first paint on
+// the Coach tab threw). resume: the page will push the chat when Coach is next selected (setup with a key, or a reply
+// in flight on the chat view: switchTab keeps the view then and _fpWant('coach') wants the chat), so the shell holds
+// the hub off screen for that tap (contract 8.1). Text is raw (the web builder escapes) and never the key or its
+// masked form. No side effects.
+function _coachHomeScreen(){
+  var key=!!getApiKey();
+  // getWkData()'s week, without its write (it clamps currentWeek to the programme; renderCoach still calls it)
+  var cr=getCustomRoutine(), wk=currentWeek, wd=null;
+  if(cr){ wk=Math.min(currentWeek, cr.weeks.length); wd=cr.weeks[Math.max(0, wk-1)]||cr.weeks[0]; }
+  var name=getUserFirstName(), n=coachMessages.length, ex=Math.ceil(n/2), exs=ex+' exchange'+(ex===1?'':'s');
+  var s={route:key ? 'hub' : 'connect', resume:key && (!!intakeMode || (!!coachLoading && coachView==='chat')),
+    meta:{label:'COACH · WK '+String(wk).padStart(2,'0')+' / '+getTotalWeeks()+(wd && wd.bName ? ' · '+String(wd.bName).toUpperCase() : ''),
+      avatar:(_graphemes(String(name||'').trim())[0]||'?').toUpperCase()},
+    hero:{greet:name ? 'Hi '+name+'.' : 'Welcome.', title:key ? 'Coach' : 'Connect', accent:key ? 'ready.' : 'your coach.',
+      body:!key ? 'Plug in your Claude API key and the coach can talk through sessions, build a custom programme, and react to what you log.'
+        : n ? exs+' so far. Pick up where you left off, or start a new thread.'
+        : 'Your coach is wired in. Ask about today\'s session, your form, your programme — anything from your data is fair game.'},
+    connect:null, groups:[]};
+  if(!key){
+    s.connect={label:'Anthropic API Key', placeholder:'sk-ant-...', cta:{label:'CONNECT', title:'Save key & start coaching'},
+      help:'Get a key from your Anthropic account: console.anthropic.com → API Keys → Create key, then paste it here.\n'+
+        'Anthropic bills usage to your own account — typically a few cents per chat. A Claude subscription does not include API access.',
+      starter:cr ? null : {label:'No key? Build a starter plan instead →'}};
+    return s;
+  }
+  s.groups.push({head:'Conversation', rows:[{'do':'openChat', title:'Open Chat',
+    sub:coachLoading ? 'Coach is replying…' : n ? exs+' · '+_coachHomePreview(coachMessages[n-1]) : 'No messages yet — tap to start', icon:'chat'}]});
+  if(!cr) s.groups.push({head:'Programme', rows:[{'do':'startIntake', title:'Build My Programme', sub:'Generate a custom training plan', icon:'programme'}]});
+  s.groups.push({head:'Account', rows:(n ? [{'do':'clearChat', title:'Clear Chat History', sub:null, icon:'trash'}] : [])
+    .concat([{'do':'disconnect', title:'Disconnect', sub:null, icon:'disconnect'}])});
+  return s;
+}
+// Coach home model v1 (contract 6.2; FPCore CoachHomeModel.swift reads it): the screen above in the room's colours and
+// type (tokens.type: the chat's sizes and the hub's, in a copy). Top-level with no side effects: boot is this
+// document's, rev the caller's.
+function _coachHomeModel(rev){
+  var room=THEMES[currentTheme] ? currentTheme : 'heavyweight', s=_coachHomeScreen(), k;
+  var dyn=true; try{ dyn=localStorage.getItem('kt_dyn_type')!=='0'; }catch(e){}
+  var tokens=_coachTokens(room), type={}, home=_COACH_HOME_TYPE[room]||_COACH_HOME_TYPE.heavyweight;
+  for(k in tokens.type) type[k]=tokens.type[k];
+  for(k in home) type[k]=home[k];
+  tokens.type=type;
+  return {v:1, rev:rev, boot:_fpBoot, room:room, paper:!!THEMES[room].paper, dynTypeOn:dyn, tokens:tokens,
+    route:s.route, resume:s.resume, meta:s.meta, hero:s.hero, connect:s.connect, groups:s.groups};
+}
+// The web hub's rows by action: the handler, the tile and its icon (room CSS overrides the tiles' hex). Each handler is
+// written as its whole onclick attribute, so verify.sh's inline-handler check still finds the function it names.
+var _COACH_HOME_ROWS={
+  openChat:{on:'onclick="openCoachChat()"', bg:'#1a2a1f', stroke:'var(--accent)', chev:true,
+    svg:'<path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>'},
+  startIntake:{on:'onclick="startRoutineIntake()"', bg:'#1e1a0d', stroke:'#f59e0b', chev:true,
+    svg:'<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>'},
+  clearChat:{on:'onclick="_confirmClearChat()"', bg:'#2a1a1a', stroke:'#f97316', chev:false,
+    svg:'<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>'},
+  disconnect:{on:'onclick="clearApiKey()"', bg:'#1a1a2e', stroke:'#a78bfa', chev:false,
+    svg:'<path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>'}
+};
+// The web Coach hub and connect screen, drawn from _coachHomeScreen() (or a whole model): the markup renderCoach()
+// wrote before build 61, byte for byte (tests/golden/coach-html.json, the homes group). Text nodes through _escT and
+// the key field's placeholder through _esc (plan P-D4: a quote in a name is written ' where it was &#39;, and reads
+// the same).
+function _coachHomeHTML(m){
+  var c=m.connect;
+  var h='<div class="kt-meta-row">'+
+      '<div class="kt-meta-label">'+_escT(m.meta.label)+'</div>'+
+      '<div class="kt-meta-ava">'+_escT(m.meta.avatar)+'</div>'+
     '</div>'+
-    '<div class="kt-meta-ava">'+avInitialC+'</div>'+
+    '<div class="kt-hero"><div class="kt-hero-greet">'+_escT(m.hero.greet)+'</div>'+
+      '<h1 class="kt-hero-headline">'+_escT(m.hero.title)+'<span class="kt-line2 accent">'+_escT(m.hero.accent)+'</span></h1>'+
+      '<div class="kt-hero-body">'+_escT(m.hero.body)+'</div>'+
     '</div>';
-
-  // ── No API key: setup screen ─────────────────────────────────────────────
-  if(!apiKey){
-    var greetNoKey = firstNameC
-      ? '<div class="kt-hero-greet">Hi '+_esc(firstNameC)+'.</div>'
-      : '<div class="kt-hero-greet">Welcome.</div>';
-    return header +
-      '<div class="kt-hero">'+greetNoKey+
-        '<h1 class="kt-hero-headline">Connect<span class="kt-line2 accent">your coach.</span></h1>'+
-        '<div class="kt-hero-body">Plug in your Claude API key and the coach can talk through sessions, build a custom programme, and react to what you log.</div>'+
-      '</div>'+
+  if(c){
+    return h+
       '<div class="field" style="margin-bottom:14px;">'+
-        '<label>Anthropic API Key</label>'+
-        '<input type="password" id="coach-key-input" placeholder="sk-ant-..." autocomplete="off" style="font-family:monospace;font-size:16px;" onkeydown="if(event.key===\'Enter\')saveApiKey()"/>'+
+        '<label>'+_escT(c.label)+'</label>'+
+        '<input type="password" id="coach-key-input" placeholder="'+_esc(c.placeholder)+'" autocomplete="off" style="font-family:monospace;font-size:16px;" onkeydown="if(event.key===\'Enter\')saveApiKey()"/>'+
       '</div>'+
       '<button class="kt-cta" onclick="saveApiKey()">'+
         '<div style="text-align:left;">'+
-          '<div class="kt-cta-label">CONNECT</div>'+
-          '<div class="kt-cta-title">Save key &amp; start coaching</div>'+
+          '<div class="kt-cta-label">'+_escT(c.cta.label)+'</div>'+
+          '<div class="kt-cta-title">'+_escT(c.cta.title)+'</div>'+
         '</div>'+
         '<div class="kt-cta-arrow">→</div>'+
       '</button>'+
-      '<p style="font-size:12px;color:var(--muted);margin-top:14px;text-align:center;line-height:1.55;">Get a key from your Anthropic account: console.anthropic.com → API Keys → Create key, then paste it here.<br>Anthropic bills usage to your own account — typically a few cents per chat. A Claude subscription does not include API access.</p>'+
-      (!hasCustomRoutine()
+      '<p style="font-size:12px;color:var(--muted);margin-top:14px;text-align:center;line-height:1.55;">'+_escT(c.help).replace(/\n/g, '<br>')+'</p>'+
+      (c.starter
         ? '<div style="text-align:center;margin-top:22px;padding-top:18px;border-top:1px solid var(--border);">'+
-            '<button onclick="openStarterIntake()" style="background:none;border:none;padding:8px;color:var(--accent-ink);font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">No key? Build a starter plan instead →</button>'+
+            '<button onclick="openStarterIntake()" style="background:none;border:none;padding:8px;color:var(--accent-ink);font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">'+_escT(c.starter.label)+'</button>'+
           '</div>'
         : '');
   }
-
-  // ── Home menu ─────────────────────────────────────────────────────────────
-  if(coachView==='home'&&!intakeMode){
-    var msgCount=coachMessages.length;
-    var lastMsg=msgCount?coachMessages[msgCount-1]:null;
-    var lastPreview='';
-    if(lastMsg){
-      // Image messages store content as an array of {type,...} blocks;
-      // extract the text block (if any) for the preview line.
-      var contentStr='';
-      if(typeof lastMsg.content==='string') contentStr=lastMsg.content;
-      else if(Array.isArray(lastMsg.content)){
-        var tb=lastMsg.content.find(function(b){return b&&b.type==='text';});
-        contentStr=tb?tb.text:'[Image]';
-      }
-      // Structured replies carry %%-marker lines — the preview shows the
-      // first plain sentence, never the raw grammar.
-      var raw=contentStr.split('\n').filter(function(l){
-        return l.trim() && !/^%%(type|metric|takeaway|action):/.test(l.trim());
-      }).join(' ');
-      lastPreview=raw.length>65?raw.slice(0,65)+'…':raw;
-    }
-    var statusLine=wd3?'Week '+currentWeek+' · '+wd3.bName+' Block':'Online';
-
-    var greetHome = firstNameC
-      ? '<div class="kt-hero-greet">Hi '+_esc(firstNameC)+'.</div>'
-      : '<div class="kt-hero-greet">Welcome.</div>';
-    var heroBody = msgCount
-      ? Math.ceil(msgCount/2)+' exchange'+(Math.ceil(msgCount/2)===1?'':'s')+' so far. Pick up where you left off, or start a new thread.'
-      : 'Your coach is wired in. Ask about today\'s session, your form, your programme — anything from your data is fair game.';
-    return header+
-      '<div class="kt-hero">'+greetHome+
-        '<h1 class="kt-hero-headline">Coach<span class="kt-line2 accent">ready.</span></h1>'+
-        '<div class="kt-hero-body">'+heroBody+'</div>'+
-      '</div>'+
-
-      '<div class="settings-group">'+
-        '<div class="settings-group-hd">Conversation</div>'+
-        '<div class="settings-row" onclick="openCoachChat()">'+
-          '<div class="settings-row-ic" style="background:#1a2a1f;">'+
-            '<svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
-              '<path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>'+
-            '</svg>'+
+  m.groups.forEach(function(g){
+    h+='<div class="settings-group"><div class="settings-group-hd">'+_escT(g.head)+'</div>';
+    g.rows.forEach(function(r){
+      var d=_COACH_HOME_ROWS[r['do']];
+      if(!d) return;
+      h+='<div class="settings-row" '+d.on+'>'+
+          '<div class="settings-row-ic" style="background:'+d.bg+';">'+
+            '<svg viewBox="0 0 24 24" fill="none" stroke="'+d.stroke+'" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+d.svg+'</svg>'+
           '</div>'+
-          '<div class="settings-row-body">'+
-            '<div class="settings-row-title">Open Chat</div>'+
-            '<div class="settings-row-sub">'+(coachLoading?'Coach is replying…':msgCount?Math.ceil(msgCount/2)+' exchange'+(Math.ceil(msgCount/2)===1?'':'s')+' · '+_esc(lastPreview):'No messages yet — tap to start')+'</div>'+
-          '</div>'+
-          '<span class="settings-row-chev">›</span>'+
-        '</div>'+
-      '</div>'+
-
-      (!hasCustomRoutine()?
-        '<div class="settings-group">'+
-          '<div class="settings-group-hd">Programme</div>'+
-          '<div class="settings-row" onclick="startRoutineIntake()">'+
-            '<div class="settings-row-ic" style="background:#1e1a0d;">'+
-              '<svg viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
-                '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>'+
-              '</svg>'+
-            '</div>'+
-            '<div class="settings-row-body">'+
-              '<div class="settings-row-title">Build My Programme</div>'+
-              '<div class="settings-row-sub">Generate a custom training plan</div>'+
-            '</div>'+
-            '<span class="settings-row-chev">›</span>'+
-          '</div>'+
-        '</div>'
-      :'')+
-
-      '<div class="settings-group">'+
-        '<div class="settings-group-hd">Account</div>'+
-        (msgCount?
-          '<div class="settings-row" onclick="_confirmClearChat()">'+
-            '<div class="settings-row-ic" style="background:#2a1a1a;">'+
-              '<svg viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
-                '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>'+
-              '</svg>'+
-            '</div>'+
-            '<div class="settings-row-body"><div class="settings-row-title">Clear Chat History</div></div>'+
-          '</div>'
-        :'')+
-        '<div class="settings-row" onclick="clearApiKey()">'+
-          '<div class="settings-row-ic" style="background:#1a1a2e;">'+
-            '<svg viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
-              '<path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>'+
-            '</svg>'+
-          '</div>'+
-          '<div class="settings-row-body"><div class="settings-row-title">Disconnect</div></div>'+
-        '</div>'+
-      '</div>';
-  }
+          '<div class="settings-row-body"><div class="settings-row-title">'+_escT(r.title)+'</div>'+
+            (r.sub!=null ? '<div class="settings-row-sub">'+_escT(r.sub)+'</div>' : '')+'</div>'+
+          (d.chev ? '<span class="settings-row-chev">›</span>' : '')+
+        '</div>';
+    });
+    h+='</div>';
+  });
+  return h;
+}
+// Tabs model v1 (contract 6.1; FPCore TabsModel.swift reads it): the native bar in the room's colours as the web bar
+// draws them (the selected tab Heavyweight's --accent or Lime's neutral --text, the others --muted) and the four items'
+// titles and accessibility labels, #tabs' own (the tools find a bar item by its a11y). No side effects; rev is the
+// caller's, as _coachHomeModel's.
+var _FP_TAB_TITLES={log:'Log', progress:'Progress', coach:'Coach', settings:'Settings'};
+function _tabsModel(rev){
+  var room=THEMES[currentTheme] ? currentTheme : 'heavyweight', t=THEMES[room], paper=!!t.paper;
+  return {v:1, rev:rev, boot:_fpBoot, room:room, paper:paper, tint:paper ? t.accent : t.text, idle:t.muted,
+    items:FP_TAB_IDS.map(function(id){ return {id:id, title:_FP_TAB_TITLES[id], a11y:_FP_TAB_TITLES[id]}; })};
+}
+function renderCoach(){
+  getWkData();   // clamps currentWeek to the programme, as this paint always has (the chat header's WK reads it)
+  // The native Coach tab (tabs mode): its hub, connect screen and chat are the shell's, so an element stands in #screen
+  // (the resume check never reloads) and no key field or web hub sits behind it. Keyed on the wish, not on what is up:
+  // when the wish ends (kt_native_off, a refusal, a broken model, screens.off) this render draws the web Coach the
+  // shell is about to show, before _fpSync dismisses.
+  if(_fp.tabs.mode && _fpWant('coachHome')) return _fpPlaceholder('coachHome');
+  var apiKey=getApiKey();
+  // ── No API key: the connect screen (even during setup); the hub ─────────────
+  if(!apiKey || (coachView==='home' && !intakeMode)) return _coachHomeHTML(_coachHomeScreen());
+  var _msw=_coachModelSwitch();
+  var modelNext=_msw.next;
+  var modelLabel=_msw.label, modelSwitch=_msw.a11y;
 
   // ── Chat view ─────────────────────────────────────────────────────────────
   // Drawn natively from the coach model when the shell has the native chat (FPScreens): an element
@@ -21526,6 +21800,83 @@ if(window.MutationObserver) new MutationObserver(function(muts){
   if(_fpCovered()) return;   // under a native screen the page moves no focus (the shell owns it)
   try{ t.focus({preventScroll:true}); }catch(err){}
 }).observe(document.body, {childList:true});
+// ── Overlays announced (build 61, shell contract v1 3.4): sheets {open} ──────────────────────────────────────────────
+// Under the native tab bar (tabs mode) the shell hides its bar while an overlay that covers the page's own #tabs in
+// classic mode is up, and shows it again once the last one has gone: every _SHEETS_SEL sheet, #starterOverlay,
+// showManualCopy's overlay, and How it works and the privacy page while shown. Never the runner: #runner-root sits under
+// the bar on purpose, so the native bar stays over it too (contract D8). _FP_COVER_SEL is a selector of its own, since
+// _SHEETS_SEL drives Escape and the focus return. The state is per document: the shell starts every document closed and
+// the page sends its own once at the end of boot (_bootDone, whatever it is), then only a net change, at most one call
+// per task (a microtask), so a sheet closed and another opened in one task sends nothing. On a closed-to-open change
+// the overlays up are held at their first keyframe (fp-hold, CSS beside the sheet spring) until the shell answers,
+// refuses, or 50 ms pass, so the bar is gone before the sheet's first frame; the answer brings the bar's new numbers.
+// A refusal 'off' (no live tab root) leaves tabs mode with nothing sent back; leaving releases the hold and ends this.
+var _FP_COVER_SEL=_SHEETS_SEL+', #starterOverlay, .kt-manual-copy';
+var _fpSh={last:null, q:false, gen:0, held:[], heldGen:0, t:null};
+// The overlays up that hide the bar: every _FP_COVER_SEL node, and the two static pages while displayed.
+function _fpSheetsNodes(){
+  var out=Array.prototype.slice.call(document.querySelectorAll(_FP_COVER_SEL));
+  ['wf-view', 'pp-view'].forEach(function(id){ var el=document.getElementById(id); if(el && el.style.display==='block') out.push(el); });
+  return out;
+}
+function _fpSheetsOpen(){ return _fpSheetsNodes().length>0; }
+// One _fpSheetsSync for this task, as a microtask: it runs once the task's own code is done and before the next frame,
+// so it sees the task's net state. Called by the observer below (an overlay added or removed) and by the static pages.
+function _fpSheetsSoon(){
+  if(!_fp.tabs.mode || _fpSh.q) return;
+  _fpSh.q=true;
+  Promise.resolve().then(function(){
+    _fpSh.q=false;
+    try{ _fpSheetsSync(); }catch(e){ _fpLog('sheets: '+((e && e.message) || e), 'error'); }
+  });
+}
+// Sends the state when it differs from the last one sent (at boot the last is null, so the baseline always goes). A
+// closed-to-open change holds every overlay up: the bar showed until now, so each of them came in during this task (an
+// overlay taken away and put back while the state stays open is never held). The hold is the call's own: its answer, its
+// refusal or its 50 ms end it, never an older call's answer.
+function _fpSheetsSync(){
+  if(!_fp.tabs.mode) return;
+  var P=_fpPlugin(); if(!P || typeof P.sheets!=='function') return;
+  var nodes=_fpSheetsNodes(), open=nodes.length>0, was=_fpSh.last;
+  if(open===was) return;
+  _fpSh.last=open;
+  var g=0;
+  if(open && was===false){
+    _fpSheetsRelease();   // an older hold's nodes, should one come back
+    g=++_fpSh.gen;
+    nodes.forEach(function(n){ n.classList.add('fp-hold'); });
+    _fpSh.held=nodes; _fpSh.heldGen=g;
+    _fpSh.t=setTimeout(function(){ _fpSheetsRelease(g); }, 50);
+  }
+  try{
+    Promise.resolve(P.sheets({open:open})).then(function(r){ _fpSheetsRelease(g); _fpSheetsAnswer(r); },
+      function(e){ _fpSheetsRelease(g); _fpTabsRefused(e, 'sheets'); });
+  }catch(e){ _fpSheetsRelease(g); setTimeout(function(){ _fpTabsRefused(e, 'sheets'); }, 0); }
+}
+// Ends the hold that call g made (no g: any hold, as leaving tabs mode does). Safe before this block has run: the boot
+// block's way out can come first.
+function _fpSheetsRelease(g){
+  if(!_fpSh || !_fpSh.heldGen || (g!==undefined && g!==_fpSh.heldGen)) return;
+  if(_fpSh.t){ clearTimeout(_fpSh.t); _fpSh.t=null; }
+  _fpSh.held.forEach(function(n){ n.classList.remove('fp-hold'); });
+  _fpSh.held=[]; _fpSh.heldGen=0;
+}
+// The answer {bar: {h, safe, rev}}: the bar as the change left it (h 0 while hidden), applied when newer; --fp-bar-up
+// keeps the bar's height while shown (_fpBarSet).
+function _fpSheetsAnswer(r){
+  if(!_fp.tabs.mode) return;
+  var b=(r && typeof r==='object') ? r.bar : null;
+  if(!b || typeof b!=='object' || !_fpUint(b.h) || !_fpUint(b.safe) || !_fpUint(b.rev)){ _fpLog('sheets answer ignored: '+JSON.stringify(r), 'error'); return; }
+  if(b.rev>_fp.tabs.rev) _fpBarSet({h:b.h, safe:b.safe}, b.rev);
+}
+// Every overlay is put up and taken away as a child of <body> (spec 124 scans the sources for it).
+if(window.MutationObserver) new MutationObserver(function(muts){
+  if(!_fp.tabs.mode) return;
+  var hit=function(n){ return n.nodeType===1 && !!n.matches && n.matches(_FP_COVER_SEL); };
+  for(var i=0;i<muts.length;i++){
+    if(Array.prototype.some.call(muts[i].addedNodes, hit) || Array.prototype.some.call(muts[i].removedNodes, hit)){ _fpSheetsSoon(); return; }
+  }
+}).observe(document.body, {childList:true});
 // Swipe-to-dismiss for the shared sheet shell. The grabber + header are the
 // drag zone (body content keeps normal scrolling); drag past 90px or flick
 // to dismiss. Animates the sheet element itself, which is created once per
@@ -21599,6 +21950,7 @@ function openWorkflow(){
   var el=document.getElementById('wf-view');
   if(!el)return;
   el.style.display='block';
+  _fpSheetsSoon();   // under the native tab bar the page hides the bar (shown, not added: no observer sees it)
   el.setAttribute('aria-hidden','false');
   el.scrollTop=0;
   document.body.style.overflow='hidden';
@@ -21607,6 +21959,7 @@ function closeWorkflow(){
   var el=document.getElementById('wf-view');
   if(!el)return;
   el.style.display='none';
+  _fpSheetsSoon();
   el.setAttribute('aria-hidden','true');
   document.body.style.overflow='';
 }
@@ -21614,6 +21967,7 @@ function openPrivacy(){
   var el=document.getElementById('pp-view');
   if(!el)return;
   el.style.display='block';
+  _fpSheetsSoon();
   el.setAttribute('aria-hidden','false');
   el.scrollTop=0;
   document.body.style.overflow='hidden';
@@ -21622,6 +21976,7 @@ function closePrivacy(){
   var el=document.getElementById('pp-view');
   if(!el)return;
   el.style.display='none';
+  _fpSheetsSoon();
   el.setAttribute('aria-hidden','true');
   document.body.style.overflow='';
 }
@@ -22105,7 +22460,7 @@ function saveApiKeyFromSettings(){
   var el=document.getElementById('settingsApiKeyInput');
   if(!el||!el.value.trim()){showToast('Enter a key first');return;}
   var k=el.value.trim();
-  if(!k.startsWith('sk-ant-')){showToast('Invalid key — Anthropic keys start with sk-ant-','err');return;}
+  if(!k.startsWith('sk-ant-')){showToast(_KEY_BAD,'err');return;}
   setApiKey(k);
   showToast('API key saved');
   _pingApiKey(k);
@@ -22155,7 +22510,8 @@ var FP_LOG_KEYS={kt_sessions:1, kt_runs:1, kt_sports:1, kt_bw:1, kt_measurements
 // values stay out of Storage's Put back list (an older Last visit put back moved the welcome-back and wrist clocks).
 var FP_BOOKKEEPING={kt_last_open:1, kt_err_log:1, kt_wch_log:1, kt_hk_last_sync:1, kt_ota_staged:1, kt_ota_attempt:1, kt_ota_rejected:1,
   kt_cached_html:1, kt_cached_build:1, kt_cached_err:1, kt_last_seen_build:1, kt_dev_nav:1, kt_wrist_closed:1, kt_ids_unique:1,
-  kt_streak_seeded:1, kt_demo_w_swept:1, kt_last_autobackup:1, kt_last_autobackup_hash:1, kt_coach_card:1};
+  kt_streak_seeded:1, kt_demo_w_swept:1, kt_last_autobackup:1, kt_last_autobackup_hash:1, kt_coach_card:1,
+  kt_coach_handover:1};   // the native composer's handed-over words: a stale copy is never offered back
 function _fpBookkeeping(k){ k=String(k||''); return FP_BOOKKEEPING.hasOwnProperty(k) || k.indexOf('kt_coach_card_')===0; }
 function _fpStorePlug(){ if(!_fpShellFlag()) return null; var P=_plug('TrovoStore'); return (P && typeof P.status==='function') ? P : null; }
 // Reads the status again (at most every 1.5 s unless forced) and repaints the row and an open sheet.
@@ -23413,6 +23769,7 @@ function applyDynamicType(force){
   root.setAttribute('data-dyn-type', sc===1?'1':String(sc));
   // The zoom scales 100dvh as well: #app divides its height by --dt-z to stay one screen tall.
   if(sc===1) root.style.removeProperty('--dt-z'); else root.style.setProperty('--dt-z', String(sc));
+  if(window._fp && _fp.tabs && _fp.tabs.mode) _fpBarApply();   // the native bar's numbers in CSS px at the new zoom
   if(window._vvChatSync) _vvChatSync();   // keys up: --vv-h and --vv-top are in CSS px at the zoom
   // A smaller text size lowers the root zoom: fields raised for the larger one go up again.
   if(typeof _fieldFloor==='function' && document.body) _fieldFloor(document.body);
@@ -23829,20 +24186,29 @@ document.addEventListener('visibilitychange', function(){
     // so the day's training is on disk after the next app open at the latest.
     setTimeout(_autoBackupIfDue, 1500);
     if(localStorage.getItem('kt_autolog_runs')==='1' || (currentTab==='log' && logSubTab!=='workout' && logSubTab!=='body')) setTimeout(checkRecentHealthRun, 900);
-  } else _stampVisit();   // leaving: the last time the owner was here
+  } else {
+    _stampVisit();   // leaving: the last time the owner was here
+    // the handed-over words follow what the owner left in the box (render's capture may not come before a kill)
+    _fpHandoverFollow(document.getElementById('coach-input'), _coachDraft ? _coachDraft.v : '');
+  }
 });
 // Day stamp for the rollover check — set at boot, bumped on resume.
 var _lastSeenDay = todayISO();
 // Chat composer draft, captured at the top of render() and re-applied after
 // the coach view's innerHTML swap. sendCoachMessage clears the input before
-// sending, so a sent message never resurrects.
-var _coachDraft = { v:'', s:0, e:0, focus:false };
+// sending, so a sent message never resurrects. It starts from the words the
+// native composer handed over (kt_coach_handover), so a reload, a WebContent
+// restart or a relaunch after a fallback shows them in the web composer.
+var _coachDraft = _fpDraftStart();
 function _restoreCoachDraft(){
-  // Guard the boot render: this var's initializer lives after the first
-  // render() call in the boot sequence, so it can still be undefined here.
+  // The boot render: this var's initializer lives after the first render()
+  // call in the boot sequence, so it can still be undefined here; it starts
+  // as that initializer would, so a setup chat drawn by the boot render shows
+  // the handed-over words and the next render's capture keeps them.
   // Focus is restored even when the draft is EMPTY. An async render (watch
   // drain, Health auto-log, coach card) with the box focused but blank used
   // to drop focus, which closed the keyboard and bounced the dock back in.
+  if(_coachDraft===undefined) _coachDraft=_fpDraftStart();
   if(!_coachDraft || (!_coachDraft.v && !_coachDraft.focus)) return;
   var el = document.getElementById('coach-input');
   if(!el) return;
@@ -24139,16 +24505,23 @@ function _fpDeviceOff(){ try{ return localStorage.getItem('kt_native_off')==='1'
 function _fpNegotiated(s){ return !!(_fp.hello && _fp.v>=1 && _fp.hello.screens.indexOf(s)>=0); }
 function _fpLive(s){ return FP_NATIVE && _fpNegotiated(s) && !_fp.off[s] && !_fpDeviceOff() && !!_fpPlugin(); }
 // The page wants the screen drawn natively now: exactly when it would draw it itself.
+// coachHome (tabs mode): the native Coach tab, for the whole document whichever tab shows (contract 3.6), and only
+// with the chat it hosts: the two are on together or off together (D3, I12), so a chat off for the document (a refused
+// present, a broken model, screens.off) gives the Coach tab back to the page too. coach: 60's rule, and in tabs mode
+// only on a Coach tab the page has handed to the shell (the chat's one host is its stack). tabs: never presented.
 function _fpWant(s){
   if(!_fpLive(s)) return false;
-  if(s==='coach') return currentTab==='coach' && !!getApiKey() && (coachView==='chat' || !!intakeMode);
+  if(s==='coachHome') return _fpTabsLive() && _fpLive('coach');
+  if(s==='coach') return currentTab==='coach' && !!getApiKey() && (coachView==='chat' || !!intakeMode) && (!_fp.tabs.mode || !!_fp.shown.coachHome);
   return false;
 }
 function _fpWantAny(){ return FP_SCREENS.some(_fpWant); }
 // A native screen covers the page (the shell says so, or the page has one up): the page moves no
 // focus by script (render's refocus, the sheet observer, the chat's draft) and its toasts and
-// confirms show natively.
+// confirms show natively. In tabs mode exactly while Coach is the tab and the Coach tab is native or
+// still waiting for the page's word (contract 8.4): Log, Progress and Settings are always the web's.
 function _fpCovered(){
+  if(_fp.tabs.mode) return currentTab==='coach' && (_fpCoachMode()!=='web' || _fp.covered);
   if(_fp.covered) return true;
   for(var k in _fp.shown) if(_fp.shown[k]) return true;
   return false;
@@ -24157,15 +24530,124 @@ function _fpCovered(){
 // or its model could not be built. covered is the shell's word (shell.covered), but once nothing
 // native is up the page is uncovered whoever took the screen down: after its own dismiss it stayed
 // covered (toasts to a shell showing nothing, no refocus) until the shell spoke. The shell still sends
-// covered:false once its screen has gone, after every dismissal (the owner's and the page's).
+// covered:false once its screen has gone, after every dismissal (the owner's and the page's). Not in
+// tabs mode: a chat popped off the Coach tab leaves the native hub over the page (contract 8.4).
 function _fpDown(s){
   _fp.shown[s]=false;
   if(s==='coach') _fp.speech=null;   // a presentation never opens on words spoken before it
-  if(!FP_SCREENS.some(function(x){ return _fp.shown[x]; })) _fp.covered=false;
+  if(!_fp.tabs.mode && !FP_SCREENS.some(function(x){ return _fp.shown[x]; })) _fp.covered=false;
 }
 // What stands in #screen under a native screen: an element, so the resume check (a #screen with no
 // element child reloads the page) never fires while it is up.
 function _fpPlaceholder(s){ return '<div class="kt-fp-ph" data-fp-screen="'+s+'" aria-hidden="true"></div>'; }
+// ── Tabs mode: the page's half of build 61's native tab bar (shell contract v1 2.3-2.4, 3.3, 4.1-4.3, 7, 8.4) ──
+// Decided once per document by the head script's _fpTabsTest(); the fp-tabs boot block (beside _fp) boots on the tab
+// this web view showed last. The shell's bar is then the tabs: every page path into a tab is switchTab, which tells the
+// shell first (_fpSelectTab) and switches at once; the shell's own selections (the owner's tap, a deep link) arrive as
+// tabs.select and switch locally only (no echo either way). The bar's numbers sit on <html> as CSS px. The page leaves
+// for the rest of the document when the shell has no live tab root any more (screens.off tabs, a hello reply without
+// tabs, an off refusal: nothing is sent back), or on its own (a malformed reply, a failed hello call, the failsafe, a
+// throw at boot: then it sends dismiss {screen:'tabs'} once, so the shell's bar goes and the page's own is the one bar).
+function _fpFailStop(){ try{ if(window.__fpTabsFailT){ clearInterval(window.__fpTabsFailT); window.__fpTabsFailT=null; } }catch(e){} }
+// A whole number >= 0: seq, rev and the bar's points cross the bridge as whole numbers (contract 7.1).
+function _fpUint(n){ return typeof n==='number' && isFinite(n) && n>=0 && Math.floor(n)===n; }
+// A refusal's code (contract 3.1): e.code when a plugin sets one, else the text before the first ':' of the message (the
+// plugin rejects with '<code>: <words>'; build 60's words, 'bad message: ...', give a code nothing acts on).
+function _fpRefusal(e){
+  if(e && typeof e.code==='string' && e.code) return e.code;
+  var m=String(e && e.message!=null ? e.message : (e==null ? '' : e)), i=m.indexOf(':');
+  return (i<0 ? m : m.slice(0, i)).trim();
+}
+function _fpTabsLive(){ return !!(_fp.tabs.mode && _fpNegotiated('tabs')); }
+// The Coach tab as the page sees it (contract 8.4, P-D3): null outside tabs mode; 'native' while the page's coachHome is
+// up; 'waiting' before hello's answer, and after it while coachHome is negotiated, on and not yet declared; else 'web'.
+function _fpCoachMode(){
+  if(!_fp.tabs.mode) return null;
+  if(_fp.shown.coachHome) return 'native';
+  if(!_fp.hello) return 'waiting';
+  if(_fpNegotiated('coachHome') && !_fp.off.coachHome && !_fp.declared.coachHome) return 'waiting';
+  return 'web';
+}
+// hello's tabs as the contract has it (selected one of the four; seq and the bar's h, safe and rev whole numbers), or null.
+function _fpTabsReply(t){
+  var b=(t && typeof t==='object') ? t.bar : null;
+  if(!b || typeof b!=='object' || FP_TAB_IDS.indexOf(t.selected)<0 || !_fpUint(t.seq) || !_fpUint(b.h) || !_fpUint(b.safe) || !_fpUint(b.rev)) return null;
+  return {selected:t.selected, seq:t.seq, bar:{h:b.h, safe:b.safe, rev:b.rev}};
+}
+// The bar measured at rev (hello's reply, a sheets answer, tabs.bar): applied only when newer, by the caller. up keeps
+// the newest h above 0, so --fp-bar-up never drops to 0 while a sheet hides the bar (P-D2).
+function _fpBarSet(bar, rev){
+  var T=_fp.tabs;
+  T.bar={h:bar.h, safe:bar.safe}; T.rev=rev;
+  if(bar.h>0) T.up=bar.h;
+  _fpBarApply();
+}
+// The bar's numbers on <html> at the Larger Text zoom (applyDynamicType calls it after every zoom change); none
+// outside tabs mode.
+function _fpBarApply(){
+  var T=_fp.tabs;
+  _fpBarVars(T.mode ? T.bar : null, T.up, parseFloat(document.documentElement.style.zoom) || 1);
+}
+// The page's own selection (switchTab, and only switchTab): the shell hears it before the page switches, with the intent
+// it is about to show there ('chat' or 'intake'). The answer {tab, seq} corrects the page only for its newest request
+// (P-D8), so two quick selections never bounce back to the first and a newer tabs.select already applied wins.
+function _fpSelectTab(tab, intent){
+  var P=_fpPlugin(); if(!P || typeof P.selectTab!=='function') return;
+  var T=_fp.tabs, n=++T.req, a={tab:tab};
+  if(intent==='chat' || intent==='intake') a.intent=intent;
+  T.pend++;   // unanswered: hello's reply leaves the page's tab to this answer
+  var done=function(){ T.pend=Math.max(0, T.pend-1); };
+  try{
+    Promise.resolve(P.selectTab(a)).then(function(r){ done(); _fpTabsAnswer(r, n); }, function(e){ done(); _fpTabsRefused(e, 'selectTab'); });
+  }catch(e){ done(); setTimeout(function(){ _fpTabsRefused(e, 'selectTab'); }, 0); }   // after the switch this call is part of
+}
+function _fpTabsAnswer(r, n){
+  var T=_fp.tabs;
+  if(!T.mode) return;
+  if(!r || typeof r!=='object' || FP_TAB_IDS.indexOf(r.tab)<0 || !_fpUint(r.seq)){ _fpLog('selectTab answer ignored: '+JSON.stringify(r), 'error'); return; }
+  if(r.seq<=T.seq) return;
+  T.seq=r.seq;
+  if(n===T.req && r.tab!==currentTab) _switchTabLocal(r.tab);
+}
+// selectTab or sheets refused: 'off' (no live tab root: the shell has fallen back and told the page what it does)
+// leaves tabs mode with nothing sent back; any other code (bad-tab, build 60's words) is logged and changes nothing.
+function _fpTabsRefused(e, what){
+  if(_fpRefusal(e)==='off'){ _fpTabsLeave('off'); return; }
+  _fpLog((what || 'tabs')+' refused: '+((e && e.message) || e), 'error');
+}
+// The way out (contract 2.3): the page's own bar on the same tab, the web Coach, for the rest of the document (nothing
+// re-enters tabs mode). tell: the page left on its own (the failsafe, a malformed reply, a failed hello call, a throw
+// at boot); then it sends dismiss {screen:'tabs'} once (the shell's fallback answers it, fellBack page), and once its
+// hello has asked for tabs (T.asked) it presents the chat no more: the shell may have negotiated it under the tab
+// root's rule, and the fallback turns off every piece negotiated under that rule, coach included (2.2, 10.3). A page
+// that leaves before its hello asks (a throw at boot) keeps the chat: its hello names coach alone and the shell, fallen
+// back already, negotiates it on the classic rule (60's overlay, as after a fallback at a hello, 10.3); a reply without
+// tabs gives it back in the same way (_fpHello). When the shell told it, it sends nothing. later: the caller renders
+// (the boot block, before the first render; hello, once its take-over has read up, so no render here presents a screen
+// the shell still shows).
+function _fpTabsLeave(why, tell, later){
+  var T=_fp.tabs;
+  if(!T.mode) return;
+  T.mode=false; T.left=true; T.why=String(why || '');
+  _fpFailStop();
+  _fpSheetsRelease();   // an overlay held for the shell's answer shows now; nothing is announced any more
+  document.documentElement.classList.remove('fp-tabs');
+  _fpBarVars(null);
+  if(tell){
+    if(!T.told && !window.__fpTabsTold){
+      T.told=true; window.__fpTabsTold=true;   // once per document, with the head script's own way out
+      var P=_fpPlugin();
+      if(P && P.dismiss){ try{ Promise.resolve(P.dismiss({screen:'tabs'})).catch(function(){}); }catch(e){} }
+    }
+    if(T.asked && !_fp.off.coach) _fp.off.coach='tabs';
+  }
+  // the Coach tab is the web's for the document, with no message: the shell has fallen back, is about to, or never linked
+  _fp.off.coachHome='tabs'; _fpDown('coachHome'); _fp.declared.coachHome='dismiss';
+  if(!FP_SCREENS.some(function(x){ return _fp.shown[x]; })) _fp.covered=false;
+  _syncTabButtons(currentTab);
+  _fpLog('tabs off: '+T.why, tell ? 'error' : 'info');
+  if(!later) render();
+}
 // Every string the shell gets is cut in whole characters (_wellFormed), as for the watch and the
 // widget: models go through _nativeJSON, and toast, confirm and log text through this.
 function _fpText(s){ return _wellFormed(s==null ? '' : s); }
@@ -24176,29 +24658,84 @@ function _fpLog(text, level){
 // hello: the contract this page speaks and the screens it can hand over; the answer is what this
 // document may present. Sent once per document at boot; nothing is native before it answers. Only an
 // answer the page speaks counts (1 to FP_CONTRACT; FPCore never answers above the page's v): any
-// other is v0, no native screen.
+// other is v0, no native screen. Tabs mode names FP_SCREENS, classic the chat alone (as build 60's page
+// did), FP_NATIVE false none. In tabs mode the reply carries the shell's selection, seq and measured bar:
+// adopted when newer, then the take-over, as one step (contract 3.2); a reply without tabs, or one the page
+// cannot use, or a failed call ends tabs mode (contract 2.3). Every answer stops the head's failsafe.
 function _fpHello(){
   var P=_fpPlugin(); if(!P || !P.hello) return;
+  var T=_fp.tabs, screens=!FP_NATIVE ? [] : T.mode ? FP_SCREENS.slice() : ['coach'];
+  var answered=function(){ window.__fpTabsAnswered=true; _fpFailStop(); };
+  // from here the shell may negotiate under the tab root's rule, so a way out on the page's own takes the chat off
+  if(screens.indexOf('tabs')>=0) T.asked=true;
   try{
-    Promise.resolve(P.hello({v:FP_CONTRACT, page:APP_BUILD, screens:FP_NATIVE ? FP_SCREENS.slice() : [], boot:_fpBoot})).then(function(r){
+    Promise.resolve(P.hello({v:FP_CONTRACT, page:APP_BUILD, screens:screens, boot:_fpBoot})).then(function(r){
+      answered();
       var v=(r && typeof r==='object') ? (r.v|0) : 0;
+      // tabs is judged on the reply as it came, before a v this page does not speak is read as v0
+      var named=!!(r && typeof r==='object' && Array.isArray(r.screens) && r.screens.indexOf('tabs')>=0);
+      var tabs=(named && v>=1 && v<=FP_CONTRACT) ? _fpTabsReply(r.tabs) : null;
+      // a reply that leaves tabs out was negotiated on the classic rule (the shell fell back at or before this hello,
+      // 10.3), which no later fallback changes: a chat the page's own way out took off before it came (the failsafe)
+      // is the reply's again
+      if(!named && _fp.off.coach==='tabs') delete _fp.off.coach;
       if(v<0 || v>FP_CONTRACT){ _fpLog('hello v'+v+' is no contract this page speaks (v1 to v'+FP_CONTRACT+'): no native screens', 'error'); r={v:0, screens:[], why:'contract'}; v=0; }
       _fp.hello={v:v, screens:(r && Array.isArray(r.screens)) ? r.screens.filter(function(s){ return typeof s==='string'; }) : [], why:(r && r.why) || ''};
       _fp.v=v;
       _fpLog('hello v'+v+' '+(_fp.hello.screens.join(',') || 'no screens')+(_fp.hello.why ? ' ('+_fp.hello.why+')' : ''));
       var up=(v>=1 && r && Array.isArray(r.up)) ? r.up.filter(function(s){ return typeof s==='string'; }) : [];
-      if(up.length) _fpTakeOver(up);
-      if(_fpWantAny()) render(); else _fpSync();   // the chat already on screen goes native
-    }).catch(function(e){ _fp.hello={v:0, screens:[], why:'error'}; });
-  }catch(e){}
+      // a page that left tabs mode already reads the reply for its other pieces and ignores its tabs; one that leaves
+      // here renders below, after the take-over (classic's) has read up
+      var left=false;
+      if(T.mode && !named){ _fpTabsLeave('hello', false, true); left=true; }   // the shell fell back at this hello (a version refusal too)
+      else if(T.mode && !tabs){ _fpTabsLeave('malformed', true, true); left=true; }
+      if(T.mode){
+        _fp.taking=true;   // the adoption's render presents nothing until the take-over has read up
+        try{
+          // a page selection still unanswered was asked after this reply was made: its answer carries the shell's
+          // selection, so the page does not bounce to the reply's tab and back (P-D8)
+          if(tabs.seq>T.seq){ T.seq=tabs.seq; if(!T.pend && tabs.selected!==currentTab) _switchTabLocal(tabs.selected); }
+          if(tabs.bar.rev>T.rev) _fpBarSet(tabs.bar, tabs.bar.rev);
+          if(up.length) _fpTakeOver(up);
+        }finally{ _fp.taking=false; }
+      } else if(up.length) _fpTakeOver(up);
+      if(left || _fpWantAny()) render(); else _fpSync();   // the chat already on screen goes native
+    }).catch(function(e){ answered(); _fp.hello={v:0, screens:[], why:'error'}; _fpTabsLeave('hello-failed', true); });
+  }catch(e){ answered(); _fpTabsLeave('hello-failed', true); }
 }
 // A reload under a native screen (WebContent died, a Put back reload): the shell still shows it from
 // the document before and names it in hello's answer (up). The page takes over each one it can show
 // now: the screen is up (no present), the page is covered, and its models follow from this boot. One
 // it cannot show (no API key, the About switch off) it dismisses, so the shell takes it down (plan
 // task C5).
+// In tabs mode (contract 3.2, I13; plan P-D9) the take-over never switches tabs: hello's selection is adopted first,
+// by its handler, which holds _fp.taking and renders after. coachHome first: taken over when the page wants it (shown
+// and declared with no present: this document's declaration, so the shell's NATIVE tab waits on no timer; its model
+// goes at the next pass), else dismissed. Then the chat, only on the Coach tab the shell shows, over a Coach tab this
+// page has taken, with a key: the page adopts the view the shell shows (a new document starts on the hub), else it is
+// dismissed (the shell pops it without animation). tabs is never up (the root is not presented), and a dismiss of it
+// would say this document left tabs mode, so the page never sends one from here.
 function _fpTakeOver(up){
   var P=_fpPlugin();
+  var drop=function(s){
+    _fpLog(s+' not taken over: dismissed');
+    if(P && P.dismiss){ try{ Promise.resolve(P.dismiss({screen:s})).catch(function(){}); }catch(e){} }
+  };
+  if(_fp.tabs.mode){
+    if(up.indexOf('coachHome')>=0){
+      if(_fpWant('coachHome')){ _fp.shown.coachHome=true; _fp.declared.coachHome='present'; _fpLog('coachHome taken over from the document before'); }
+      else { _fp.declared.coachHome='dismiss'; drop('coachHome'); }
+    }
+    up.forEach(function(s){
+      if(s==='coachHome' || s==='tabs') return;
+      if(s==='coach' && currentTab==='coach' && _fp.shown.coachHome && _fpLive(s) && !!getApiKey()){
+        if(!intakeMode) coachView='chat';
+        _fp.shown[s]=true;
+        _fpLog(s+' taken over from the document before');
+      } else drop(s);
+    });
+    return;
+  }
   up.forEach(function(s){
     if(s==='coach' && _fpLive(s) && !!getApiKey()){
       _fp.taking=true;   // the page moves under the screen: _fpSync waits
@@ -24209,22 +24746,38 @@ function _fpTakeOver(up){
       _fp.shown[s]=true;
       _fpLog(s+' taken over from the document before');
       render();   // its model, from this boot
-    } else {
-      _fpLog(s+' not taken over: dismissed');
-      if(P && P.dismiss){ try{ Promise.resolve(P.dismiss({screen:s})).catch(function(){}); }catch(e){} }
-    }
+    } else drop(s);
   });
 }
 // The first statement of paintRunner, which ends every render(), every tab switch and the runner's
 // paint: each native screen presented or dismissed as the page's state wants it, and its model
 // pushed (one per tick, rev rising). Dismiss when the page leaves the screen (another tab, Back, the
 // end of setup, the key removed, a switch turned off).
+// In FP_SCREENS order, so the chat is presented only after the Coach tab that hosts it, and goes in the same pass as
+// it. coachHome follows the declaration rule (contract 3.6, D17): once hello has negotiated it, exactly one present
+// (its model first) or dismiss, then one each time the wish changes; a dismiss even when nothing was shown, so a shell
+// still WAITING after a refusal or a broken model turns WEB at once, not at its 3 s net. tabs is the root, never
+// presented. Then the Coach tab's and the bar's models, when they changed (_fpModelsSoon).
 function _fpSync(){
   if(!_fp.hello || _fp.taking) return;
   try{
     var P=_fpPlugin();
     FP_SCREENS.forEach(function(s){
+      if(s==='tabs') return;
       var want=_fpWant(s);
+      if(s==='coachHome'){
+        if(!_fpNegotiated(s) || (want ? 'present' : 'dismiss')===_fp.declared[s]) return;
+        if(want){
+          if(!_fpPushModel(s, true)) return;   // a model the page cannot build: off, and the next pass dismisses
+          _fp.shown[s]=true; _fp.declared[s]='present';
+          try{ Promise.resolve(P.present({screen:s})).catch(function(e){ _fpRefused(s, e); }); }catch(e){ setTimeout(function(){ _fpRefused(s, e); }, 0); }
+        } else {
+          _fpDown(s); _fp.declared[s]='dismiss';
+          if(P && P.dismiss){ try{ Promise.resolve(P.dismiss({screen:s})).catch(function(){}); }catch(e){} }
+        }
+        return;
+      }
+      if(s==='coach' && want) _fpHandoverOffer();   // the handed-over words go back to a native composer as its draft
       if(want && !_fp.shown[s]){
         if(!_fpPushNow(s)) return;   // the model first: the native screen opens on it (none: the web screen stays)
         _fp.shown[s]=true;
@@ -24234,16 +24787,22 @@ function _fpSync(){
         if(P && P.dismiss){ try{ Promise.resolve(P.dismiss({screen:s})).catch(function(){}); }catch(e){} }
       } else if(want) _fpPushSoon();
     });
+    _fpModelsSoon();
   }catch(e){ _fpLog('sync: '+((e && e.message) || e), 'error'); }   // never in render's way
 }
-// The shell would not present it: the page draws its own for the rest of the document.
+// The shell would not present it: the page draws its own for the rest of the document. Whatever its code (contract
+// 3.1): build 60's words, not-presentable (no live tab root for coachHome) and not-native (the chat over a Coach tab
+// the shell does not show as native, which the joint rule never sends). A coachHome refusal is followed by its dismiss
+// declaration at the render's pass; a refused chat takes the Coach tab with it (_fpWant).
 function _fpRefused(s, e){
   _fpDown(s); _fp.off[s]='present';
   _fpLog(s+' not presented: '+((e && e.message) || e), 'error');
   render();
 }
-function _fpModel(s){ return s==='coach' ? _coachModel() : null; }
-// Pushes the screen's model; false when the page could not build it (then the screen is off).
+// A screen's model (contract 3.7): the chat's takes the next rev itself, the Coach tab's and the bar's take the
+// caller's.
+function _fpModel(s, rev){ return s==='coach' ? _coachModel() : s==='coachHome' ? _coachHomeModel(rev) : s==='tabs' ? _tabsModel(rev) : null; }
+// Pushes the chat's model; false when the page could not build it (then the screen is off).
 function _fpPushNow(s){
   var P=_fpPlugin(), m=null;
   if(!P || !P.model) return true;
@@ -24252,18 +24811,118 @@ function _fpPushNow(s){
   try{ Promise.resolve(P.model({screen:s, rev:m.rev, json:_nativeJSON(m)})).catch(function(){}); }catch(e){}
   return true;
 }
-// The page could not build a screen's model (a page bug): the web screen for the rest of the document.
+// The Coach tab's and the bar's models go only when they changed (or force: the present's own): the signature is the
+// model at rev 0; a changed one takes the boot's next rev, one counter for every model of the boot. False when the page
+// could not build it (the screen is off: _fpBroken).
+function _fpPushModel(s, force){
+  var P=_fpPlugin(), m=null, sig='';
+  if(!P || !P.model) return true;
+  try{ m=_fpModel(s, 0); sig=_nativeJSON(m); }catch(e){ _fpBroken(s, e); return false; }
+  if(!m || (!force && sig===_fp.sig[s])) return true;
+  _fp.sig[s]=sig; m.rev=++_fp.rev;
+  try{ Promise.resolve(P.model({screen:s, rev:m.rev, json:_nativeJSON(m)})).catch(function(){}); }catch(e){}
+  return true;
+}
+// One deferred check per task, from _fpSync: the bar's model while tabs mode is live, the Coach tab's while the page
+// has handed it to the shell (whether or not Coach shows, so a tap opens on a current hub). Deferred because applyTheme
+// repaints (_paintTheme renders) before it sets currentTheme: a check inside that paint would send the old room. No
+// timer when neither can go (classic mode: build 60's chat and 61's classic root run as before).
+function _fpModelsSoon(){
+  if(_fp.modelsT || !(_fpTabsLive() || _fp.shown.coachHome)) return;
+  _fp.modelsT=setTimeout(function(){
+    _fp.modelsT=null;
+    try{
+      if(_fpTabsLive() && !_fp.off.tabs) _fpPushModel('tabs');
+      if(_fp.shown.coachHome) _fpPushModel('coachHome');
+    }catch(e){ _fpLog('models: '+((e && e.message) || e), 'error'); }
+  }, 0);
+}
+// The page could not build a screen's model (a page bug): the web screen for the rest of the document. The Coach
+// tab's dismiss is its declaration, sent by the render's pass (shown or not); a broken bar model leaves the bar to the
+// shell's own values.
 function _fpBroken(s, e){
   _fpLog(s+' model failed: '+((e && e.message) || e), 'error');
   _fp.off[s]='model';
   var was=!!_fp.shown[s];
   _fpDown(s);
-  if(was){ var P=_fpPlugin(); if(P && P.dismiss){ try{ Promise.resolve(P.dismiss({screen:s})).catch(function(){}); }catch(e2){} } }
+  if(was && s!=='coachHome'){ var P=_fpPlugin(); if(P && P.dismiss){ try{ Promise.resolve(P.dismiss({screen:s})).catch(function(){}); }catch(e2){} } }
   setTimeout(render, 0);
 }
+// The chat's model at the next tick (the Coach tab's and the bar's go by signature, _fpModelsSoon).
 function _fpPushSoon(){
   if(_fp.pushT) return;
-  _fp.pushT=setTimeout(function(){ _fp.pushT=null; FP_SCREENS.forEach(function(s){ if(_fp.shown[s]) _fpPushNow(s); }); }, 0);
+  _fp.pushT=setTimeout(function(){ _fp.pushT=null; if(_fp.shown.coach) _fpPushNow('coach'); }, 0);
+}
+// ── The handed-over words (contract 4.2, D21, I16; plan P-D15) ──
+// When the shell takes the native chat away (screens.off {screen:'coach', draft}) the page takes its composer's unsent
+// words into the web composer, by CoachStore's putBack rule, and stores the merged words in kt_coach_handover before
+// it answers took (the web composer lives in memory only; the shell drops its copy on took). The key is raw text and
+// device-only: in neither BACKUP_KEYS nor RAW_STRING_KEYS (no backup or restore carries it), in FP_BOOKKEEPING
+// (Storage's Put back never offers stale words), mirrored to the native copy as every kt_* write is. While it exists
+// it follows the web composer (render's draft capture, the page hidden); it goes once the composer is emptied, once
+// its words are sent from either composer, or once a native composer takes them back as the page's draft
+// (coach.draftTaken). At boot the web composer starts from it. So the words always sit in at least one durable place,
+// and in one composer at a time.
+// CoachStore's putBack (FPUI/Coach/CoachStore.swift; the shared vectors Fixtures/draft/putback.json): the words,
+// trimmed, go into the composer: words empty after trimming leave it as it is, a composer empty after trimming becomes
+// the words, one that already holds them (a UTF-16 match) is left as it is, any other becomes the words, a line feed,
+// then itself.
+function _fpPutBack(cur, words){
+  cur=String(cur==null ? '' : cur);
+  var w=String(words==null ? '' : words).trim();
+  if(!w) return cur;
+  if(!cur.trim()) return w;
+  return cur.indexOf(w)>=0 ? cur : w+'\n'+cur;
+}
+function _fpHandover(){ try{ return localStorage.getItem('kt_coach_handover'); }catch(e){ return null; } }
+function _fpHandoverDrop(){ try{ localStorage.removeItem('kt_coach_handover'); }catch(e){} }
+// The checked write: true once the key reads back as written (words empty after trimming leave no key).
+function _fpHandoverPut(v){
+  v=String(v==null ? '' : v);
+  try{
+    if(!v.trim()){ localStorage.removeItem('kt_coach_handover'); return localStorage.getItem('kt_coach_handover')==null; }
+    localStorage.setItem('kt_coach_handover', v);
+    return localStorage.getItem('kt_coach_handover')===v;
+  }catch(e){ return false; }
+}
+// The web composer as the boot starts it: empty, or the handed-over words (putBack over an empty composer).
+function _fpDraftStart(){
+  var t=_fpPutBack('', _fpHandover());
+  return { v:t, s:t.length, e:t.length, focus:false };
+}
+// The key follows the web composer's box: its words, or no key once the owner emptied a box that held words (an
+// empty box the page never filled says nothing). prev: the words the box held at the last capture.
+function _fpHandoverFollow(box, prev){
+  if(!box) return;
+  var k=_fpHandover(); if(k==null) return;
+  var v=String(box.value==null ? '' : box.value);
+  if(v.trim()){ if(v!==k){ try{ localStorage.setItem('kt_coach_handover', v); }catch(e){} } }
+  else if(String(prev==null ? '' : prev).trim()) _fpHandoverDrop();
+}
+// Sent, from either composer: the words are spent (the rule beside the one that spends _fp.draft, coachSend).
+function _fpHandoverSpent(msg){
+  var k=_fpHandover();
+  if(k!=null && msg && msg===k.trim()) _fpHandoverDrop();
+}
+// A native chat the page wants gets the waiting words as the page's draft (as coachPrefill sends one, with a nonce),
+// so a native composer that comes back merges them (N4); coach.draftTaken for this nonce lets the key go. A page
+// draft already waiting keeps its place.
+function _fpHandoverOffer(){
+  var t=String(_fpHandover() || '').trim();
+  if(!t || _fp.draft) return;
+  _fp.draft={text:t, nonce:'d'+(++_fp.seq)+'.'+_fpBoot};
+  _fp.ho={nonce:_fp.draft.nonce, text:t};
+}
+// screens.off {screen:'coach', draft}: the words into the web composer and the key, the key first. False when the
+// write failed (quota): then the web composer is as it was and the words stay native.
+function _fpTakeDraft(words){
+  var box=document.getElementById('coach-input');
+  var cur=box ? box.value : (_coachDraft ? String(_coachDraft.v || '') : '');
+  var merged=_fpPutBack(cur, words);
+  if(!_fpHandoverPut(merged)) return false;
+  _coachDraft={ v:merged, s:merged.length, e:merged.length, focus:false };
+  if(box) box.value=merged;
+  return true;
 }
 // Toasts and confirms while a native screen is up show natively: the web ones would be under it.
 // An Undo toast keeps its function for toast.undo; one at a time, as on the web.
@@ -24414,7 +25073,8 @@ function _coachModel(){
 
 // ── Intents: the shell calls window.FPScreens.call(name, args) ──
 // Answers {ok:true, ...} or {ok:false, error}: the page's own reasons (busy, stale, gone, idle, just-sent,
-// intake, not-intake, unknown-model, empty) are answers; unknown-intent, bad-args and exception are what
+// intake, not-intake, unknown-model, empty; build 61's off, nokey, invalid, has-programme, contract 4.5) are
+// answers; unknown-intent, bad-args and exception are what
 // the shell's breaker counts. Never resent by the shell; coach.send is idempotent by nonce anyway. An
 // intent acts only where the page's own screen would offer it now (the shell's model can be older).
 function _fpStr(v){ return typeof v==='string'; }
@@ -24422,6 +25082,25 @@ function _fpImage(v){ return !!v && typeof v==='object' && _fpStr(v.mediaType) &
 var _FP_BAD={ok:false, error:'bad-args'};
 var _FP_INTENTS={
   'ping':function(){ return {ok:true, v:FP_CONTRACT}; },
+  // The shell's own selection (the owner's tap, a deep link, a stray it redirected), newer than any the page has seen:
+  // the page switches locally (never selectTab back) and answers once the new tab is drawn, so VoiceOver's post on the
+  // answer reads it. again: the owner's re-tap of the selected tab, which runs the switch as the page's own button did
+  // (Coach goes back to the hub unless setup or a reply is in flight). An older one changes nothing.
+  'tabs.select':function(a){
+    if(FP_TAB_IDS.indexOf(a.tab)<0 || !_fpUint(a.seq) || (a.again!=null && typeof a.again!=='boolean')) return _FP_BAD;
+    var T=_fp.tabs;
+    if(!T.mode) return {ok:false, error:'off'};
+    if(a.seq>T.seq){ T.seq=a.seq; if(a.tab!==currentTab || a.again===true) _switchTabLocal(a.tab); }
+    return {ok:true, tab:currentTab};
+  },
+  // A geometry change the shell made on its own (a trait change; a return to a web tab with a sheet open): newer only.
+  'tabs.bar':function(a){
+    if(!_fpUint(a.h) || !_fpUint(a.safe) || !_fpUint(a.rev)) return _FP_BAD;
+    var T=_fp.tabs;
+    if(!T.mode) return {ok:false, error:'off'};
+    if(a.rev>T.rev) _fpBarSet({h:a.h, safe:a.safe}, a.rev);
+    return {ok:true};
+  },
   'shell.covered':function(a){
     if(typeof a.on!=='boolean') return _FP_BAD;
     _fp.covered=a.on;
@@ -24429,6 +25108,14 @@ var _FP_INTENTS={
     return {ok:true};
   },
   'coach.snapshot':function(){ return {ok:true, json:_nativeJSON(_coachModel())}; },
+  // The Coach tab's model now, for the shell's resync after a reload: only while the page has handed the tab to the
+  // shell; a new rev, its signature recorded (the next change goes as usual).
+  'coachHome.snapshot':function(){
+    if(!_fp.shown.coachHome) return {ok:false, error:'off'};
+    var m=_coachHomeModel(0);
+    _fp.sig.coachHome=_nativeJSON(m); m.rev=++_fp.rev;
+    return {ok:true, json:_nativeJSON(m)};
+  },
   'coach.send':function(a){
     if(!_fpStr(a.text) || !_fpStr(a.nonce) || !a.nonce || (a.image!=null && !_fpImage(a.image)) || (a.usePending!=null && typeof a.usePending!=='boolean')) return _FP_BAD;
     var r=coachSend(a.text, {image:a.image||null, usePending:a.usePending===true, nonce:a.nonce});
@@ -24475,16 +25162,26 @@ var _FP_INTENTS={
   'coach.clearImage':function(){ clearPendingImage(); return {ok:true}; },
   'coach.draftTaken':function(a){
     if(!_fpStr(a.nonce)) return _FP_BAD;
+    // the handed-over words offered as this draft are durable natively again: the key goes (even when a newer page
+    // draft has since taken the draft's place)
+    if(_fp.ho && _fp.ho.nonce===a.nonce){
+      if(String(_fpHandover() || '').trim()===_fp.ho.text) _fpHandoverDrop();
+      _fp.ho=null;
+    }
     if(!_fp.draft || _fp.draft.nonce!==a.nonce) return {ok:false, error:'stale'};
-    if(_coachDraft && _coachDraft.v===_fp.draft.text) _coachDraft={ v:'', s:0, e:0, focus:false };   // taken: not the web composer's any more
+    // taken: not the web composer's any more (the handed-over words go out trimmed, and the box may hold them with a
+    // trailing line, so the two compare trimmed)
+    if(_coachDraft && String(_coachDraft.v || '').trim()===String(_fp.draft.text).trim()) _coachDraft={ v:'', s:0, e:0, focus:false };
     _fp.draft=null; _fpPushSoon(); return {ok:true};
   },
+  // confirm and toast.undo answer on receipt and act on the next task (contract 4.2, D14): an answer means taken, never
+  // done, so an action that runs long (a restore) never runs into the shell's 2 s window and counts a failure.
   'confirm':function(a){
     if(!_fpStr(a.id) || typeof a.yes!=='boolean') return _FP_BAD;
     var c=_fp.confirms[a.id];
     if(!c) return {ok:false, error:'stale'};   // answered already, or asked before a reload
     delete _fp.confirms[a.id];
-    if(a.yes && typeof c.onConfirm==='function') c.onConfirm();
+    if(a.yes && typeof c.onConfirm==='function') setTimeout(function(){ c.onConfirm(); }, 0);
     return {ok:true};
   },
   'toast.undo':function(a){
@@ -24492,14 +25189,93 @@ var _FP_INTENTS={
     var f=_fp.undos[a.id];
     if(!f) return {ok:false, error:'stale'};
     delete _fp.undos[a.id];
-    f(); return {ok:true};
+    setTimeout(function(){ f(); }, 0);
+    return {ok:true};
   },
+  // The shell took a screen away (its breaker, the policy, a fallback, a piece this one needs): the web screen for the
+  // rest of the document, and nothing sent back. why may be needs beside LinkState's words; for tabs it is the
+  // fallback's word (the page leaves tabs mode). coachHome: the Coach tab is the web's (declared dismiss: the shell
+  // took it down). coach with draft: the native composer's unsent words, stored before the answer, which says took
+  // only once they are (the shell then drops its copy); a draft on any other screen is ignored.
   'screens.off':function(a){
-    if(!_fpStr(a.screen) || (a.why!=null && !_fpStr(a.why))) return _FP_BAD;
-    _fp.off[a.screen]=a.why || 'off';
+    if(!_fpStr(a.screen) || (a.why!=null && !_fpStr(a.why)) || (a.draft!=null && !_fpStr(a.draft))) return _FP_BAD;
+    // the first reason stands for the document: the cascade after the page's own way out (dismiss tabs) or refusal
+    // does not overwrite why the screen went off
+    if(!_fp.off[a.screen]) _fp.off[a.screen]=a.why || 'off';
+    if(a.screen==='tabs'){ _fpTabsLeave(a.why || 'off'); return {ok:true}; }   // the shell has fallen back: nothing back
+    if(a.screen==='coachHome') _fp.declared.coachHome='dismiss';
     _fpDown(a.screen);   // the shell has taken it down: no dismiss; uncovered once nothing native is up
-    _fpLog(a.screen+' off: '+(a.why || 'off'), 'error');
+    var took=a.screen==='coach' && a.draft!=null && _fpTakeDraft(a.draft);
+    _fpLog(a.screen+' off: '+(a.why || 'off')+(a.screen==='coach' && a.draft!=null ? (took ? ', its words taken' : ', its words left native') : ''), 'error');
     render();   // the web screen again, for the rest of the document
+    return took ? {ok:true, took:true} : {ok:true};
+  },
+  // ── The native Coach tab's rows and connect screen (contract 4.1, 5) ──
+  // Argument checks first, then off whenever the page has not handed the Coach tab to the shell in this document, then
+  // each one's reasons in the contract's order. Each acts only where the page's own hub or connect screen
+  // (_coachHomeScreen) would offer it now, and answers once it has started: a confirm it asks is forwarded (the native
+  // Coach tab covers the page) and answered by the shell's confirm. Actions: never resent.
+  'coachHome.openChat':function(){
+    if(!_fp.shown.coachHome) return {ok:false, error:'off'};
+    if(!getApiKey()) return {ok:false, error:'nokey'};
+    openCoachChat();   // the chat's present follows from _fpSync, its model first
+    return {ok:true};
+  },
+  // The connect screen's key (K1-K8): saveApiKey's rule without the DOM. Synchronous, so a second call finds the key
+  // saved (stale; busy never applies); a saved key is stale before an invalid one is checked, so a stale connect screen
+  // raises no toast. The secret reaches kt_apikey (setApiKey) and the ping's request header, nothing else: no log line,
+  // error text (the wrapper below logs e.message, so this catch answers itself with its own words), toast, model or
+  // other storage.
+  'coachHome.setKey':function(a){
+    try{
+      if(!_fpStr(a.secret)) return _FP_BAD;
+      if(!_fp.shown.coachHome) return {ok:false, error:'off'};
+      if(getApiKey()) return {ok:false, error:'stale'};
+      var k=a.secret.trim();
+      if(!k || !k.startsWith('sk-ant-')){ showToast(_KEY_BAD, 'err'); return {ok:false, error:'invalid'}; }
+      setApiKey(k);
+      showToast('API key saved');
+      _pingApiKey(k);   // fire and forget: the answer never waits for the network
+      render();
+      return {ok:true};
+    }catch(e){ _fpLog('coachHome.setKey failed', 'error'); return {ok:false, error:'exception'}; }
+  },
+  // The three that ask first answer stale while the native Coach tab does not cover the page (a tab change crossed the
+  // tap, P-D10), so no web sheet opens over another tab.
+  'coachHome.disconnect':function(){
+    if(!_fp.shown.coachHome) return {ok:false, error:'off'};
+    if(!getApiKey()) return {ok:false, error:'nokey'};
+    if(!_fpCovered()) return {ok:false, error:'stale'};
+    clearApiKey();   // yes: the key goes, "Key removed", and the model's route becomes connect
+    return {ok:true};
+  },
+  // The hub's Clear Chat History needs messages, and a key: with none the connect screen stands, so a tap on an older
+  // hub is stale.
+  'coachHome.clearChat':function(){
+    if(!_fp.shown.coachHome) return {ok:false, error:'off'};
+    if(!coachMessages.length) return {ok:false, error:'empty'};
+    if(!getApiKey() || !_fpCovered()) return {ok:false, error:'stale'};
+    _confirmClearChat();
+    return {ok:true};
+  },
+  // Build My Programme: the hub offers it only without a programme; never over setup already running. Over an existing
+  // chat it asks first; setup then presents the chat in setup mode (Cancel, no Back).
+  'coachHome.startIntake':function(){
+    if(!_fp.shown.coachHome) return {ok:false, error:'off'};
+    if(!getApiKey()) return {ok:false, error:'nokey'};
+    if(hasCustomRoutine()) return {ok:false, error:'has-programme'};
+    if(intakeMode) return {ok:false, error:'intake'};
+    if(!_fpCovered()) return {ok:false, error:'stale'};
+    startRoutineIntake();   // not awaited: setup's first turn runs on
+    return {ok:true};
+  },
+  // The connect screen's starter link (only without a programme). The starter is a web overlay: the page selects Log
+  // through its own switchTab (selectTab, no echo) before it paints the overlay, which is announced (sheets).
+  'coachHome.openStarter':function(){
+    if(!_fp.shown.coachHome) return {ok:false, error:'off'};
+    if(hasCustomRoutine()) return {ok:false, error:'has-programme'};
+    switchTab('log');
+    openStarterIntake();
     return {ok:true};
   }
 };
@@ -24515,9 +25291,10 @@ if(_fpPlugin()){
   }};
   // A native screen goes over the page (.overFullScreen), so the page stays visible under it while the app is in use:
   // every visibilitychange while one covers the page goes to the shell, which counts a page hidden while the app was in
-  // use (Settings > About; leaving the app hides it by design, and the shell tells the two apart).
+  // use (Settings > About; leaving the app hides it by design, and the shell tells the two apart). In tabs mode every
+  // one goes (contract 3.8): a tab change that hid the page is counted too.
   document.addEventListener('visibilitychange', function(){
-    if(!_fpCovered()) return;
+    if(!_fp.tabs.mode && !_fpCovered()) return;
     var P=_fpPlugin(); if(!P || typeof P.visibility!=='function') return;
     try{ Promise.resolve(P.visibility({state:String(document.visibilityState||''), at:Date.now()})).catch(function(){}); }catch(e){}
   });
@@ -24531,7 +25308,7 @@ if(_fpPlugin()){
 // trip holds (TrovoShell reset: from the next launch) and the shell's counters (TrovoShell status: the web view leaving
 // its window, the page hidden under a native screen, breaker trips, crash markers). Before, the row showed only for a
 // negotiated chat, so it vanished exactly when the chat was off for a reason. Inert without the flag and TrovoShell.
-var _fpChat={st:null, at:0, busy:false, cbs:[], html:null};
+// Its state, _fpChat, is declared with _fp: the first render reads it when the boot tab is Settings (tabs mode).
 // The native screens this binary has, on or off (the flag's binary; an older flag has none).
 function _fpBinary(s){ var f=_fpShellFlag(); return !!(f && Array.isArray(f.binary) && f.binary.indexOf(s)>=0); }
 function _fpChatOffered(){ return !!(FP_NATIVE && _fpPlugin() && (_fpBinary('coach') || _fpNegotiated('coach') || _fpDeviceOff())); }
@@ -25503,12 +26280,19 @@ function runAutoBackupNow(){
     .catch(function(){ showToast('Backup failed — use Export session log','err'); render(); });
 }
 
-// Deep links (the widget's "Start →" is trovo://start). Warm start: the shell
-// calls window._trovoOpen; cold start: the page consumes the parked URL once.
+// Deep links (the widget's "Start →" is trovo://start; the share extension opens the app with trovo://share). Warm
+// start: the shell calls window._trovoOpen; cold start: the page consumes the parked URL once. Under the native tab bar
+// the shell selects the link's tab first (Log, Coach) and then calls _trovoOpen (a cold start's first frame is that
+// tab), so the page's own switchTab is a selectTab of the selected tab, which moves nothing (contract 9, D24).
 function _handleDeepLink(url){
   url=String(url||'');
   var TW=_plug('TrovoWidget');
   if(TW && TW.consumeDeepLink){ try{ TW.consumeDeepLink().catch(function(){}); }catch(e){} }
+  if(/^trovo:\/\/share/.test(url)){
+    // the shared photo now, not at the boot's +2.5 s or the return's +0.6 s (one reader at a time, after hello)
+    checkPendingShare();
+    return true;
+  }
   if(/^trovo:\/\/start/.test(url)){
     // "Start" means today's session, whatever kind it is: a run day opens
     // the run log, a sport day its tab. Only lift days (and a session in
@@ -25620,6 +26404,10 @@ function _bootDone(){
   _otaConfirm();
   var P=_fpPlugin();
   if(P && P.bootDone){ try{ Promise.resolve(P.bootDone({page:APP_BUILD})).catch(function(){}); }catch(e){} }
+  // Under the native tab bar the shell starts every document with no overlay up: the page's state goes once now,
+  // whatever it is (the sheets baseline, contract 3.4), last and in a try of its own, so nothing of tabs mode comes
+  // between the boot and the OTA confirm.
+  try{ if(_fp.tabs.mode) _fpSheetsSync(); }catch(e){}
 }
 _bootDone();
 </script>

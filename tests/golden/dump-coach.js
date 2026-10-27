@@ -118,9 +118,11 @@ async function build(json) {
   return out;
 }
 
-// The page's models now, as the text each fixture file holds: {name: text}.
-async function pageModels() {
-  const app = await boot({ native: true, shell: 'coach', page: { timezoneId: 'UTC' }, init: CLOCK_INIT, seed: { kt_apikey: 'sk-ant-golden', kt_coach_msgs: '[]' } });
+// The page's models now, as the text each fixture file holds: {name: text}. shell: the shell its boot runs under
+// (build 60's 'coach' by default; tests/golden/dump-coach-home.js builds the same states under 61's 'tabs', where the
+// chat is pushed on the Coach tab: one CoachModel whichever host draws it, contract 6.3).
+async function pageModels(shell) {
+  const app = await boot({ native: true, shell: shell || 'coach', page: { timezoneId: 'UTC' }, init: CLOCK_INIT, seed: { kt_apikey: 'sk-ant-golden', kt_coach_msgs: '[]' } });
   let models;
   try {
     // errors runs offline (the header says so); the rest online
