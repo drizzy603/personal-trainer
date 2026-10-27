@@ -240,8 +240,20 @@ public final class ShellBridge: NSObject {
     /// The launch arguments the launch reads (tests set their own).
     var launchArguments: () -> [String] = { ProcessInfo.processInfo.arguments }
     /// Debug builds: what the App target lets the scenario runner do that FPUI cannot reach itself (ShellProbe's `hook`
-    /// step), by name: "policy" writes a local policy file and fetches it (FPHost FPPolicy).
-    public static var debugHooks: [String: ([String: Any]) -> Void] = [:]
+    /// step, and its steps of the same names; contract 15.3), by name, each given the step and answering the fields of
+    /// its probe event (never a typed text, a comment or a secret): "policy" writes a local policy file and fetches it
+    /// (FPHost FPPolicy); "openURL" opens a URL through the App delegate's `application(_:open:options:)`, a real open's
+    /// path (the URL parked, then `.trovoDeepLink`); "openURLOnActive" arms the same for when the scene next enters the
+    /// foreground, as a widget tap delivers it; "share" writes the App Group's `pendingShare.jpg` and
+    /// `pendingShareComment` as the share extension does, opening nothing; "sceneCycle" replays the scene's connection
+    /// (the closure `StoreProbe.sceneReplay` runs).
+    public static var debugHooks: [String: ([String: Any]) -> [String: Any]] = [:]
+
+    /// Debug builds: an event in the shell probe's log, while one runs (a hook of the App's that acts after its step,
+    /// `openURLOnActive`'s open).
+    public static func probeEvent(_ ev: String, _ fields: [String: Any] = [:]) {
+        ShellProbe.shared?.event(ev, fields)
+    }
     #endif
 
     /// `binary`: the pieces this binary has (tests that model build 60 pass `["coach"]`); `linkConfig`: every link's
@@ -418,8 +430,33 @@ public final class ShellBridge: NSObject {
             held: { [weak root] in root?.held ?? false },
             releaseHold: { [weak root] in root?.releaseHold() }))
         root.hooks = rootHooks(b, root)
+        #if DEBUG
+        relayToProbe(root)
+        #endif
         Self.log.info("shell: the tab root is adopted (\(root.selected, privacy: .public) selected, Coach \(root.coachMode.rawValue, privacy: .public), room \(root.firstRoom, privacy: .public))")
     }
+
+    #if DEBUG
+    /// The probe's view of the tab root (contract 15.3; 11-shell.md H11), while a probe runs (the tests set their own): a
+    /// `funnel` event per funnel run, the root's Debug `onFunnelRun` (the runs it made before this adoption, the first
+    /// frame's among them, logged here once, marked `atAdopt`), and a `screenChanged` event per VoiceOver screen change it
+    /// posts (8.1 step 7), with its selection, seq and Coach mode then and what it announced (`web`, `native`, `none`).
+    @available(iOS 26.0, *)
+    private func relayToProbe(_ root: RootTabController) {
+        guard let probe = ShellProbe.shared else { return }
+        for run in root.funnelRuns { probe.event("funnel", run.json.merging(["atAdopt": true]) { a, _ in a }) }
+        root.onFunnelRun = { run in ShellProbe.shared?.event("funnel", run.json) }
+        let post = root.postScreenChanged
+        let web = root.webView
+        root.postScreenChanged = { [weak root, weak web] argument in
+            post(argument)
+            var target = "native"
+            if argument == nil { target = "none" } else if let w = web, (argument as AnyObject?) === w { target = "web" }
+            ShellProbe.shared?.event("screenChanged", ["target": target, "selected": root?.selected ?? NSNull(), "seq": root?.seq ?? NSNull(),
+                                                      "coachMode": root?.coachMode.rawValue ?? NSNull()])
+        }
+    }
+    #endif
 
     /// The root's hooks (contract 8.1, 8.4, 10.2): each captures the bridge, the binding and the root weakly, as `wire`'s do.
     @available(iOS 26.0, *)
@@ -603,6 +640,17 @@ public final class ShellBridge: NSObject {
             return
         }
         let now = Date()
+        #if DEBUG
+        // the probe hears every message the shell handled, with the moment it came in (contract 15.3), once it is answered
+        // (a refusal apart, as `pageRefused`)
+        var refusal: Error?
+        let answer = done
+        let done: (Result<[String: Any], Error>) -> Void = { r in
+            if case .failure(let e) = r { refusal = e }
+            answer(r)
+        }
+        defer { ShellProbe.shared?.pageMessage(method, message, received: now, refused: refusal) }
+        #endif
         switch message {
         case .hello(let h):
             let (reply, after) = hello(h, b, at: now)
@@ -737,9 +785,6 @@ public final class ShellBridge: NSObject {
             if !on { apply(b.link.fallBack(.switch), b) }
             done(.success(status(b)))
         }
-        #if DEBUG
-        ShellProbe.shared?.pageMessage(method, message)
-        #endif
     }
 
     /// The page's hello (contract 3.2). The link negotiates from the pieces' own checks for the hello's page build and
@@ -1059,12 +1104,33 @@ public final class ShellBridge: NSObject {
             default: break
             }
         }
-        wv.callAsyncJavaScript(Self.trovoOpenSource, arguments: ["url": url.absoluteString], in: nil, in: .page) { result in
+        wv.callAsyncJavaScript(Self.trovoOpenSource, arguments: ["url": url.absoluteString], in: nil, in: .page) { [weak self] result in
             if case .failure(let e) = result {
                 Self.log.error("shell: _trovoOpen failed: \(String(describing: e), privacy: .public)")
             }
+            #if DEBUG
+            self?.probeTrovoOpen(url, result)
+            #endif
         }
     }
+
+    #if DEBUG
+    /// The probe's `trovoOpen` event (contract 15.3): the page's `_trovoOpen` evaluation returned (the start of the bounds a
+    /// share scenario sets, 8.1), whether the page had the handler, and the tab root's selection, seq and hold then.
+    private func probeTrovoOpen(_ url: URL, _ result: Result<Any, Error>) {
+        guard let probe = ShellProbe.shared else { return }
+        var o: [String: Any] = ["url": "\(url.scheme ?? "")://\(url.host ?? "")\(url.path)"]
+        switch result {
+        case .success(let v): o["handled"] = (v as? Bool) ?? NSNull()
+        case .failure(let e): o["error"] = String(describing: e)
+        }
+        if #available(iOS 26.0, *), let b = binding, let root = b.tabRoot as? RootTabController {
+            o["root"] = ["selected": root.selected, "seq": root.seq, "held": root.held, "coachMode": root.coachMode.rawValue,
+                         "fellBack": root.fellBack != nil] as [String: Any]
+        }
+        probe.event("trovoOpen", o)
+    }
+    #endif
 
     /// The owner took a screen down: the page hears coach.back. If it stays on the screen (Back refused, the bridge
     /// failed), the screen goes up again over its placeholder.
@@ -1133,6 +1199,9 @@ public final class ShellBridge: NSObject {
                 // went, none linked) is told apart, so the next hold can ask again
                 let boot = b.link.link?.boot
                 send(.ping, b) { [weak b] outcome in
+                    #if DEBUG
+                    ShellProbe.shared?.event("ping", ["confirming": true, "outcome": outcome.word])
+                    #endif
                     guard let b, let boot else { return }
                     if case .answered = outcome { return }
                     b.link.pingLost(boot: boot)

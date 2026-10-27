@@ -47,9 +47,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             }
         }
         #if DEBUG
-        // tests/native-store.sh's sceneCycle replays a scene connection through SceneDelegate's own teardown and
-        // connection (contract 15.3), so the replay builds the root exactly as a real connection does.
-        StoreProbe.sceneReplay = { scene in (scene.delegate as? SceneDelegate)?.replay(scene) }
+        // The probes' sceneCycle (tests/native-store.sh's through StoreProbe, the shell scenarios' through ShellProbe's
+        // hook) replays a scene connection through SceneDelegate's own teardown and connection (contract 15.3), so the
+        // replay builds the root exactly as a real connection does: one closure for both.
+        let replay: @MainActor (UIWindowScene) -> String? = { scene in (scene.delegate as? SceneDelegate)?.replay(scene) }
+        StoreProbe.sceneReplay = replay
+        Self.installProbeHooks(replay: replay)
         #endif
         return true
     }
@@ -137,6 +140,120 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 }
 
+#if DEBUG
+// ── The shell probe's hooks (Debug builds only) ───────────────────────────────
+// What ShellProbe's steps reach in the App that FPUI cannot (contract 15.3;
+// 11-shell.md H11): a URL opened through this delegate, now or when the scene
+// next enters the foreground; a shared photo written as the share extension
+// writes it; the scene's connection replayed. Each answers its probe event's
+// fields: never a comment's text.
+extension AppDelegate {
+    /// The App Group the share extension writes to (ShareViewController.send) and TrovoShare reads from.
+    private static let shareGroup = "group.app.kt.trainer"
+    /// The open `openURLOnActive` armed, until the scene next enters the foreground.
+    private static var armedOpen: NSObjectProtocol?
+
+    /// ShellBridge.debugHooks' `openURL`, `openURLOnActive`, `share` and `sceneCycle`; `replay` is StoreProbe's.
+    static func installProbeHooks(replay: @escaping @MainActor (UIWindowScene) -> String?) {
+        ShellBridge.debugHooks["openURL"] = { step in
+            guard let url = probeURL(step) else { return ["error": "no url with a scheme"] }
+            return ["url": url.absoluteString, "opened": openThroughDelegate(url)]
+        }
+        ShellBridge.debugHooks["openURLOnActive"] = { step in
+            guard let url = probeURL(step) else { return ["error": "no url with a scheme"] }
+            if let armed = armedOpen { NotificationCenter.default.removeObserver(armed) }
+            armedOpen = NotificationCenter.default.addObserver(forName: UIScene.willEnterForegroundNotification, object: nil, queue: .main) { _ in
+                MainActor.assumeIsolated {
+                    if let armed = armedOpen { NotificationCenter.default.removeObserver(armed) }
+                    armedOpen = nil
+                    let opened = openThroughDelegate(url)
+                    ShellBridge.probeEvent("openURLOnActive", ["url": url.absoluteString, "fired": true, "opened": opened])
+                }
+            }
+            return ["url": url.absoluteString, "armed": true]
+        }
+        ShellBridge.debugHooks["share"] = { step in writeProbeShare(step) }
+        ShellBridge.debugHooks["sceneCycle"] = { _ in
+            guard let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first else {
+                return ["error": "no window scene"]
+            }
+            guard let root = replay(scene) else { return ["error": "the scene's delegate cannot replay a connection"] }
+            return ["root": root, "alive": StoreAttach.shared.pagesAlive]
+        }
+    }
+
+    /// The step's `url`: a URL with a scheme, or nil.
+    private static func probeURL(_ step: [String: Any]) -> URL? {
+        guard let text = step["url"] as? String, let url = URL(string: text), url.scheme?.isEmpty == false else { return nil }
+        return url
+    }
+
+    /// A URL opened as the system opens one under the scene (SceneDelegate's `open`): through
+    /// `application(_:open:options:)`, which parks a trovo:// link for the page's boot and posts `.trovoDeepLink`.
+    private static func openThroughDelegate(_ url: URL) -> Bool {
+        guard let app = UIApplication.shared.delegate as? AppDelegate else { return false }
+        return app.application(UIApplication.shared, open: url, options: [:])
+    }
+
+    /// The share extension's write (ShareViewController.send), made from inside the app (a host's write to the group's
+    /// defaults can go unseen by the app): the JPEG as `pendingShare.jpg` in the App Group's container (`jpeg` names a
+    /// file beside the probe's steps in Documents/fp-probe; with none, a 1600 px photo drawn here, as the extension
+    /// downscales one), the comment as `pendingShareComment` in the group's defaults, the legacy base64 slot removed. A
+    /// build without the App Group's entitlement (the tools' simulator builds, made with CODE_SIGNING_ALLOWED=NO) has no
+    /// group container: the photo then goes to that legacy slot, which TrovoShare's `getPendingShare` reads when no file
+    /// is there (`stored` says which). It opens nothing: a scenario pairs it with `openURL trovo://share`,
+    /// `openURLOnActive` or a return from the background.
+    private static func writeProbeShare(_ step: [String: Any]) -> [String: Any] {
+        guard let defaults = UserDefaults(suiteName: shareGroup) else { return ["error": "no App Group defaults"] }
+        let jpeg: Data
+        var source = "drawn"
+        if let name = step["jpeg"] as? String, !name.isEmpty {
+            let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            guard let data = try? Data(contentsOf: docs.appendingPathComponent("fp-probe").appendingPathComponent(name)) else {
+                return ["error": "no JPEG at Documents/fp-probe/\(name)"]
+            }
+            jpeg = data
+            source = "file"
+        } else {
+            guard let data = probePhoto() else { return ["error": "the photo could not be drawn"] }
+            jpeg = data
+        }
+        var stored = "file"
+        if let dir = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: shareGroup) {
+            do {
+                try jpeg.write(to: dir.appendingPathComponent("pendingShare.jpg"), options: .atomic)
+            } catch {
+                return ["error": "pendingShare.jpg could not be written"]
+            }
+            defaults.removeObject(forKey: "pendingShareImage")
+        } else {
+            defaults.set(jpeg.base64EncodedString(), forKey: "pendingShareImage")
+            stored = "defaults"
+        }
+        let comment = step["comment"] as? String ?? ""
+        defaults.set(comment, forKey: "pendingShareComment")
+        defaults.synchronize()
+        return ["jpeg": source, "bytes": jpeg.count, "stored": stored, "commentLength": comment.count]
+    }
+
+    /// A 1600 x 1200 stand-in photo, JPEG at the extension's quality (0.8).
+    private static func probePhoto() -> Data? {
+        let size = CGSize(width: 1600, height: 1200)
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 1
+        let image = UIGraphicsImageRenderer(size: size, format: format).image { ctx in
+            UIColor(red: 0.04, green: 0.26, blue: 0.96, alpha: 1).setFill()
+            ctx.fill(CGRect(origin: .zero, size: size))
+            UIColor(red: 0.72, green: 0.94, blue: 0, alpha: 1).setFill()
+            ctx.fill(CGRect(x: 200, y: 300, width: 1200, height: 600))
+            ("Probe photo" as NSString).draw(at: CGPoint(x: 260, y: 520), withAttributes: [
+                .font: UIFont.systemFont(ofSize: 160, weight: .heavy), .foregroundColor: UIColor.black])
+        }
+        return image.jpegData(compressionQuality: 0.8)
+    }
+}
+#endif
+
 // ── Plugin registration ───────────────────────────────────────────────────────
 // Capacitor stops runtime-scanning for CAPPlugin subclasses once the generated
 // capacitor.config.json carries a packageClassList (it appeared when the first
@@ -214,6 +331,7 @@ class SuperoViewController: CAPBridgeViewController {
                 let url = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(step["file"] as? String ?? "fp-policy.json")
                 if let text = step["json"] as? String { try? Data(text.utf8).write(to: url) } else { try? FileManager.default.removeItem(at: url) }
                 FPPolicy.shared.fetchIfDue(force: true)
+                return [:]
             }
             #endif
         }
