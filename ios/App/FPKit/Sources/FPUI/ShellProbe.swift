@@ -134,6 +134,10 @@ final class ShellProbe {
     func pageMessage(_ method: String, _ message: PageMessage) {
         switch message {
         case .model(let push):
+            guard push.screen == "coach" else {
+                event("page", ["method": method, "screen": push.screen, "rev": push.rev])
+                return
+            }
             let m = try? CoachModel.decode(push.json)
             event("page", ["method": method, "rev": push.rev, "boot": m?.boot ?? NSNull(), "messages": m?.messages.count ?? -1,
                            "loading": m?.loading ?? NSNull(), "paper": m?.paper ?? NSNull(), "draft": m?.composer.draft?.text ?? NSNull()])
@@ -150,12 +154,18 @@ final class ShellProbe {
             event("page", ["method": method, "text": l.text])
         case .bootDone(let p):
             event("page", ["method": method, "page": p])
-        case .status:
-            event("page", ["method": method])
+        case .status(let refresh):
+            event("page", ["method": method, "refresh": refresh])
         case .reset(let s):
             event("page", ["method": method, "screen": s])
         case .visibility(let v):
             event("page", ["method": method, "state": v.state, "at": v.at ?? NSNull()])
+        case .selectTab(let tab, let intent):
+            event("page", ["method": method, "tab": tab, "intent": intent ?? NSNull()])
+        case .sheets(let open):
+            event("page", ["method": method, "open": open])
+        case .setSwitch(let screen, let on):
+            event("page", ["method": method, "screen": screen, "on": on])
         }
     }
 

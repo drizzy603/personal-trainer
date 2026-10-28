@@ -30,7 +30,33 @@ final class PolicyTests: XCTestCase {
         XCTAssertEqual(newer.facade, .on)
         XCTAssertTrue(newer.screenOn("coach"))
         XCTAssertFalse(newer.screenOn("settings"))
-        XCTAssertNil(newer.screens["tabs"], "a screen this build lacks, with a value it cannot read: ignored")
+        XCTAssertNil(newer.screens["progress"], "a screen this build lacks, with a value it cannot read: ignored")
+    }
+
+    /// Build 61's pieces (contract 10.6): known screens, so an unreadable value makes the file bad; absent means on; the
+    /// two files the owner publishes read as they say.
+    func testBuild61Pieces() throws {
+        XCTAssertEqual(Policy.knownScreens, ["coach", "coachHome", "tabs"])
+        XCTAssertEqual(try parse("bad/tabs-maybe.json").failureValue, .badValue("screens.tabs"))
+        XCTAssertEqual(try parse("bad/coachHome-maybe.json").failureValue, .badValue("screens.coachHome"))
+        let before = try parse("good/m2-before-upload.json").get()
+        XCTAssertEqual(before, Policy(screens: ["coachHome": .off, "tabs": .off]))
+        XCTAssertTrue(before.screenOn("coach"))
+        XCTAssertFalse(before.screenOn("tabs"))
+        XCTAssertFalse(before.screenOn("coachHome"))
+        let on = try parse("good/m2-on.json").get()
+        XCTAssertEqual(on, .defaults)
+        for s in Policy.knownScreens { XCTAssertTrue(Policy.defaults.screenOn(s), "\(s): absent means on") }
+        XCTAssertTrue(try parse("good/coach-off.json").get().screenOn("tabs"), "a file that does not name tabs leaves it on")
+        // a change names the pieces that moved
+        var state = PolicyState()
+        state.record(.body(try file("good/m2-on.json")), at: t0)
+        var change = state.record(.body(try file("good/m2-before-upload.json")), at: t0 + 1)
+        XCTAssertEqual(change.screens, ["coachHome", "tabs"])
+        change = state.record(.body(try file("good/default.json")), at: t0 + 2)
+        XCTAssertEqual(change.screens, ["coachHome", "tabs"], "a file that leaves them out turns them back on")
+        // the repo's policy.json reads as good (the owner publishes the offs before 61 is uploaded)
+        XCTAssertEqual(Policy.parse(Data(#"{"v":1,"store":{"facade":"on","repair":"off"},"screens":{"coach":"on","coachHome":"off","tabs":"off"}}"#.utf8)).failureValue, nil)
     }
 
     /// A bad file changes nothing: not a half-applied one, not the defaults.

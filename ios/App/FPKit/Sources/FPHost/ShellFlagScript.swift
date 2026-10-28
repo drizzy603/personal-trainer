@@ -44,20 +44,23 @@ public enum ShellFlagScript {
 
     /// `binary`: the native screens compiled into this binary (FPCore `ShellContract.binaryScreens`), on or off, so the
     /// page keeps their Settings > About rows and says why one is off.
-    public static func flag(shell: String, screens: [String] = [], binary: [String] = ShellContract.binaryScreens, dev: Dev? = nil) -> ShellFlag {
+    /// `tabs`: the selection and bar prediction, only under a live tab root (contract 2.2).
+    public static func flag(shell: String, screens: [String] = [], binary: [String] = ShellContract.binaryScreens, dev: Dev? = nil,
+                            tabs: TabsFlag? = nil) -> ShellFlag {
         ShellFlag(contract: ShellContract(shell: shell, screens: binary), screens: screens, devNav: dev?.nav, devTheme: dev?.theme,
-                  devAPI: dev?.api)
+                  devAPI: dev?.api, tabs: tabs)
     }
 
     /// The document-start script for this process: the flag with `screens`, and `dev` from the launch arguments in a
     /// Debug build.
-    public static func script(shell: String, screens: [String] = [], arguments: [String] = ProcessInfo.processInfo.arguments) -> String {
+    public static func script(shell: String, screens: [String] = [], tabs: TabsFlag? = nil,
+                              arguments: [String] = ProcessInfo.processInfo.arguments) -> String {
         #if DEBUG
         let dev: Dev? = Dev(arguments: arguments)
         #else
         let dev: Dev? = nil
         #endif
-        return flag(shell: shell, screens: screens, dev: dev).script
+        return flag(shell: shell, screens: screens, dev: dev, tabs: tabs).script
     }
 }
 #endif

@@ -37,8 +37,9 @@ public struct Policy: Codable, Equatable, Sendable {
     public static let version = 1
     /// A file larger than this is bad.
     public static let maxBytes = 64 * 1024
-    /// The screens this build reads switches for.
-    public static let knownScreens = ["coach"]
+    /// The screens this build reads switches for (build 61's pieces, contract 10.6): a value it cannot read for one of
+    /// them makes the file bad.
+    public static let knownScreens = ["coach", "coachHome", "tabs"]
 
     /// The store's facade (shadow mirroring); off: no facade from the next document start.
     public var facade: Switch

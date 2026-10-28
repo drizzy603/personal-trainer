@@ -23,6 +23,11 @@ import WebKit
 //                                           and breaker record go, for the next document; answers the status after
 //   visibility({state, at?})                the page went hidden or visible while a native screen covered it (counted
 //                                           when hidden while the app was in use)
+//   selectTab({tab, intent?})               (61) tabs mode: select a tab before the page's local switch -> {tab, seq};
+//                                           rejects "off: ..." with no live tab root, "bad-tab: ..." for another id
+//   sheets({open})                          (61) tabs mode: an overlay covering the page's bar is open -> {bar}; "off: ..."
+//   setSwitch({screen, on})                 (61) the shell's device switch for tabs -> the status; "no-switch: ..." else
+// status() also takes {refresh: true} (61: a forced policy fetch first). A refusal new in 61 reads "<code>: <words>".
 
 /// What the TrovoShell plugin needs from FPKit. Called on the main thread.
 @MainActor
@@ -47,6 +52,9 @@ public class TrovoShellPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "status", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "reset", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "visibility", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "selectTab", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "sheets", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setSwitch", returnType: CAPPluginReturnPromise),
     ]
 
     /// Set by the App target before registration.
@@ -63,6 +71,9 @@ public class TrovoShellPlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func status(_ call: CAPPluginCall) { forward("status", call) }
     @objc func reset(_ call: CAPPluginCall) { forward("reset", call) }
     @objc func visibility(_ call: CAPPluginCall) { forward("visibility", call) }
+    @objc func selectTab(_ call: CAPPluginCall) { forward("selectTab", call) }
+    @objc func sheets(_ call: CAPPluginCall) { forward("sheets", call) }
+    @objc func setSwitch(_ call: CAPPluginCall) { forward("setSwitch", call) }
 
     /// Calls arrive off the main thread, in the order the page made them; one hop to main keeps that order.
     private func forward(_ method: String, _ call: CAPPluginCall) {
