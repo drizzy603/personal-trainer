@@ -8,7 +8,9 @@ import FPCore
 /// What the Coach tab's navigation stack needs from the tab root, as closures (H7 fills them from RootTabController,
 /// capturing it weakly), so ScreenHost needs none of the root's types: whether Coach is the selected tab; whether the
 /// Coach tab is NATIVE (WAITING and WEB have no visible stack to push onto, contract 1.4); whether the root keeps the
-/// tab blank for a push on its way (the hold, contract 8.1); and how to end that hold.
+/// tab blank for a push on its way (the hold, contract 8.1); and how to end that hold. For the native Coach tab's home
+/// (H10, contract 15.2): how to put it at the stack's bottom (the tab NATIVE), how to turn the tab WEB, where the
+/// newest home model's `resume` goes, and the first frame's room for the home's ground.
 public struct StackState {
     public var selected: @MainActor () -> Bool
     public var native: @MainActor () -> Bool
@@ -18,13 +20,35 @@ public struct StackState {
     /// shown it, so VoiceOver hears the change once, when it is done (probe61: one post per change, on the op's
     /// completion). A hold the root ends itself (its 0.5 s) is the root's to announce.
     public var releaseHold: @MainActor () -> Void
+    /// Puts ScreenHost's home (N's hub or connect screen) at the bottom of the stack, keeping whatever is pushed on it,
+    /// and turns the tab NATIVE (`RootTabController.setHome`). The root covers the page itself when that happens while
+    /// Coach is selected (contract 8.4), so ScreenHost sends no covered of its own for it.
+    public var setHome: @MainActor (UIViewController) -> Void
+    /// Turns the Coach tab WEB: the page draws its own Coach there (`dismiss coachHome`, contract 3.6). The root shows the
+    /// web view and uncovers the page while Coach is selected.
+    public var setWeb: @MainActor () -> Void
+    /// The newest home model's `resume` (contract 6.2): the root holds the home blank on any entry into the tab while it
+    /// is true (8.1, D34).
+    public var setResume: @MainActor (Bool) -> Void
+    /// The first frame's room and paper (contract 6.1): the home's ground until the page's first model.
+    public var room: Room
+    public var paper: Bool
 
     public init(selected: @escaping @MainActor () -> Bool, native: @escaping @MainActor () -> Bool,
-                held: @escaping @MainActor () -> Bool, releaseHold: @escaping @MainActor () -> Void) {
+                held: @escaping @MainActor () -> Bool, releaseHold: @escaping @MainActor () -> Void,
+                setHome: @escaping @MainActor (UIViewController) -> Void = { _ in },
+                setWeb: @escaping @MainActor () -> Void = {},
+                setResume: @escaping @MainActor (Bool) -> Void = { _ in },
+                room: Room = .heavyweight, paper: Bool = true) {
         self.selected = selected
         self.native = native
         self.held = held
         self.releaseHold = releaseHold
+        self.setHome = setHome
+        self.setWeb = setWeb
+        self.setResume = setResume
+        self.room = room
+        self.paper = paper
     }
 }
 
@@ -58,6 +82,14 @@ public struct StackState {
 ///   with no wait running out, no take-off and no refusal while away. Only ScreenHost pushes or pops the chat: a pop it
 ///   did not make (the owner's interactive pop, anyone else's) is the owner's Back once it has finished, and nothing
 ///   when it is cancelled.
+/// - **The native Coach tab's home** (H10, contract 1.4, 3.6, 8.3, 15.2): one CoachHomeStore per binding (`home`, beside
+///   the chat's store), its presses through `hooks.ask` and its toast in the overlay window; every hub model the bridge
+///   decodes goes to it (`update(_:model:)`) and its `resume` to the root's hold. `present("coachHome")` needs the stack
+///   and a model: ScreenHost's own controller of N's `CoachHomeRoot` (made once, reused; the first frame's room for its
+///   ground) goes at the stack's bottom and the tab turns NATIVE (the root covers the page). `dismiss("coachHome")` turns
+///   the tab WEB, then pops a pushed chat (without animation: the stack is hidden by then). `coachHome` is up while that
+///   home is the bottom of a NATIVE stack (hello's `up` names it then, I13), and a document going keeps its model only
+///   then. N's views never see the root, the bridge or the web view; ScreenHost draws no hub string.
 /// - **One transition at a time**: present and dismiss requests (pushes and pops in the stack) queue and run in order,
 ///   each after the one before has finished (UIKit refuses a presentation while another is under way); a dismissal
 ///   queued right behind a present that has not started cancels both. In the stack the next one runs a turn after the
@@ -80,8 +112,8 @@ public struct StackState {
 ///   build>` sits in its marker file, removed when the screen goes and whenever the app stops being active or enters the
 ///   background (written again when it comes back with the screen still up; a screen that goes up while the app is away
 ///   writes none), so only a death on screen leaves one. ShellBridge reads them at launch. In the stack: at most one
-///   Coach-tab marker, for the screen on top of the stack, only while the app is active, Coach is selected and the tab is
-///   NATIVE (contract 10.2, D20).
+///   Coach-tab marker, for the screen on top of the stack (`coach` for the pushed chat, `coachHome` for the home), only
+///   while the app is active, Coach is selected and the tab is NATIVE (contract 10.2, D20).
 /// - **A refused presentation** (UIKit's silence while another controller's presentation is delayed) is noticed by a
 ///   watchdog: the screen is not up, the page shows its own, and the queue goes on.
 /// - **VoiceOver's escape** goes back (Cancel during setup), and the toast window follows the phone's text size live.
@@ -89,7 +121,9 @@ public struct StackState {
 ///   Return), as the web composer's Cmd/Ctrl+Enter does.
 /// - **Toasts and confirms** the page forwards while covered show in a window above every screen (`ShellOverlay`), so
 ///   one outlives the screen it was shown over. A toast sits under the chat's header while the chat is up (in the stack:
-///   on top of the selected Coach tab, not held), else under the status bar.
+///   on top of the selected Coach tab, not held), under the hub's meta row while the home is on top of it instead (its
+///   last report kept: the root reports it once per hub), else under the status bar; the window draws in the room of the
+///   newest model, the chat's or the hub's.
 @MainActor
 public final class ScreenHost: NSObject {
     /// What ScreenHost needs from the shell (ShellBridge).
@@ -154,6 +188,17 @@ public final class ScreenHost: NSObject {
     /// The live chat (plan task C7): the page's newest model (the chat opens on it), the owner's messages on their way,
     /// the composer. It outlives each presentation.
     public let coach: CoachStore
+    /// The native Coach tab's home (N8's store, contract 15.2): the page's newest hub model and where the hub's presses
+    /// go. One per binding, beside `coach`; it outlives every document and every visit to the tab.
+    public let home = CoachHomeStore()
+    /// ScreenHost's controller of N's `CoachHomeRoot` on `home`, made at the first `present("coachHome")` and reused: the
+    /// Coach stack's root while the tab is NATIVE.
+    private var homeHost: ScreenHostingController?
+    /// Where the hub's meta row ends, as it last reported (the toast's anchor while the home is on top of the selected
+    /// tab). Kept across a push and pop of the chat: the root reports it once per hub (N8's probe), not again after a pop.
+    private var homeMetaBottom: CGFloat?
+    /// How the overlay's room is made from the newest model, the chat's or the hub's, at a system text size.
+    private var overlayRoom: ((DynamicTypeSize) -> RoomTheme)?
     private var ops: [Op] = []
     private var busy = false
     /// Screens the owner took down whose page has not yet said dismiss.
@@ -266,6 +311,12 @@ public final class ScreenHost: NSObject {
         }
         self.coach.hooks.back = { [weak self] in self?.userBack("coach") }
         self.coach.hooks.toast = { [weak self] t in self?.overlay.show(toast: t) }
+        // the hub's presses go where the chat's go; its own toast (a key that never reached the page) where the page's do
+        home.hooks.ask = { [weak self] intent, done in
+            guard let self else { return done(.notLinked) }
+            self.hooks.ask(intent, done)
+        }
+        home.hooks.toast = { [weak self] t in self?.overlay.show(toast: t) }
         let nc = NotificationCenter.default
         nc.addObserver(self, selector: #selector(willResignActive), name: UIApplication.willResignActiveNotification, object: nil)
         nc.addObserver(self, selector: #selector(willResignActive), name: UIApplication.didEnterBackgroundNotification, object: nil)
@@ -273,20 +324,30 @@ public final class ScreenHost: NSObject {
         nc.addObserver(self, selector: #selector(textSizeChanged(_:)), name: UIContentSizeCategory.didChangeNotification, object: nil)
     }
 
-    /// The screens up now (presented or going up), in name order.
-    public var shown: [String] { up.keys.sorted() }
+    /// The screens up now (presented or going up, and `coachHome` while its home is the bottom of a NATIVE stack), in name
+    /// order.
+    public var shown: [String] { (homeUp ? up.keys + ["coachHome"] : Array(up.keys)).sorted() }
 
-    public func isUp(_ screen: String) -> Bool { up[screen] != nil }
+    public func isUp(_ screen: String) -> Bool { screen == "coachHome" ? homeUp : up[screen] != nil }
 
     /// The model a screen shows (the page's newest).
     public func model(_ screen: String) -> CoachModel? { screen == "coach" ? coach.model : nil }
+
+    /// `coachHome` is up (contract 1.4, I13): ScreenHost's home is the bottom of the Coach stack and the tab is NATIVE, so a
+    /// new document's hello names it in `up` and the page takes it over with no present.
+    private var homeUp: Bool {
+        guard let s = stack, let h = homeHost, s.nav?.viewControllers.first === h else { return false }
+        return s.state.native()
+    }
 
     // MARK: Requests from the page (through ShellBridge)
 
     /// The page's `present`. The model must have come first (the page pushes it before presenting). In the stack only onto
     /// a NATIVE Coach tab: WAITING and WEB have no visible stack to push onto (the bridge words that `not-native`).
+    /// `coachHome` turns the tab NATIVE on the home's newest model instead (`presentHome`).
     @discardableResult
     public func present(_ screen: String) -> Bool {
+        if screen == "coachHome" { return presentHome() }
         guard model(screen) != nil else { return false }
         if let s = stack, !s.state.native() { return false }
         latched.remove(screen)   // the page went through its dismiss before asking again
@@ -298,8 +359,9 @@ public final class ScreenHost: NSObject {
         return true
     }
 
-    /// The page's `dismiss` (or the shell's own: the screen went off).
+    /// The page's `dismiss` (or the shell's own: the screen went off). `coachHome`: the tab turns WEB (`dismissHome`).
     public func dismiss(_ screen: String) {
+        if screen == "coachHome" { return dismissHome() }
         if up[screen] == nil, latched.remove(screen) != nil {
             Self.log.info("screens: \(screen, privacy: .public) already taken down by the owner; the page's dismiss closes the latch")
             return
@@ -319,12 +381,117 @@ public final class ScreenHost: NSObject {
     /// unless it is stale there too.
     public func update(_ screen: String, model: CoachModel) {
         guard screen == "coach", coach.apply(model) else { return }
-        let theme = RoomTheme(model: model, system: textSize ?? Self.systemTextSize)
-        overlay.setRoom(theme)
+        setOverlayRoom { RoomTheme(model: model, system: $0) }
         if let u = up[screen] {
             u.host.paper = model.paper
             u.host.overrideUserInterfaceStyle = model.paper ? .light : .dark
         }
+    }
+
+    /// A hub model the link accepted (H10, contract 3.7, 6.2): the home's store draws it unless it is stale there too (a
+    /// newer rev of its boot, or any rev of a new boot); the home's controller and the overlay take its room, and the
+    /// root's hold its `resume` (contract 8.1).
+    public func update(_ screen: String, model: CoachHomeModel) {
+        guard screen == "coachHome", home.apply(model) else { return }
+        setOverlayRoom { RoomTheme(home: model, system: $0) }
+        if let h = homeHost {
+            h.paper = model.paper
+            h.overrideUserInterfaceStyle = model.paper ? .light : .dark
+        }
+        stack?.state.setResume(model.resume)
+    }
+
+    /// The overlay draws in the room of the newest model, the chat's or the hub's (a toast forwarded over the hub before
+    /// any chat model came, the store's own toast), at the system text size; `textSizeChanged` makes it again.
+    private func setOverlayRoom(_ make: @escaping (DynamicTypeSize) -> RoomTheme) {
+        overlayRoom = make
+        overlay.setRoom(make(textSize ?? Self.systemTextSize))
+    }
+
+    /// `present("coachHome")` (H10, contract 1.4, 3.6, 15.2): with the Coach tab's stack attached and the home's model in
+    /// (the page pushes it first), ScreenHost's controller of `CoachHomeRoot` (made once, reused) goes at the stack's
+    /// bottom and the tab turns NATIVE through the root, which covers the page while Coach is selected and tells VoiceOver;
+    /// a pushed chat stays on it. Putting it there is a still change of the stack, so the queue's next op (the chat the
+    /// page presents in the same pass) waits for the next turn (`afterStillChange`). False without the stack (no live tab
+    /// root: the bridge words it `not-presentable`) or without a model.
+    private func presentHome() -> Bool {
+        guard let s = stack, let nav = s.nav, home.model != nil else { return false }
+        let h = homeController(s)
+        let replacing = nav.viewControllers.first !== h
+        s.state.setHome(h)
+        if replacing, nav.viewControllers.first === h { afterStillChange() }
+        refreshStack()
+        let route = home.model.map { CoachHomeStore.word($0.route) } ?? "none"
+        Self.log.info("screens: the Coach tab's home is up (\(route, privacy: .public), rev \(self.home.model?.rev ?? 0))")
+        return true
+    }
+
+    /// A still change of the stack made outside the queue (the home put at its bottom): UIKit drops an animated push or pop
+    /// asked in the same turn, without a word, and the page presents the chat right after the home in one pass (its
+    /// `_fpSync`, the two messages handed over back to back). So the queue is busy until the next turn of the main queue,
+    /// as after each of its own ops (`stackOpDone`). An op under way already ends a turn later on its own.
+    private func afterStillChange() {
+        guard !busy else { return }
+        busy = true
+        stackToken += 1
+        let token = stackToken
+        stackNext = token
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.stackNext == token else { return }   // the stack was left meanwhile
+                self.stackNext = nil
+                self.opDone()
+            }
+        }
+    }
+
+    /// ScreenHost's controller of N's `CoachHomeRoot` on `home` (made once per binding, then reused): the first frame's
+    /// room for its ground, the newest model's paper for the status bar and the style (as the chat's controller), a clear
+    /// background (the root draws the ground, and the hold shows the stack's own while it is at alpha 0), and where the
+    /// hub's meta row ends to the toast's anchor. No escape of its own: it is the stack's root, with nothing to go back to.
+    private func homeController(_ s: Stack) -> ScreenHostingController {
+        if let h = homeHost { return h }
+        let root = CoachHomeScreenRoot(store: home, room: s.state.room, paper: s.state.paper) { [weak self] y in
+            self?.homeMetaReported(y)
+        }
+        let h = ScreenHostingController(rootView: AnyView(root))
+        h.paper = home.model?.paper ?? s.state.paper
+        h.overrideUserInterfaceStyle = h.paper ? .light : .dark
+        h.view.backgroundColor = .clear
+        homeHost = h
+        return h
+    }
+
+    /// `dismiss("coachHome")` (contract 3.6, 8.3): the Coach tab turns WEB (the root shows the web view, uncovers the page
+    /// while Coach is selected and tells VoiceOver), then a pushed chat comes off, without animation since the stack is
+    /// hidden by then: VoiceOver hears the page once and no hub marker is written on the way. The page's own dismiss of
+    /// the chat that follows finds it gone. Nothing without the stack.
+    private func dismissHome() {
+        guard let s = stack else { return }
+        s.state.setWeb()
+        if up["coach"]?.kind == .stack { dismiss("coach") }
+        refreshStack()
+    }
+
+    /// The hub's meta row reported where it ends (0: no row, or under the status bar).
+    private func homeMetaReported(_ y: CGFloat) {
+        homeMetaBottom = y > 0 ? y : nil
+        refreshStackAnchor()
+    }
+
+    /// ScreenHost's home is the bottom of a navigation stack (the Coach tab's, where `presentHome` put it; it stays there
+    /// after the fallback, hidden with the stack).
+    private var homeAtBottom: Bool {
+        guard let h = homeHost, let nav = h.navigationController else { return false }
+        return nav.viewControllers.first === h
+    }
+
+    /// The home's route for the root's `describe()` (`coach.root`): the newest model's (`hub`, `connect`, a newer page's
+    /// own), `ground` with none (before the first, or once the store was torn down), `home` while ScreenHost's home is not
+    /// a stack's bottom.
+    public var homeRoute: String {
+        guard homeAtBottom else { return "home" }
+        return home.model.map { CoachHomeStore.word($0.route) } ?? "ground"
     }
 
     /// A toast the page forwarded while covered.
@@ -395,14 +562,20 @@ public final class ScreenHost: NSObject {
 
     /// A document went: the model of a screen that is not up belongs to it and goes (a screen opens on its own
     /// document's model); a screen up keeps its model until the next document's resync, and the owner's messages on
-    /// their way wait for that model (CoachStore).
+    /// their way wait for that model (CoachStore). The home's model stays drawn while `coachHome` is up (the tab NATIVE,
+    /// contract 1.4, 8.3: until the next document's takeover and snapshot); otherwise it goes, and the hold's `resume`
+    /// with it.
     public func forgetModels(exceptUp: Bool) {
         coach.documentGone(chatUp: exceptUp && up["coach"] != nil)
+        let keep = exceptUp && homeUp
+        home.documentGone(keep: keep)
+        if !keep { stack?.state.setResume(false) }
     }
 
     /// Every screen down at once, with no animation (the scene is going; the link is gone for good). The owner's
     /// messages still on their way go back in the composer, kept for the next chat. In the stack the chat is popped and
-    /// its marker removed first, and the web view's accessibility is left to the root (contract 8.4).
+    /// its marker removed first, and the web view's accessibility is left to the root (contract 8.4). The home's store
+    /// is torn down (its model, a key on its way, the key field).
     public func tearDown() {
         let stacked = stack != nil
         leaveStack(why: "teardown")
@@ -417,6 +590,7 @@ public final class ScreenHost: NSObject {
         overlay.show(toast: nil)
         if !stacked { webView?.accessibilityElementsHidden = false }
         coach.tearDown()
+        home.tearDown()
     }
 
     // MARK: The queue
@@ -610,9 +784,12 @@ public final class ScreenHost: NSObject {
 
     /// The tab root fell back (contract 10.3): the chat is popped without animation, the pushes and pops still queued go
     /// (the fallback turns the chat off for this document: a queued push must not come back as the overlay), the marker
-    /// goes, the stack gets its delegates back, and every later present is build 60's `.overFullScreen` overlay.
+    /// goes, the stack gets its delegates back, and every later present is build 60's `.overFullScreen` overlay. The
+    /// home's store is torn down (the fallback's drop, contract 15.2): the Coach tab is WEB for the rest of the scene, and
+    /// its hidden home draws the ground.
     public func detachStack() {
         leaveStack(why: "the tab root fell back")
+        home.tearDown()
     }
 
     /// Whether the chat goes in the Coach tab's stack rather than over the page.
@@ -890,10 +1067,13 @@ public final class ScreenHost: NSObject {
         postScreenChanged(top)
     }
 
-    /// The screen on top of the stack, when it is one of ScreenHost's (H10 adds the hub, `coachHome`).
+    /// The screen on top of the stack, when it is one of ScreenHost's: `coach` (the pushed chat) or `coachHome` (the
+    /// home, ScreenHost's controller of N's root). Nil for anyone else's (the WAITING ground).
     private func stackTop() -> String? {
-        guard let nav = stack?.nav, let u = up["coach"], u.kind == .stack, nav.topViewController === u.host else { return nil }
-        return "coach"
+        guard let top = stack?.nav?.topViewController else { return nil }
+        if let u = up["coach"], u.kind == .stack, top === u.host { return "coach" }
+        if let h = homeHost, top === h { return "coachHome" }
+        return nil
     }
 
     /// The marker and the toast's anchor from the stack as it stands (idempotent: a repeated `didShow` changes nothing).
@@ -916,12 +1096,18 @@ public final class ScreenHost: NSObject {
         stackMarker = want
     }
 
-    /// The toast's anchor (contract 8.3): under the chat's header while it is on top of the selected NATIVE Coach tab and
-    /// the root not held, else under the status bar (WAITING and WEB show no stack; held; Coach not selected).
+    /// The toast's anchor (contract 8.3): on the selected NATIVE Coach tab, the root not held, under the chat's header
+    /// while the chat is on top and under the hub's meta row while the home is (the hub or the connect screen); else under
+    /// the status bar (WAITING and WEB show no stack; held; Coach not selected). A pop resets the chat's, and the hub's
+    /// last report stands again.
     private func refreshStackAnchor() {
         guard let s = stack else { return }
-        let chatShown = stackTop() == "coach" && s.state.selected() && s.state.native() && !s.state.held()
-        overlay.setAnchor(chatShown ? chatHeaderBottom : nil)
+        let seen = s.state.selected() && s.state.native() && !s.state.held()
+        switch seen ? stackTop() : nil {
+        case "coach"?: overlay.setAnchor(chatHeaderBottom)
+        case "coachHome"?: overlay.setAnchor(homeMetaBottom)
+        default: overlay.setAnchor(nil)
+        }
     }
 
     /// The pushed chat's header reported where it ends.
@@ -1185,14 +1371,14 @@ public final class ScreenHost: NSObject {
 
     // MARK: The system text size
 
-    /// The phone's text size changed with a screen or a toast up: the overlay's toasts follow it at once (the chat itself
-    /// follows its traits), clamped by the model's toggle as the chat's are.
+    /// The phone's text size changed with a screen or a toast up: the overlay's toasts follow it at once (the chat and the
+    /// hub themselves follow their traits), clamped by the newest model's toggle as the chat's are.
     @objc private func textSizeChanged(_ note: Notification) {
         let raw = note.userInfo?[UIContentSizeCategory.newValueUserInfoKey]
         let category = (raw as? UIContentSizeCategory) ?? (raw as? String).map(UIContentSizeCategory.init(rawValue:))
             ?? UIApplication.shared.preferredContentSizeCategory
         textSize = DynamicTypeSize(category) ?? .large
-        if let m = coach.model { overlay.setRoom(RoomTheme(model: m, system: textSize ?? Self.systemTextSize)) }
+        if let make = overlayRoom { overlay.setRoom(make(textSize ?? Self.systemTextSize)) }
     }
 
     /// The system text size the screens draw at (clamped by the model's toggle in RoomTheme).
@@ -1202,8 +1388,12 @@ public final class ScreenHost: NSObject {
 
     // MARK: For the probe
 
-    /// The view of a screen that is up (the probe's presses find its controls there).
-    func hostView(_ screen: String) -> UIView? { up[screen]?.host.view }
+    /// The view of a screen that is up (the probe's presses find its controls there); for `coachHome` the stack's root
+    /// view while it is ScreenHost's home (the hub or the connect screen, H11's `press {where: "hub"}`).
+    func hostView(_ screen: String) -> UIView? {
+        if screen == "coachHome" { return homeAtBottom ? homeHost?.viewIfLoaded : nil }
+        return up[screen]?.host.view
+    }
 
     /// The first text field or view of the screen up (the probe's tap into the native composer); in the stack, of the
     /// screen on top of it (the pushed chat's composer, the hub's key field).
@@ -1277,13 +1467,16 @@ public final class ScreenHost: NSObject {
             "up": shown, "screens": screens, "latched": latched.sorted(), "ops": ops.count, "busy": busy,
             "webViewInWindow": webView?.window != nil, "webViewA11yHidden": webView?.accessibilityElementsHidden ?? NSNull(),
             "overlay": overlay.describe(), "markers": markers.lines(), "transitions": transitions, "restored": restored,
-            "coach": coach.describe(), "mode": stack != nil ? "stack" : "overlay", "stack": describeStack(),
+            "coach": coach.describe(), "home": home.describe(), "mode": stack != nil ? "stack" : "overlay",
+            "stack": describeStack(),
         ]
     }
 
-    /// The stack's state for the probe: `selected`, `held`, `depth`, `top` (`coach` with the chat on top, `root` for the
-    /// stack's root), `interactivePop` (whether it would begin now), `contentPop` (iOS 26's content pop on: false while
-    /// attached, null below iOS 26), and what is under way (`waitHeldByUIKit`: an op UIKit holds until the tab is back).
+    /// The stack's state for the probe: `selected`, `held`, `depth`, `top` (`coach` with the chat on top, `coachHome` with
+    /// the home, `root` for anyone else's root), `interactivePop` (whether it would begin now), `contentPop` (iOS 26's
+    /// content pop on: false while attached, null below iOS 26), what is under way (`waitHeldByUIKit`: an op UIKit holds
+    /// until the tab is back), and the home's (H10): `homeRoute` and `homeRev` of its newest model, `connecting` (a key on
+    /// its way) and `keyField` (`empty` or `typed`, never the field's text, contract 5).
     private func describeStack() -> Any {
         guard let s = stack else { return NSNull() }
         let nav = s.nav
@@ -1299,6 +1492,10 @@ public final class ScreenHost: NSObject {
             "waitHeldByUIKit": stackWait?.heldByUIKit ?? false,
             "foreignPop": foreignPop.map { $0.interactive ? "interactive" : "pop" } ?? NSNull(),
             "standingDown": stackStoodDown,
+            "homeRoute": home.model.map { CoachHomeStore.word($0.route) } ?? NSNull(),
+            "homeRev": home.model?.rev ?? NSNull(),
+            "connecting": home.connecting,
+            "keyField": home.keyFieldTyped ? "typed" : "empty",
         ] as [String: Any]
     }
 }
@@ -1410,6 +1607,27 @@ struct CoachScreenRoot: View {
                     MainActor.assumeIsolated { headerBottom(y) }
                 }
         }
+    }
+}
+
+// MARK: - The native Coach tab's home
+
+/// N's `CoachHomeRoot` (contract 15.2: the hub or the connect screen on the store's newest model, the room's ground until
+/// one) as ScreenHost hosts it, as the Coach stack's root: where the hub's meta row ends goes to ScreenHost (the toast's
+/// anchor, contract 8.3), as the chat's header does from `CoachScreenRoot`. Nothing else is added: N draws, H hosts.
+struct CoachHomeScreenRoot: View {
+    let store: CoachHomeStore
+    /// The first frame's room and paper (contract 6.1), for the ground.
+    let room: Room
+    let paper: Bool
+    /// Where the meta row ends, in window coordinates, each time it changes (0: no row, or scrolled under the status bar).
+    let metaBottom: (CGFloat) -> Void
+
+    var body: some View {
+        CoachHomeRoot(store: store, room: room, paper: paper)
+            .onPreferenceChange(HubHeaderBottomKey.self) { y in
+                MainActor.assumeIsolated { metaBottom(y) }
+            }
     }
 }
 
@@ -1560,10 +1778,25 @@ final class ShellOverlay {
             window.frame = screen
         } else {
             let top = anchor ?? (window.windowScene?.windows.first { $0.isKeyWindow && $0 !== window }?.safeAreaInsets.top ?? 47)
-            let height = toast.map { Self.toastHeight($0, theme: theme, width: screen.width) } ?? 0
+            let height = toast.map { stripHeight($0, width: screen.width) } ?? 0
             window.frame = CGRect(x: 0, y: top + theme.px(8), width: screen.width, height: height)
         }
         window.isHidden = false
+    }
+
+    /// The toast measured last: its strip's height for that toast, room and width. The hub's meta row moves as the hub
+    /// scrolls, each step a new anchor and a new layout (N7's review): the strip only moves then, measured once.
+    private var measured: (toast: ToastRequest, theme: RoomTheme, width: CGFloat, height: CGFloat)?
+    /// Toasts measured (tests read it).
+    private(set) var measures = 0
+
+    /// The strip's height for `t`: measured anew only for another toast, room or width.
+    func stripHeight(_ t: ToastRequest, width: CGFloat) -> CGFloat {
+        if let m = measured, m.toast == t, m.theme == theme, m.width == width { return m.height }
+        let h = Self.toastHeight(t, theme: theme, width: width)
+        measures += 1
+        measured = (t, theme, width, h)
+        return h
     }
 
     /// The toast's strip at this width: the toast measured on a controller of its own, so it is the toast being shown
