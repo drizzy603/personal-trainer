@@ -24,7 +24,9 @@
 //   comment in the web composer alone; hidden time does not count (tabs); a hello later than that bound (tabs, 5 s)
 //   still puts the comment in the native composer. No bridge (none): the web composer alone, no _fp.draft.
 //   The wait's other ends: a hello that throws (60) lets the share be read at the link (the web composer alone); under
-//   tabs the failsafe leaving tabs mode (hello silent, 1 s of visible time) lets it go then, before the 3 s bound.
+//   tabs the failsafe leaving tabs mode (hello silent, 1 s of visible time, hidden until the link is taken in tabs
+//   mode) lets it go then, before the 3 s bound; when the head's own way out came before the main script ran (the
+//   parser held between them until it), the page boots out of tabs mode and the read goes at the link.
 // - No key: a share lands on the connect route with _fp.draft holding the comment; after Connect (coachHome.setKey
 //   under tabs; setApiKey and render under build 60's coach) the chat is presented with that draft and the photo.
 // - dev.nav under tabs (spec 121's case there; 121 unchanged): log/workout, progress, coach and settings, each with
@@ -488,8 +490,46 @@ serial('a hello that never answers (build 60\'s coach) lets the read through at 
   } finally { await app.close(); }
 });
 
+// The page lane gate's probe, made deterministic (spec 122's PF case holds the parser the same way): a parser-blocking
+// script right after the head script's end, from a server of the case's own that answers it only when the page asks
+// (GET /release), which the page does once the head's way out has been seen (window.__fpTabsTold and exactly one dismiss
+// tabs recorded). The event loop, and with it the head's failsafe, runs while the main script waits, for as long as that
+// takes and never for a set time; a hold nothing released is answered after 15 s as 'timeout' (the case fails on it).
+// The poll asks by XMLHttpRequest (INIT's fetch answers only the coach API) and stops once, with the setInterval and
+// clearInterval it started with (an init script runs before Playwright's clock is installed, so its own timers are the
+// page's real ones, while a clearInterval called later would be the clock's).
+const http = require('http');
+async function parserHold() {
+  const held = [], st = { released: null };
+  const answer = (res) => { res.writeHead(200, { 'Content-Type': 'text/javascript', 'Cache-Control': 'no-store' }); res.end('window.__heldScript = true;'); };
+  const release = (why) => { if (!st.released) st.released = why; held.splice(0).forEach(answer); };
+  const srv = http.createServer((req, res) => {
+    const p = req.url.split('?')[0];
+    if (p === '/hold.js') { if (st.released) answer(res); else held.push(res); return; }
+    if (p === '/release') { release('page'); res.writeHead(204, { 'Access-Control-Allow-Origin': '*' }); res.end(); return; }
+    res.writeHead(404); res.end();
+  });
+  await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+  const base = 'http://127.0.0.1:' + srv.address().port;
+  const valve = setTimeout(() => release('timeout'), 15000);
+  return {
+    st,
+    html: (src) => {
+      const end = '</script>\n<title>', at = src.indexOf(end);
+      if (at < 0 || src.indexOf(end, at + 1) >= 0) throw new Error('spec 130: not one end of the head script');
+      return src.slice(0, at + 9) + '\n<script src="' + base + '/hold.js"></script>' + src.slice(at + 9);
+    },
+    init: '(function () { var si = window.setInterval, ci = window.clearInterval, done = false, t = si(function () { var s = window.__fpShell;'
+      + ' if (done || window.__fpTabsTold !== true || !s) return;'
+      + ' if (s.calls.filter(function (c) { return c[0] === "dismiss" && c[1] && c[1].screen === "tabs"; }).length !== 1) return;'
+      + ' done = true; ci(t); window.__holdSeen = { fp: typeof window._fp, render: typeof window.render };'
+      + ' var x = new XMLHttpRequest(); x.open("GET", "' + base + '/release", true); x.send(); }, 10); })();',
+    close: () => { clearTimeout(valve); release('closed'); try { srv.closeAllConnections(); } catch (e) {} srv.close(); },
+  };
+}
+
 // The wait's other two ends (contract 9, D46): hello failed, or the page left tabs mode.
-serial('the read waits no longer once hello has failed or the page has left tabs mode: a hello that throws (build 60\'s coach) lets the parked share be read at the link, the comment in the web composer alone; under tabs, hello silent, the failsafe at 1 s of visible time leaves tabs mode and the read goes then, long before its 3 s bound, the comment in both drafts', async () => {
+serial('the read waits no longer once hello has failed or the page has left tabs mode: a hello that throws (build 60\'s coach) lets the parked share be read at the link, the comment in the web composer alone; under tabs, hello silent, the failsafe at 1 s of visible time leaves tabs mode and the read goes then, long before its 3 s bound, the comment in both drafts; when the head\'s own way out came before the main script ran (the parser held between them until it), the page boots out of tabs mode and the read goes at the link, the comment in both drafts', async () => {
   let app = await pageBoot('coach', { init: COLD_SHARE + 'window.__fpShellThrow = ["hello"];' });
   try {
     await app.page.waitForFunction(() => window.__reads.length > 0, null, { timeout: 15000 });
@@ -500,21 +540,55 @@ serial('the read waits no longer once hello has failed or the page has left tabs
     assert(m.tab === 'coach' && m.view === 'chat' && m.photo && m.box === WORDS && m.draft === null,
       'the web chat with the photo, the comment in the web composer alone (hello failed: no native chat to come): ' + J(m));
   } finally { await app.close(); }
-  app = await pageBoot(TABS('coach'), { clock: { time: Date.now() }, init: COLD_SHARE + 'window.__fpShellHelloSilent = true; window.__fpTabsFailsafeMs = 1000;' });
+  // Hidden (HIDDEN's __vis) until the parked link has been taken in tabs mode, so the failsafe counts no time before
+  // that: visible from the start, a parser held short of the main script for 1 s of visible time let the head's own
+  // way out come first (seen at the page lane's gate: why 'off'); that timing is the next boot's.
+  app = await pageBoot(TABS('coach'), { clock: { time: Date.now() },
+    init: HIDDEN + 'window.__vis = "hidden";' + COLD_SHARE + 'window.__fpShellHelloSilent = true; window.__fpTabsFailsafeMs = 1000;' });
   try {
     await pause(app);
-    const h0 = await helloOf(app);
-    await runTo(app, h0.at + 2200);
+    const l = await linkOf(app);
+    const pre = await ev(app, () => ({ mode: _fp.tabs.mode, asked: _fp.tabs.asked, hello: !!_fp.hello, reads: __reads.length,
+      dismiss: __fpShell.calls.filter((c) => c[0] === 'dismiss' && c[1] && c[1].screen === 'tabs').length }));
+    assert(pre.mode && pre.asked && !pre.hello && pre.reads === 0 && pre.dismiss === 0 && l.length === 1 && l[0].mode === 'waiting' && l[0].covered === true,
+      'hidden: in tabs mode with its hello out, the link taken under the WAITING Coach tab, nothing read yet: ' + J([pre, l]));
+    const shown = await ev(app, () => { window.__vis = 'visible'; return performance.now(); });
+    await runTo(app, shown + 1600);
     await runFor(app, 300);
     const m = await look(app, 0);
     const t = await ev(app, () => ({ left: _fp.tabs.left, why: _fp.tabs.why }));
     assert(t.left && t.why === 'no-hello', 'the failsafe left tabs mode: ' + J(t));
     assert(m.links.length === 1 && m.links[0].covered === true && m.reads.length >= 1 && m.reads[0].got && !m.reads[0].hello
-      && m.reads[0].at - m.links[0].at < 2000 && m.reads.slice(1).every((r) => r.got === false),
-      'the read at the leave, long before its 3 s bound (a later check finds nothing): ' + J([m.links, m.reads]));
+      && m.reads[0].at - shown >= 999 && m.reads[0].at - m.links[0].at < 2000 && m.reads.slice(1).every((r) => r.got === false),
+      'the read at the leave (1 s of visible time after the show), long before its 3 s bound (a later check finds nothing): ' + J([m.links, m.reads, shown]));
     assert(m.tab === 'coach' && m.view === 'chat' && m.photo && m.box === WORDS && m.draft && m.draft.text === WORDS,
       'the web chat with the photo, the comment in both drafts (hello still out): ' + J(m));
   } finally { await app.close(); }
+  // The same boot with the head's way out first: the parser held after the head script until the failsafe (1 s of
+  // visible time, no hello yet) has left. The page then boots out of tabs mode as one that left at boot (told, no-hello,
+  // its hello naming coach alone), so the read waits for no hello and goes at the link, the comment in both drafts.
+  const hold = await parserHold();
+  app = null;
+  try {
+    app = await pageBoot(TABS('coach'), { clock: { time: Date.now() }, html: hold.html,
+      init: COLD_SHARE + hold.init + 'window.__fpShellHelloSilent = true; window.__fpTabsFailsafeMs = 1000;' });
+    await pause(app);
+    const l = await linkOf(app);
+    await runTo(app, l[0].at + 600);
+    await runFor(app, 100);
+    const m = await look(app, 0);
+    const h = await helloOf(app);
+    const t = await ev(app, () => ({ mode: _fp.tabs.mode, left: _fp.tabs.left, why: _fp.tabs.why, told: _fp.tabs.told, asked: _fp.tabs.asked,
+      dismiss: __fpShell.calls.filter((c) => c[0] === 'dismiss' && c[1] && c[1].screen === 'tabs').length, seen: window.__holdSeen || null }));
+    assert(hold.st.released === 'page' && t.seen && t.seen.fp === 'undefined' && t.seen.render === 'undefined',
+      'the head\'s way out came while the parser held the main script (released at the page\'s word): ' + J([hold.st, t.seen]));
+    assert(!t.mode && t.left && t.why === 'no-hello' && t.told && t.asked === false && t.dismiss === 1 && h && J(h.args.screens) === '["coach"]' && !h.answer,
+      'out of tabs mode from the boot, told, one dismiss tabs, its hello naming coach alone (still out): ' + J([t, h]));
+    assert(l.length === 1 && l[0].tab === 'coach' && l[0].mode === null && l[0].covered === false && m.reads.length === 1 && m.reads[0].got && !m.reads[0].hello
+      && m.reads[0].at - l[0].at < 500, 'the link taken out of tabs mode on Coach, and the share read at it (no wait for hello): ' + J([l, m.reads]));
+    assert(m.tab === 'coach' && m.view === 'chat' && m.photo && m.box === WORDS && m.draft && m.draft.text === WORDS,
+      'the web chat with the photo, the comment in both drafts (hello still out): ' + J(m));
+  } finally { if (app) await app.close(); hold.close(); }
 });
 
 // ── No key ────────────────────────────────────────────────────────────────────────────────────────────────────────

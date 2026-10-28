@@ -24,6 +24,10 @@
 //   leave and the take-over), the failsafe on visible time (real time and Playwright's clock; on the clock, a
 //   suspension between a hide and a show adds nothing and no stretch counts more than 1 s), and a broken page still
 //   drops the bar (whatever state its main script reached; told, and the chat kept when no hello asked for tabs).
+// - The head's way out before the main script ran (page follow-up PF; contract 2.3, 10.3), the parser held between the
+//   two scripts until it came: the way out holds for the document, as one that left at boot (told, no-hello, one
+//   dismiss tabs, the class never back, its own bar on the boot tab), hello names coach alone, so the chat stays on and
+//   presents once on the classic rule, the share read waits for no hello, and a late reply naming tabs changes nothing.
 // Every native boot names its shell (the mark above): FP_SHELL_INERT runs skip this spec.
 const { boot, assert, run, SHELLS, SHELL_METHODS, MOCK_RULES, BASE_PAGE, shellFlag } = require('../lib/harness');
 
@@ -1086,4 +1090,135 @@ serial('P2: a broken page still drops the native bar (the head failsafe\'s own w
     fellBackPage(o, 'the way out threw at boot');
     assert(e.confirms === 1 && e.bootDone === 1 && tw.errors.length === 0, 'the way out threw at boot: the OTA confirm and bootDone still ran: ' + J([e, tw.errors]));
   } finally { await tw.close(); }
+});
+
+// ── P2 follow-up (PF): the head failsafe's way out before the main script ran ─────────────────────────────────────────
+// The parser held between the head script and the main script (the page lane gate's probe, made deterministic): a
+// parser-blocking script right after the head script's end, from a server of the case's own that answers it only when
+// the page asks (GET /release). The page asks once the head's way out has been seen (window.__fpTabsTold and exactly one
+// dismiss tabs recorded), from a 10 ms poll its init installs, so the event loop, and with it the head's failsafe, runs
+// while the main script waits, for as long as that condition takes and never for a set time. A hold that nothing
+// released is answered after 15 s as 'timeout': the case then fails on `released`, and the run never hangs.
+const http = require('http');
+async function parserHold() {
+  const held = [], st = { released: null };
+  const answer = (res) => { res.writeHead(200, { 'Content-Type': 'text/javascript', 'Cache-Control': 'no-store' }); res.end('window.__heldScript = true;'); };
+  const release = (why) => { if (!st.released) st.released = why; held.splice(0).forEach(answer); };
+  const srv = http.createServer((req, res) => {
+    const p = req.url.split('?')[0];
+    if (p === '/hold.js') { if (st.released) answer(res); else held.push(res); return; }
+    if (p === '/release') { release('page'); res.writeHead(204, { 'Access-Control-Allow-Origin': '*' }); res.end(); return; }
+    res.writeHead(404); res.end();
+  });
+  await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+  const base = 'http://127.0.0.1:' + srv.address().port;
+  const valve = setTimeout(() => release('timeout'), 15000);
+  return {
+    st,
+    html: (src) => {
+      const end = '</script>\n<title>', at = src.indexOf(end);
+      if (at < 0 || src.indexOf(end, at + 1) >= 0) throw new Error('spec 122: not one end of the head script');
+      return src.slice(0, at + 9) + '\n<script src="' + base + '/hold.js"></script>' + src.slice(at + 9);
+    },
+    // __holdSeen: the page as the poll saw it at the release (_fp and render are the main script's: undefined there).
+    // The poll stops once, with the setInterval and clearInterval it started with (as spec 130's, under a clock).
+    init: '(function () { var si = window.setInterval, ci = window.clearInterval, done = false, t = si(function () { var s = window.__fpShell;'
+      + ' if (done || window.__fpTabsTold !== true || !s) return;'
+      + ' if (s.calls.filter(function (c) { return c[0] === "dismiss" && c[1] && c[1].screen === "tabs"; }).length !== 1) return;'
+      + ' done = true; ci(t);'
+      + ' window.__holdSeen = { fp: typeof window._fp, render: typeof window.render, cls: document.documentElement.classList.contains("fp-tabs"),'
+      + ' calls: s.calls.map(function (c) { return c[0]; }) };'
+      + ' var x = new XMLHttpRequest(); x.open("GET", "' + base + '/release", true); x.send(); }, 10); })();',
+    close: () => { clearTimeout(valve); release('closed'); try { srv.closeAllConnections(); } catch (e) {} srv.close(); },
+  };
+}
+// Every value <html>'s class takes, as fp-tabs on (1) or off (0), from before the head script on: each change's old
+// value in order (a MutationObserver on the document, from init, so it sees the head's own change), then the class now.
+const CLASS_WATCH = 'window.__cls = []; new MutationObserver(function (ms) { ms.forEach(function (m) {'
+  + ' if (m.target === document.documentElement) window.__cls.push(/(^|\\s)fp-tabs(\\s|$)/.test(m.oldValue || "") ? 1 : 0); }); })'
+  + '.observe(document, { subtree: true, attributes: true, attributeFilter: ["class"], attributeOldValue: true });';
+const classSeq = (app) => ev(app, () => window.__cls.concat([document.documentElement.classList.contains('fp-tabs') ? 1 : 0]));
+// on (the head's test), off (its way out), and never on again
+const classOnce = (s) => { const on = s.indexOf(1), off = s.indexOf(0, on + 1); return on >= 0 && off > on && s.indexOf(1, off) < 0; };
+
+serial('P2 follow-up: the head failsafe\'s way out came before the main script ran (the parser held between them until it): the document stays out of tabs mode as one that left at boot (told, no-hello, one dismiss tabs, the class and the bar\'s numbers never back, its own bar on the boot tab: the flag\'s, fp_tab over it); hello names coach alone, so the chat stays on and presents once on the classic rule; the share read waits for no hello; a late reply naming tabs changes nothing; the first render and _bootDone ran', async () => {
+  const rows = [
+    // tag, the flag's selected, fp_tab, hello silent at boot, the tab the page boots on
+    ['the flag\'s Coach', 'coach', null, false, 'coach'],
+    ['fp_tab Settings over the flag\'s Coach, hello silent', 'coach', 'settings', true, 'settings'],
+  ];
+  for (const [tag, selected, fpTab, silent, tab] of rows) {
+    const hold = await parserHold();
+    let app = null;
+    try {
+      app = await pageBoot(TABS({ bar: BAR, selected }), { html: hold.html, seed: { kt_apikey: 'sk-ant-test' },
+        init: OTA + CLASS_WATCH + hold.init + 'window.__fpTabsFailsafeMs = 400;'
+          + (fpTab ? 'sessionStorage.setItem("fp_tab", "' + fpTab + '");' : '') + (silent ? 'window.__fpShellHelloSilent = true;' : '') });
+      if (!silent) await helloIn(app);
+      await settle(app, 100);
+      const seen = await ev(app, () => window.__holdSeen || null);
+      assert(hold.st.released === 'page' && seen && seen.fp === 'undefined' && seen.render === 'undefined' && !seen.cls && J(seen.calls) === '["dismiss"]',
+        tag + ': the head\'s way out came while the parser held the main script (released at the page\'s word, not the valve: no _fp, no render, the class off, one dismiss and no other call): ' + J([hold.st, seen]));
+      const o = await look(app);
+      const x = await ev(app, () => ({ asked: _fp.tabs.asked, offHome: _fp.off.coachHome || null, declared: _fp.declared.coachHome || null,
+        calls: __fpShell.calls.map((c) => c[0]), confirms: window.__otaConfirms || 0, bootDone: __fpShell.of('bootDone').length,
+        screen: document.getElementById('screen').children.length, err: JSON.parse(localStorage.getItem('kt_err_log') || '[]').map((e) => e.m) }));
+      classicLook(o, tag);
+      assert(!o.mode && o.left && o.told && o.why === 'no-hello' && x.asked === false,
+        tag + ': out of tabs mode for the document as one that left at boot: told, no-hello, no hello asked for tabs: ' + J([o, x.asked]));
+      assert(o.tab === tab && routeTab(o) === tab && o.active === tab, tag + ': its own bar and the screen on ' + tab + ': ' + J([o.tab, o.route, o.active]));
+      assert(J(o.tabsCalls) === J([['dismiss', { screen: 'tabs' }]]) && x.calls[0] === 'dismiss',
+        tag + ': exactly one dismiss tabs, the head\'s, before any other call; no selectTab, sheets or setSwitch: ' + J([o.tabsCalls, x.calls]));
+      assert(o.hello.length === 1 && J(o.hello[0].screens) === '["coach"]', tag + ': hello names coach alone: ' + J(o.hello));
+      assert(o.offCoach === null && x.offHome === 'tabs' && x.declared === 'dismiss', tag + ': the chat not taken off; the Coach tab the web\'s for the document: ' + J([o.offCoach, x.offHome, x.declared]));
+      assert(x.confirms === 1 && x.bootDone === 1 && x.screen > 0 && !x.err.some((m) => /fp-tabs/.test(m)),
+        tag + ': the first render, the OTA confirm and bootDone ran, and nothing threw: ' + J(x));
+      assert(o.scene.scene.fellBack && o.scene.scene.fellBack.why === 'page' && !o.scene.live && Object.prototype.hasOwnProperty.call(o.scene.scene.declined, 'tabs'),
+        tag + ': the scene fell back page at the head\'s dismiss, tabs declined: ' + J(o.scene.scene));
+      if (!silent) {
+        assert(J(o.scene.doc.negotiated) === '["coach"]', tag + ': the shell, fallen back, negotiated the chat on the classic rule: ' + J(o.scene.doc));
+        // the page's own tour: no tabs call, no second dismiss; the shell's tabs.* answer off
+        await ev(app, TOUR);
+        const offs = await ev(app, async () => [await __fpShell.call('tabs.select', { tab: 'log', seq: 9 }), await __fpShell.call('tabs.bar', { h: 83, safe: 34, rev: 9 })]);
+        const t = await look(app);
+        assert(J(t.tabsCalls) === J([['dismiss', { screen: 'tabs' }]]) && !t.mode && !t.cls && J(t.vars) === '{}' && J(offs) === J([{ ok: false, error: 'off' }, { ok: false, error: 'off' }]),
+          tag + ': after a tour still one dismiss tabs and nothing else; tabs.select and tabs.bar answer off: ' + J([t, offs]));
+        // the chat, opened with a key: presented once, on the classic rule (60's overlay)
+        const c = await ev(app, async () => {
+          const w = (ms) => new Promise((z) => setTimeout(z, ms));
+          const p0 = __fpShell.calls.length;
+          switchTab('coach'); openCoachChat(); await w(60);
+          return { calls: __fpShell.calls.slice(p0).filter((k) => ['present', 'dismiss', 'selectTab', 'sheets'].indexOf(k[0]) >= 0).map((k) => [k[0], k[1]]),
+            shown: !!_fp.shown.coach, live: _fpLive('coach') };
+        });
+        assert(J(c.calls) === J([['present', { screen: 'coach' }]]) && c.shown && c.live, tag + ': the chat presented once on the classic rule, nothing else: ' + J(c));
+        // a late hello reply naming tabs (a stand-in: this document's hello never asked for them) puts nothing back
+        const late = await ev(app, async () => {
+          const w = (ms) => new Promise((z) => setTimeout(z, ms));
+          const real = Capacitor.Plugins.TrovoShell.hello, n0 = __fpShell.calls.length;
+          Capacitor.Plugins.TrovoShell.hello = function (a) { __fpShell.calls.push(['hello', a]);
+            return Promise.resolve({ v: 1, screens: ['coach', 'coachHome', 'tabs'], tabs: { selected: 'settings', seq: 7, bar: { h: 83, safe: 34, rev: 7 } } }); };
+          _fp.hello = null; _fpHello(); await w(60);
+          Capacitor.Plugins.TrovoShell.hello = real;
+          return { mode: _fp.tabs.mode, tab: currentTab, seq: _fp.tabs.seq, cls: document.documentElement.classList.contains('fp-tabs'),
+            calls: __fpShell.calls.slice(n0).map((k) => k[0]).filter((k) => ['selectTab', 'sheets', 'dismiss', 'present'].indexOf(k) >= 0) };
+        });
+        assert(!late.mode && late.tab === 'coach' && late.seq === 0 && !late.cls && J(late.calls) === '[]',
+          tag + ': a late reply naming tabs is ignored (no tabs mode, no move to its tab, no call): ' + J(late));
+      } else {
+        // hello still out, but the page has left tabs mode: the share read waits for no hello (resolved before a 0 ms timer)
+        const w = await ev(app, async () => ({ out: _fpHelloOut(), left: _fp.tabs.left,
+          first: await Promise.race([_fpAfterHello(3000).then(() => 'at once'), new Promise((r) => setTimeout(() => r('waited'), 0))]) }));
+        assert(w.out && w.left && w.first === 'at once', tag + ': hello still out and the page out of tabs mode: the share read waits for no hello: ' + J(w));
+        // the hello that answers, negotiated by the fallen-back scene on the classic rule: the chat presents once
+        const c = await chatAfter(app);
+        assert(J(c.screens) === '["coach"]' && c.off === null && c.live && J(c.present) === '[{"screen":"coach"}]' && c.shown,
+          tag + ': the reply negotiated on the classic rule, and the chat presents once (60\'s overlay): ' + J(c));
+      }
+      const cls = await classSeq(app);
+      const end = await look(app);
+      assert(classOnce(cls) && !end.cls && J(end.vars) === '{}' && dismissTabs(end) === 1,
+        tag + ': fp-tabs on from the head, off at its way out and never back; no --fp-*; one dismiss tabs in the whole document: ' + J([cls, end.vars, end.tabsCalls]));
+    } finally { if (app) await app.close(); hold.close(); }
+  }
 });
