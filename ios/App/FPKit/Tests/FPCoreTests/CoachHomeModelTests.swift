@@ -481,7 +481,7 @@ final class CoachHomeModelTests: XCTestCase {
             XCTAssertEqual(fromText.resume, fromBytes.resume, "\(name): resume from bytes and from text alike")
             let raw = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any], name)
             let value = try XCTUnwrap(raw["resume"] as? NSNumber,
-                                      "\(name): resume is missing or not a JSON boolean (\(String(describing: raw["resume"])))")
+                                      "\(name): resume is missing or not a JSON boolean (\(String(reflecting: raw["resume"])))")
             XCTAssertEqual(CFGetTypeID(value), CFBooleanGetTypeID(), "\(name): resume is a JSON boolean, not the number \(value)")
             XCTAssertEqual(value.boolValue, fromBytes.resume, "\(name): the raw resume is the decoded one")
             if fromBytes.resume { resumed.append(name) }
