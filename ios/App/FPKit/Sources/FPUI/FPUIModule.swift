@@ -17,6 +17,13 @@ import FPCore
 ///   `CoachBlockViews`, `CoachInline`, `CoachEmptyState`), the composer (`CoachComposer`, photos
 ///   prepared by `CoachPhoto` as spec 20's rule says), forwarded toasts and confirms
 ///   (`CoachOverlays`). `CoachHost` is what it needs from its host (C7's CoachStore).
+/// - `Coach/CoachHomeView.swift`, `Coach/CoachHomeStore.swift` (build 61, plan tasks N7, N8; contract 15.2): the
+///   native Coach tab's root, which the shell hosts and N draws. `CoachHomeView` draws FPCore's CoachHomeModel (the
+///   hub's groups of rows, or the connect screen with the key field) and sends `CoachHomeAction`s to its
+///   `CoachHomeHost`; `CoachHomeStore` (one per web view binding, beside CoachStore) holds the page's newest model and
+///   sends the presses as `coachHome.*` intents through its hooks, the key once as `setKey {secret}` and kept nowhere;
+///   `CoachHomeRoot` is the view ScreenHost hosts as the Coach stack's root (the room's ground until a model, then the
+///   hub), and `HubHeaderBottomKey` the meta row's bottom, for the toast anchor.
 /// - The screen bridge (plan task C5): `ShellBridge` (the page's TrovoShell messages, the link per web view, the
 ///   breaker book, crash markers, `ShellWebView`), `PageLink` (intents into the page), `ScreenHost` (screens over the
 ///   page `.overFullScreen`, the toast window), `SlideTransition.swift` (the slide and the edge pan), `ShellProbe`
