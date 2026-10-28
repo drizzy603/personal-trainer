@@ -626,18 +626,22 @@ function shellMock(arg) {
     const offNow = Array.isArray(knob('__fpShellOff')) ? knob('__fpShellOff') : [];
     const baseOn = (s) => (flag.screens || []).indexOf(s) >= 0 && offNow.indexOf(s) < 0;
     const ios = knob('__fpShellIOS');
+    // Each piece's own reason first; a piece whose own checks pass is off only for another, with what it needs, as
+    // FPCore's Pieces.resolve has it (negotiation.json's resolve rows): tabs needs the root under any root that is not
+    // a live tab root (a classic one, or a tab root that fell back); coachHome needs tabs on and coach's own checks
+    // passing, naming each it lacks; coach under a live tab root needs coachHome on.
     const why = {};
     if (typeof ios === 'number' && ios < 26) why.tabs = { off: 'os' };
     else if (!scene.switches.tabs) why.tabs = { off: 'device' };
     else if (scene.declined.tabs !== undefined) why.tabs = { off: 'page' };
     else if (!baseOn('tabs')) why.tabs = { off: 'policy' };
-    else if (scene.root !== 'tabs') why.tabs = { off: 'needs', needs: ['root'] };
-    const tabsOn = !why.tabs && live();
+    else if (!live()) why.tabs = { off: 'needs', needs: ['root'] };
+    const own = (s) => (scene.declined[s] !== undefined ? 'page' : !baseOn(s) ? 'policy' : null);
     ['coachHome', 'coach'].forEach((s) => {
-      if (scene.declined[s] !== undefined) why[s] = { off: 'page' };
-      else if (!baseOn(s)) why[s] = { off: 'policy' };
-      else if (s === 'coachHome' && !tabsOn) why[s] = { off: 'needs', needs: ['tabs'] };
-      else if (s === 'coach' && live() && why.coachHome) why[s] = { off: 'needs', needs: ['coachHome'] };
+      if (own(s)) why[s] = { off: own(s) };
+      else if (s === 'coachHome' && (why.tabs || own('coach'))) {
+        why[s] = { off: 'needs', needs: [why.tabs && 'tabs', own('coach') && 'coach'].filter(Boolean) };
+      } else if (s === 'coach' && live() && why.coachHome) why[s] = { off: 'needs', needs: ['coachHome'] };
     });
     Object.keys(st.screens).forEach((s) => {
       const w = why[s] || null;
