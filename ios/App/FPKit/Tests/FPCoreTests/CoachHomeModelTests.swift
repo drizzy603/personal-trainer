@@ -279,6 +279,10 @@ final class CoachHomeModelTests: XCTestCase {
         FixtureFiles.files(in: "coachHome").map { $0.deletingPathExtension().lastPathComponent }.filter { !Self.handMade.contains($0) }
     }
 
+    /// Each room's page-built chat model (Fixtures/coach, tests/golden/dump-coach.js): the hub's tokens are the chat's,
+    /// its home* sizes added (contract 6.2).
+    private static let chatFixture: [Room: String] = [.heavyweight: "coach/heavyweight-chat.json", .lime: "coach/lime-chat.json"]
+
     /// The web's own words on the hub and the connect screen (renderCoach before build 61, index.html at 91708ae,
     /// 21097-21121 and 21147-21212; the page builds both screens from one model since P6, _coachHomeScreen).
     private enum Web {
@@ -519,10 +523,12 @@ final class CoachHomeModelTests: XCTestCase {
                        "no programme and a conversation: every row the hub has")
     }
 
-    /// The page sends its room's whole scale and palette with every model, the hub's 16 home* sizes added to the
-    /// chat's 26 (contract 6.2, 6.4), in every page-built file: every size equals its room's compiled default and every
-    /// colour its room's palette, so page and FPCore are held together as CoachModelTests holds them for the chat. Both
-    /// rooms are page-built (Heavyweight's group head and CTA label 10, Lime's 9: contract delta 14.9).
+    /// The page sends the chat's tokens with every model, the hub's 16 home* sizes added to the chat's 26 (contract 6.2,
+    /// 6.4), in every page-built file: the chat's whole palette, exactly the colours of the room's page-built chat model
+    /// (Lime's has no satAccent: the page's satellites take Lime's accent, as FPCore's compiled satAccent does), each its
+    /// room's compiled colour, and the whole scale, space, radius and font, each its room's compiled default, so page
+    /// and FPCore are held together as CoachModelTests holds them for the chat. Both rooms are page-built (Heavyweight's
+    /// group head and CTA label 10, Lime's 9: contract delta 14.9).
     func testPageBuiltTokensAreTheRoomsCompiledOnes() throws {
         var rooms: Set<Room> = []
         for name in pageBuilt() {
@@ -536,6 +542,13 @@ final class CoachHomeModelTests: XCTestCase {
             let space = try XCTUnwrap(tokens?["space"]?.object, name), radius = try XCTUnwrap(tokens?["radius"]?.object, name)
             let font = try XCTUnwrap(tokens?["font"]?.object, name)
             XCTAssertGreaterThan(color.count, 30, name)
+            if let file = Self.chatFixture[m.room] {
+                let chat = try XCTUnwrap(FixtureFiles.json(file)["tokens"]?["color"]?.object, file)
+                XCTAssertEqual(Set(chat.keys).subtracting(color.keys).sorted(), [], "\(name): colours \(file) sends that the hub leaves out")
+                XCTAssertEqual(Set(color.keys).subtracting(chat.keys).sorted(), [], "\(name): colours the hub sends that \(file) does not")
+            } else {
+                XCTFail("\(name): no page-built chat model in its room (\(m.room.id))")
+            }
             for (key, value) in color.sorted(by: { $0.key < $1.key }) {
                 guard let token = ColorToken(rawValue: key) else { XCTFail("\(name): color.\(key) is not a token"); continue }
                 XCTAssertEqual(RGBA(css: value.string ?? ""), compiled.color(token), "\(name) color.\(key)")
