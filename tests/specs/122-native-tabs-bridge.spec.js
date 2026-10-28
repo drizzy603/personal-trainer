@@ -28,6 +28,11 @@
 //   two scripts until it came: the way out holds for the document, as one that left at boot (told, no-hello, one
 //   dismiss tabs, the class never back, its own bar on the boot tab), hello names coach alone, so the chat stays on and
 //   presents once on the classic rule, the share read waits for no hello, and a late reply naming tabs changes nothing.
+// - Conformance once H1 has merged (P13; contract 12's Drift row, 15.4 step 4, D42), read from the files the Swift tests
+//   read: FPCore's intents.json `messages` are the plugin's CAPPluginMethod list, each with its @objc func, and
+//   SHELL_METHODS['61'], whose first 11 are SHELL_METHODS['60']; every intent intents.json lists has a page handler; and
+//   every row of the shared tables Fixtures/shell/negotiation.json and bar.json runs through MOCK_RULES in Node and
+//   through the page's mock on a fresh scene, as the Swift tests run them through FPCore and the tab root.
 // Every native boot names its shell (the mark above): FP_SHELL_INERT runs skip this spec.
 const { boot, assert, run, SHELLS, SHELL_METHODS, MOCK_RULES, BASE_PAGE, shellFlag } = require('../lib/harness');
 
@@ -1226,4 +1231,38 @@ serial('P2 follow-up: the head failsafe\'s way out came before the main script r
         tag + ': fp-tabs on from the head, off at its way out and never back; no --fp-*; one dismiss tabs in the whole document: ' + J([cls, end.vars, end.tabsCalls]));
     } finally { try { if (app) await app.close(); } finally { hold.close(); } }
   }
+});
+
+// ── P13: conformance once H1 has merged (contract 12's Drift row, 15.4 step 4; D42) ─────────────────────────────────────
+// What the shell and the page agree on, read from the files the Swift tests read, so the page's half and the harness
+// that stands in for the shell cannot drift from them unseen.
+const FPCORE_TESTS = path.join(__dirname, '..', '..', 'ios', 'App', 'FPKit', 'Tests', 'FPCoreTests');
+const fpcore = (...p) => JSON.parse(fs.readFileSync(path.join(FPCORE_TESTS, ...p), 'utf8'));
+const PLUGIN_SWIFT = path.join(__dirname, '..', '..', 'ios', 'App', 'CapApp-SPM', 'Sources', 'CapApp-SPM', 'TrovoShellPlugin.swift');
+const noLineComments = (s) => s.replace(/\/\/.*$/gm, '');
+
+serial('P13: drift: intents.json\'s messages are the plugin\'s CAPPluginMethod list in order, each with its @objc func, and SHELL_METHODS[61], whose first 11 are SHELL_METHODS[60]; every intent intents.json lists has a page handler', async () => {
+  const contract = fpcore('intents.json');
+  const messages = contract.messages.map((m) => m.name);
+  // the plugin's pluginMethods array and only it, its commented-out lines left out, in order
+  const src = fs.readFileSync(PLUGIN_SWIFT, 'utf8');
+  const list = /pluginMethods\s*:\s*\[CAPPluginMethod\]\s*=\s*\[([\s\S]*?)\n\s*\]/.exec(src);
+  assert(list, 'TrovoShellPlugin.swift declares pluginMethods: [CAPPluginMethod] = [ ... ]');
+  const plugin = [...noLineComments(list[1]).matchAll(/CAPPluginMethod\(\s*name:\s*"([^"]*)"/g)].map((m) => m[1]);
+  // what Capacitor calls for each name: the plugin's @objc func <name>(_ call: CAPPluginCall)
+  const funcs = [...noLineComments(src).matchAll(/@objc\s+(?:public\s+)?func\s+(\w+)\s*\(\s*_\s+\w+\s*:\s*CAPPluginCall\s*\)/g)].map((m) => m[1]);
+  assert(plugin.length > 0 && J(plugin) === J(messages), 'intents.json\'s messages are the plugin\'s list, in order: ' + J({ messages, plugin }));
+  assert(J(SHELL_METHODS['61']) === J(plugin), 'the harness\'s SHELL_METHODS[61] is the plugin\'s list: ' + J(SHELL_METHODS['61']));
+  assert(SHELL_METHODS['60'].length === 11 && J(SHELL_METHODS['61'].slice(0, 11)) === J(SHELL_METHODS['60']),
+    'v1 grows by additions: SHELL_METHODS[61]\'s first 11 are SHELL_METHODS[60]: ' + J(SHELL_METHODS['60']));
+  const noFunc = plugin.filter((n) => funcs.indexOf(n) < 0);
+  assert(noFunc.length === 0, 'every method the plugin lists has its @objc func: ' + J(noFunc));
+  // the page's handlers (_FP_INTENTS): the page answers every intent the shell may send
+  const app = await boot();
+  try {
+    const handlers = await ev(app, () => Object.keys(_FP_INTENTS));
+    const missing = contract.intents.map((i) => i.name).filter((n) => handlers.indexOf(n) < 0);
+    assert(contract.intents.length >= 31 && missing.length === 0, 'every intent intents.json lists has a page handler: ' + J(missing));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
 });
