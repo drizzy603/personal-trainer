@@ -172,7 +172,8 @@ function _fpBarVars(bar, up, z){
     // threw at run time, so only _fp says it ran). Whatever that did (it may have had nothing to leave, or thrown), the
     // class and the variables go and the shell hears dismiss tabs once, from here when the way out did not send it.
     // Then _fp.tabs.told says so too, and the chat goes off with the fallback only when this document's hello asked
-    // for tabs (_fp.tabs.asked; _fpTabsLeave says why).
+    // for tabs (_fp.tabs.asked; _fpTabsLeave says why). With no _fp yet (the parser short of the main script), the
+    // main script's fp-tabs boot block reads __fpTabsTold and boots out of tabs mode, as a page that left at boot.
     try{ if(window._fp && window._fp.tabs) _fpTabsLeave('no-hello', true); }catch(e){}
     try{ root.classList.remove('fp-tabs'); _fpBarVars(null); }catch(e){}
     try{
@@ -2390,8 +2391,9 @@ var _fpChat={st:null, at:0, busy:false, cbs:[], html:null, thtml:null, chk:false
 // page boots on the tab this web view showed last (fp_tab, written by every local switch in tabs mode), else the
 // flag's; the flag's selection counts as seq 0 and its bar as rev 0. Booted on an fp_tab that is not the flag's tab,
 // the page has seen no seq for the tab it shows (-1), so hello's reply wins even at seq 0 (contract 2.4): the shell
-// still shows the flag's tab when that fp_tab's selectTab never reached it. A throw here leaves tabs mode on its own
-// and the boot goes on in classic mode, so no tabs-only error stops the first render and the OTA confirm.
+// still shows the flag's tab when that fp_tab's selectTab never reached it. The head failsafe's way out holds here too
+// (below). A throw here leaves tabs mode on its own and the boot goes on in classic mode, so no tabs-only error stops
+// the first render and the OTA confirm.
 try{
   (function(){
     var root=document.documentElement, t=_fpTabsTest();
@@ -2400,14 +2402,19 @@ try{
       _fpFailStop();
       return;
     }
-    var T=_fp.tabs;
+    var T=_fp.tabs, saved=null;
+    try{ saved=sessionStorage.getItem('fp_tab'); }catch(e){}
+    currentTab=FP_TAB_IDS.indexOf(saved)>=0 ? saved : t.selected;
+    // The head's failsafe left before this script ran (window.__fpTabsTold: its dismiss went, the class and the bar's
+    // numbers are gone, and it found no _fp to tell). A way out holds for the whole document (contract 2.3): the page
+    // boots out of tabs mode on the same tab, as one that left at boot (told, why no-hello, the Coach tab the web's),
+    // and puts nothing back. Its hello then names coach alone, so the chat stays on: no hello asked for tabs, and the
+    // shell, fallen back at that dismiss, negotiates the chat on the classic rule (10.3).
+    if(window.__fpTabsTold){ T.mode=true; _fpTabsLeave('no-hello', true, true); return; }
     T.mode=true;
     T.bar={h:+t.bar.h||0, safe:+t.bar.safe||0};
     T.up=T.bar.h>0 ? T.bar.h : FP_BAR_UP;
     root.classList.add('fp-tabs'); _fpBarApply();   // as the head set them before the first paint
-    var saved=null;
-    try{ saved=sessionStorage.getItem('fp_tab'); }catch(e){}
-    currentTab=FP_TAB_IDS.indexOf(saved)>=0 ? saved : t.selected;
     if(currentTab!==t.selected) T.seq=-1;
     _syncTabButtons(currentTab);
   })();
@@ -24641,12 +24648,14 @@ function _fpTabsRefused(e, what){
 }
 // The way out (contract 2.3): the page's own bar on the same tab, the web Coach, for the rest of the document (nothing
 // re-enters tabs mode). tell: the page left on its own (the failsafe, a malformed reply, a failed hello call, a throw
-// at boot); then it sends dismiss {screen:'tabs'} once (the shell's fallback answers it, fellBack page), and once its
-// hello has asked for tabs (T.asked) it presents the chat no more: the shell may have negotiated it under the tab
-// root's rule, and the fallback turns off every piece negotiated under that rule, coach included (2.2, 10.3). A page
-// that leaves before its hello asks (a throw at boot) keeps the chat: its hello names coach alone and the shell, fallen
-// back already, negotiates it on the classic rule (60's overlay, as after a fallback at a hello, 10.3); a reply without
-// tabs gives it back in the same way (_fpHello). When the shell told it, it sends nothing. later: the caller renders
+// at boot, or the head's failsafe before this script ran, which the boot block finds); then dismiss {screen:'tabs'}
+// goes once per document (from here unless the head's failsafe sent it already; told either way; the shell's fallback
+// answers it, fellBack page), and once its hello has asked for tabs (T.asked) the page presents the chat no more: the
+// shell may have negotiated it under the tab root's rule, and the fallback turns off every piece negotiated under that
+// rule, coach included (2.2, 10.3). A page that leaves before its hello asks (a throw at boot, the head's failsafe
+// before this script) keeps the chat: its hello names coach alone and the shell, fallen back already, negotiates it on
+// the classic rule (60's overlay, as after a fallback at a hello, 10.3); a reply without tabs gives it back in the same
+// way (_fpHello). When the shell told it, it sends nothing. later: the caller renders
 // (the boot block, before the first render; hello, once its take-over has read up, so no render here presents a screen
 // the shell still shows).
 function _fpTabsLeave(why, tell, later){
@@ -24659,10 +24668,11 @@ function _fpTabsLeave(why, tell, later){
   _fpBarVars(null);
   if(tell){
     if(!T.told && !window.__fpTabsTold){
-      T.told=true; window.__fpTabsTold=true;   // once per document, with the head script's own way out
+      window.__fpTabsTold=true;   // once per document, with the head script's own way out
       var P=_fpPlugin();
       if(P && P.dismiss){ try{ Promise.resolve(P.dismiss({screen:'tabs'})).catch(function(){}); }catch(e){} }
     }
+    T.told=true;   // whoever sent it: this call, or the head's failsafe before this script ran (the boot block's way out)
     if(T.asked && !_fp.off.coach) _fp.off.coach='tabs';
   }
   // the Coach tab is the web's for the document, with no message: the shell has fallen back, is about to, or never linked
