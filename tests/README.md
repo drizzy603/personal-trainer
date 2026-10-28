@@ -115,13 +115,16 @@ flags it models the shell (contract 2-4, 8, 10.3, 15.3):
   (closed at every start), the negotiated set, covered.
 - **The rules** are one self-contained function, `MOCK_RULES` (exported): the dependency rule, hello's
   negotiation with the fallback at hello and its declines, the bar's height per tab, Coach mode and
-  sheets, the funnel's messages, the fallback's messages. The page's mock runs the same source.
+  sheets, the funnel's messages, the fallback's messages (none to a document that has not said hello:
+  only its rule changes). The page's mock runs the same source. Spec 122 holds both, row by row, to
+  the shared tables the Swift tests read, `Fixtures/shell/negotiation.json` and `bar.json` (P13).
 - **hello** answers `{v, screens, up?, why?, tabs?}`, then (next task) the resync: `shell.covered` for
   the selected tab's mode and the snapshots of what is up; never `tabs.select`. `selectTab` runs the
   funnel and answers `{tab, seq}` (`off`, `bad-tab`); `sheets` answers `{bar}` 16 ms later; `setSwitch`
   (`no-switch` but for `tabs`; off falls back `switch`); `present`/`dismiss` (`coachHome` declares the
   Coach tab, `coach` pushes, `dismiss tabs` falls back `page` with no `screens.off tabs`); `status` adds
-  `root`, `fellBack`, `switches`, `policy`, `counters.strays` and `off` `os`/`device`/`page`/`needs`;
+  `root`, `fellBack`, `switches`, `policy`, `counters.strays` and `off` `os`/`device`/`page`/`needs`
+  (each piece's own reason first, then what it needs as FPCore's `Pieces.resolve` names it);
   `status {refresh: true}` stamps the policy check. Refusals read `<code>: <words>`.
 - **Shell to page** messages go through one FIFO queue, one at a time, never resent, each recorded in
   `__fpShell.sent` as `[name, args, answer, t0, t1]`. `__fpShell.composer` stands for the native
