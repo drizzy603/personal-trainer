@@ -796,6 +796,48 @@ final class ShellBridgeTests: XCTestCase {
         }
         XCTAssertEqual(b.launchCounts.markers, 1)
     }
+
+    /// The shell's web view leaving its window while the app is active is a fault (contract I1, counted for Settings >
+    /// About), except in a scene's teardown (H9): SceneDelegate sets `sceneEnding` before it lets go of the window and the
+    /// page (the Debug replay of a reconnect runs while the app is active) and clears it as the next connection's first
+    /// step, so a later move counts again.
+    func testASceneTeardownLettingThePageGoIsNoFault() {
+        let active = ShellWebView.appActive
+        let note = ShellWebView.noteLeftWindow
+        let stored = UserDefaults.standard.data(forKey: ShellBridge.countersKey)
+        defer {
+            ShellWebView.appActive = active
+            ShellWebView.noteLeftWindow = note
+            ShellWebView.sceneEnding = false
+        }
+        ShellWebView.appActive = { true }
+        var noted = 0
+        ShellWebView.noteLeftWindow = { noted += 1 }
+        ShellWebView.sceneEnding = false
+        let wv = ShellWebView(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        let n = ShellWebView.leftWindowWhileActive
+        window.addSubview(wv)
+        XCTAssertNotNil(wv.window)
+        wv.removeFromSuperview()
+        XCTAssertEqual(ShellWebView.leftWindowWhileActive, n + 1, "out of its window while the app is active: a fault")
+        XCTAssertEqual(noted, 1, "and kept in About's totals")
+        window.addSubview(wv)
+        ShellWebView.sceneEnding = true
+        wv.removeFromSuperview()
+        XCTAssertEqual(ShellWebView.leftWindowWhileActive, n + 1, "the teardown letting the page go is not")
+        ShellWebView.sceneEnding = false
+        window.addSubview(wv)
+        ShellWebView.appActive = { false }
+        wv.removeFromSuperview()
+        XCTAssertEqual(ShellWebView.leftWindowWhileActive, n + 1, "nor a move while the app is not in use")
+        ShellWebView.appActive = { true }
+        window.addSubview(wv)
+        wv.removeFromSuperview()
+        XCTAssertEqual(ShellWebView.leftWindowWhileActive, n + 2, "after the next connection's first step a move counts again")
+        XCTAssertEqual(noted, 2, "each counted move reaches the totals once")
+        XCTAssertEqual(UserDefaults.standard.data(forKey: ShellBridge.countersKey), stored,
+                       "the shared bridge's counters, kept in the host's UserDefaults, are as the test found them")
+    }
 }
 
 /// The stall page never came up (ShellBridgeTests.stalledBridge): the test fails there, saying so.

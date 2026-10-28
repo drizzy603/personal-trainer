@@ -11,8 +11,18 @@ import FPCore
 ///   Content Viewer shows on a long press at the accessibility text sizes (the bar itself keeps its size, D45).
 /// - `paper` gives the bar `.light` and Lime `.dark`, set in both rooms and never left `.unspecified` (iOS 27.0 read the
 ///   bar's own trait as light with no override, probe61 question 7). The same style goes on the Coach tab's navigation
-///   controller, and never on the window, the root or a slot: the web view's traits, its keyboards and the page's
-///   `prefers-color-scheme` stay the phone's (`maps/shell.md:331`).
+///   controller and on the bar's container (RootTabController's `paintBarContainer`: on iOS 27 the glass platter's content
+///   takes its style from there, not from the bar), and never on the window, the root or a slot: the web view's traits,
+///   its keyboards and the page's `prefers-color-scheme` stay the phone's (`maps/shell.md:331`).
+/// - What the glass draws its content in differs by runtime (the H9 review's renders on 26.5 and 27.0, both rooms, both
+///   phone appearances): iOS 27 takes the container's style, so the bar wears the room whatever is under it (over
+///   content unlike the room the glass turns grey and the items keep the room's colours); iOS 26.x reads the style from
+///   what is drawn under the bar, whatever the bar or its container wear: over the room's own page (its ground) that is
+///   the room's style, while content unlike it flips the bar (black under Heavyweight draws dark glass with white items;
+///   white under Lime light glass, on which Lime's near-white selected item is all but unreadable). A test window draws
+///   nothing, so RootTabControllerTests walks the platter on iOS 27 only.
+/// - The glass bar draws its unselected items in its own colour: on iOS 27.0 neither `unselectedItemTintColor` nor a
+///   UITabBarAppearance's normal item colours change them (H9's by-hand run). `idle` is set all the same.
 /// - The room's `bg` is the ground the Coach tab shows while WAITING and while held (contract 1.4, 8.1).
 enum TabBarLook {
     /// The glyph of each tab, in the bar's order (contract 1.2).

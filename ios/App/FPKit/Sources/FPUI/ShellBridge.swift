@@ -418,7 +418,7 @@ public final class ShellBridge: NSObject {
             held: { [weak root] in root?.held ?? false },
             releaseHold: { [weak root] in root?.releaseHold() }))
         root.hooks = rootHooks(b, root)
-        Self.log.info("shell: the tab root is adopted (\(root.selected, privacy: .public) selected, Coach \(root.coachMode.rawValue, privacy: .public))")
+        Self.log.info("shell: the tab root is adopted (\(root.selected, privacy: .public) selected, Coach \(root.coachMode.rawValue, privacy: .public), room \(root.firstRoom, privacy: .public))")
     }
 
     /// The root's hooks (contract 8.1, 8.4, 10.2): each captures the bridge, the binding and the root weakly, as `wire`'s do.
@@ -1557,12 +1557,22 @@ public struct ShellInstall: Equatable, Sendable {
 /// its place; decision.md section 4), and says so in the log.
 public final class ShellWebView: WKWebView {
     public private(set) static var leftWindowWhileActive = 0
+    /// A scene's teardown is under way (SceneDelegate's `sceneDidDisconnect`, and the Debug replay of a reconnect, which
+    /// runs while the app is active): the web view leaving its window then is the teardown letting the page go, never a
+    /// fault. SceneDelegate sets it before it lets go of the window and the page, and clears it as the next connection's
+    /// first step, so a later move counts again.
+    public static var sceneEnding = false
+    /// Whether the app is in use now (tests set their own).
+    static var appActive: () -> Bool = { UIApplication.shared.applicationState == .active }
+    /// Where a counted move goes besides this launch's count: Settings > About's totals, across launches (tests set their
+    /// own, so the shared bridge's counters and their UserDefaults copy stay as they were).
+    static var noteLeftWindow: () -> Void = { ShellBridge.shared.noteLeftWindow() }
 
     public override func willMove(toWindow newWindow: UIWindow?) {
-        if newWindow == nil, window != nil, UIApplication.shared.applicationState == .active {
+        if newWindow == nil, window != nil, !Self.sceneEnding, Self.appActive() {
             Self.leftWindowWhileActive += 1
             ShellBridge.log.fault("shell: the web view left its window while the app was active (\(Self.leftWindowWhileActive) this launch)")
-            ShellBridge.shared.noteLeftWindow()   // Settings > About counts it (in all, across launches)
+            Self.noteLeftWindow()   // Settings > About counts it (in all, across launches)
         }
         super.willMove(toWindow: newWindow)
     }

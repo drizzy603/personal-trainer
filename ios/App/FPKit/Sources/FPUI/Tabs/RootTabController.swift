@@ -144,6 +144,9 @@ public final class RootTabController: UITabBarController, UITabBarControllerDele
     public let webView: WKWebView
     public var hooks: Hooks
     public private(set) var look: TabsModel
+    /// The room the root was built with: the first frame's, before any TabsModel (contract 6.1: SceneDelegate's Debug
+    /// `-devTheme`, else the owner's room as the store holds it, else Heavyweight), as the page's room id.
+    public let firstRoom: String
     /// The slots in the bar's order (contract 1.2): three WebSlotControllers and the CoachSlotController.
     let slots: [UIViewController]
     let coachSlot: CoachSlotController
@@ -201,6 +204,7 @@ public final class RootTabController: UITabBarController, UITabBarControllerDele
         self.web = web
         self.webView = webView
         self.look = look
+        firstRoom = look.room.id
         self.hooks = hooks
         let coach = CoachSlotController(background: TabBarLook.background(look), paper: look.paper)
         coachSlot = coach
@@ -232,6 +236,7 @@ public final class RootTabController: UITabBarController, UITabBarControllerDele
 
     public override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        paintBarContainer()
         if !inRun, let dest = pendingPlace, dest === super.selectedViewController {
             place(in: dest)
             applyWebVisibility()
@@ -662,6 +667,7 @@ public final class RootTabController: UITabBarController, UITabBarControllerDele
     public func apply(_ look: TabsModel) {
         self.look = look
         TabBarLook.paint(tabBar, look: look)
+        paintBarContainer()
         for (i, id) in ShellTabs.ids.enumerated() { TabBarLook.dress(slots[i].tabBarItem, tab: id, look: look) }
         let bg = TabBarLook.background(look)
         coachSlot.nav.overrideUserInterfaceStyle = TabBarLook.style(look)
@@ -670,6 +676,48 @@ public final class RootTabController: UITabBarController, UITabBarControllerDele
         coachSlot.waiting.background = bg
         coachSlot.waiting.paper = look.paper
         setNeedsStatusBarAppearanceUpdate()
+    }
+
+    /// The view UIKit draws the glass bar in: the bar's ancestor directly under this controller's view (iOS 26's tab
+    /// container), or the bar itself when it sits there; nil while the bar is not under this view.
+    var barContainer: UIView? {
+        var v: UIView = tabBar
+        while let s = v.superview {
+            if s === view { return v }
+            v = s
+        }
+        return nil
+    }
+
+    /// The room's style on the bar's container (delta 14.7; found by H9's by-hand run on iOS 27.0). The bar's own override
+    /// reaches the bar but not its glass platter's content, which takes its style from the container: without this, Lime
+    /// on a phone in light mode drew light glass with black items and its selected item all but unreadable, and
+    /// Heavyweight on a phone in dark mode dark glass. The container never holds the web view or a slot (checked each time),
+    /// so their traits, the web keyboards and the page's `prefers-color-scheme` stay the phone's. Again at every layout
+    /// pass, in case UIKit hosts the bar anew; a container painted here that holds the web view or a slot by then, or no
+    /// longer holds the bar, gets back the style it had.
+    private func paintBarContainer() {
+        let c = barContainer
+        if let p = paintedContainer, p !== c || !mayPaint(p) {
+            p.overrideUserInterfaceStyle = styleBeforePaint
+            paintedContainer = nil
+        }
+        guard let c, mayPaint(c) else { return }
+        if paintedContainer !== c {
+            paintedContainer = c
+            styleBeforePaint = c.overrideUserInterfaceStyle
+        }
+        let style = TabBarLook.style(look)
+        if c.overrideUserInterfaceStyle != style { c.overrideUserInterfaceStyle = style }
+    }
+
+    /// The container painted with the room's style, and the style it had before.
+    private weak var paintedContainer: UIView?
+    private var styleBeforePaint: UIUserInterfaceStyle = .unspecified
+
+    /// A container the room's style may go on: not the bar itself, and holding neither the web view nor a slot.
+    private func mayPaint(_ c: UIView) -> Bool {
+        c !== tabBar && !webView.isDescendant(of: c) && !slots.contains(where: { $0.viewIfLoaded?.isDescendant(of: c) == true })
     }
 
     // MARK: The fallback
@@ -757,6 +805,7 @@ public final class RootTabController: UITabBarController, UITabBarControllerDele
                 ?? NSNull(),
             "selected": selected,
             "seq": seq,
+            "firstRoom": firstRoom,
             "web": [
                 "slot": webSlot,
                 "inWindow": webView.window != nil,
@@ -774,6 +823,7 @@ public final class RootTabController: UITabBarController, UITabBarControllerDele
                 "slotInset": Double(selectedViewController?.viewIfLoaded?.safeAreaInsets.bottom ?? 0),
                 "tint": look.tint.css,
                 "style": TabBarLook.word(tabBar.overrideUserInterfaceStyle),
+                "containerStyle": barContainer.map { TabBarLook.word($0.overrideUserInterfaceStyle) } ?? NSNull(),
                 "minimize": minimizeWord,
             ] as [String: Any],
             "coach": [
