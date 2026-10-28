@@ -58,6 +58,13 @@ import FPCore
 ///   text) and the page's tabs-mode fields, the App's hooks (`openURL`, `openURLOnActive`, `share`, `sceneCycle`), and
 ///   `funnel`, `screenChanged`, `trovoOpen` and `ping` events beside page events with their receipt times.
 ///   `ShellWebView.leftWindowAny` counts a move out of the window in any app state (in Release too: About's `leftAny`).
+/// - The native Coach tab wired (build 61, H10; contract 15.2): ScreenHost keeps one `CoachHomeStore` per binding (`home`)
+///   and hosts N's `CoachHomeRoot` on it once, as the Coach stack's root: `present("coachHome")` on the store's model
+///   puts it there through the root's `setHome` (StackState's `setHome`, `setWeb`, `setResume` and the first frame's
+///   room; the queue waits a turn after that still change), `dismiss("coachHome")` turns the tab WEB before the chat's
+///   still pop, and the marker and the toast anchor (`HubHeaderBottomKey`) follow the stack's top. ShellBridge decodes
+///   every `coachHome` model inside `model coachHome@`, asks a NATIVE tab's `coachHome.snapshot` at the resync, and gives
+///   the root the home's route for its `describe()`.
 ///
 /// Later: CoachStore (C7).
 public enum FPUIModule {
