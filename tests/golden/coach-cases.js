@@ -6,6 +6,10 @@
 // Every case runs in a booted page (the test seed, UTC, the clock at CLOCK), through the page's own
 // functions: md(text), _coachBlocksHTML(text) with and without its quiet flag, _planChangeLedger() and
 // _toolPillHTML() for coach tool calls, and renderCoach() for whole chats.
+// The homes group (build 61, plan task P6, contract 6.4) is renderCoach() on the Coach hub view in twelve
+// states, connect screen included, captured from the page before renderCoach() was rebuilt on
+// _coachHomeModel(): the rebuilt hub must draw the same bytes, except homes/hub-cut-emoji, re-captured on
+// purpose (the rebuilt preview cuts in whole characters, where the old 65-unit slice split an emoji).
 'use strict';
 
 // The wall clock the captures run on: a Friday, local (the page runs in UTC).
@@ -121,7 +125,7 @@ async function capture(json) {
     }
     return o;
   };
-  const out = { md: {}, blocks: {}, quiet: {}, ledger: {}, pills: {}, chats: {} };
+  const out = { md: {}, blocks: {}, quiet: {}, ledger: {}, pills: {}, chats: {}, homes: {} };
   for (const [name, text] of TEXTS) {
     out.md[name] = lone(md(text));
     out.blocks[name] = lone(_coachBlocksHTML(text));
@@ -187,6 +191,50 @@ async function capture(json) {
     states[name]();
     out.chats[name] = lone(renderCoach());
   }
+  // The Coach hub and connect screen: renderCoach() on the hub view in each state contract 6.4 names, in one room
+  // (the markup has no room branch). Names, block names and previews carry no quote (a quote is the one byte the
+  // rebuilt hub writes differently, plan P-D4). The keys go through the page's own writers (kt_apikey and
+  // kt_user_name raw, as setApiKey() and the profile row write them; kt_routine through lsSet/lsDel) and are put
+  // back as they were below, so STORE=shadow's drift check stays clean.
+  const was = { key: localStorage.getItem('kt_apikey'), name: localStorage.getItem('kt_user_name'), routine: lsGet('kt_routine') };
+  const raw = (k, v) => { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); };
+  const named = was.routine;                                              // the seed's programme: its name gives "Roberto"
+  const unnamed = Object.assign({}, was.routine, { name: 'Custom Plan' });   // a placeholder first word: no name
+  // the 65th UTF-16 unit is the first half of an emoji (the old preview's 65-unit slice split it)
+  const before = 'Great work this week: every session done and the squat is moving';
+  if (before.length !== 64) throw new Error('homes/hub-cut-emoji: the emoji must start at the 65th unit');
+  const conversation2 = () => [
+    { role: 'user', content: 'How was my week?', at: day(-1, '18:00') },
+    { role: 'assistant', content: 'Four sessions logged.', at: day(-1, '18:01') },
+    { role: 'user', content: 'And the runs?', at: day(0, '07:30') },
+  ];
+  const homes = {
+    'connect': { key: null },
+    'connect-starter': { key: null, routine: null },
+    'connect-noname': { key: null, routine: unnamed },
+    'connect-intake': { key: null, intake: true },
+    'hub-empty': {},
+    'hub-history': { msgs: conversation2().concat([{ role: 'assistant', at: day(0, '07:31'),
+      content: '%%type: Week review\nSolid week.\n%%metric: RUNS | 2 | of 3 | -1 | warn\n\nFour sessions and two runs, all done.\n%%takeaway: Keep the deload in week 8.\n%%action: Plan week 7 | Plan my week 7' }]) },
+    'hub-long-preview': { msgs: conversation2().slice(0, 2).concat([{ role: 'assistant', at: day(0, '07:31'),
+      content: 'Your bench has moved from 150 to 170 lb in six weeks: that is steady progress. Keep the runs easy.' }]) },
+    'hub-image': { msgs: [{ role: 'user', at: day(0, '07:40'), _preview: 'data:image/jpeg;base64,R0lGODlhAQABAAAAACw=',
+      content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: 'R0lGODlhAQABAAAAACw=' } }] }] },
+    'hub-cut-emoji': { msgs: conversation2().concat([{ role: 'assistant', at: day(0, '07:31'), content: before + '💪 and the runs are easy.' }]) },
+    'hub-replying': { msgs: [{ role: 'user', content: 'Plan my week', at: day(0, '07:50') }], loading: true },
+    'hub-programme': { routine: null, name: 'Kalani' },
+    'hub-noname': { routine: unnamed },
+  };
+  for (const name of Object.keys(homes)) {
+    const c = Object.assign({ key: 'sk-ant-golden', name: null, routine: named, msgs: [], loading: false, intake: false }, homes[name]);
+    raw('kt_apikey', c.key); raw('kt_user_name', c.name);
+    if (c.routine) lsSet('kt_routine', c.routine); else lsDel('kt_routine');
+    coachMessages = c.msgs; coachLoading = c.loading; _runningTools = []; intakeMode = c.intake; pendingImage = null;
+    coachView = 'home'; currentTab = 'coach';
+    out.homes[name] = lone(renderCoach());
+  }
+  raw('kt_apikey', was.key); raw('kt_user_name', was.name);
+  if (was.routine) lsSet('kt_routine', was.routine); else lsDel('kt_routine');
   coachMessages = keep.msgs; coachLoading = keep.loading; _runningTools = keep.running; intakeMode = keep.intake; coachView = keep.view; currentTab = keep.tab; pendingImage = keep.img; coachModel = keep.model;
   lsDel('kt_routine_backup'); _setBackupScope('');
   return out;

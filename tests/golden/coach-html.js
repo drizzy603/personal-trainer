@@ -5,12 +5,17 @@
 //   node tests/golden/coach-html.js --write          capture index.html into coach-html.json
 //   node tests/golden/coach-html.js --page FILE      check (or --write) another copy of the page,
 //                                                    e.g. `git show <commit>:index.html > /tmp/p.html`
+//   node tests/golden/coach-html.js --only G/N       check (or --write) the one case G/N (group/name): with
+//                                                    --write that case alone is re-captured and every other
+//                                                    case keeps its bytes (a change made on purpose, in a
+//                                                    commit of its own, whose reason RECAPTURED below names)
 //
 // coach-html.json is what the page drew before md() and _coachBlocksHTML() were rebuilt on the block
 // models the native chat reads (_mdModel, _cmbModel) and before _planChangeRows() returned raw text:
 // every case of coach-cases.js through md(), _coachBlocksHTML() (with and without quiet),
-// _planChangeLedger(), _toolPillHTML() and renderCoach(). The rebuilt page must draw the same bytes.
-// Spec 118 runs the same capture in the suite.
+// _planChangeLedger(), _toolPillHTML() and renderCoach(). Its homes group is the Coach hub and connect
+// screen before renderCoach() was rebuilt on _coachHomeModel() (build 61, plan task P6). The rebuilt
+// page must draw the same bytes. Spec 118 runs the same capture in the suite.
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -26,6 +31,20 @@ const args = process.argv.slice(2);
 const write = args.includes('--write');
 const pi = args.indexOf('--page');
 const pageFile = pi >= 0 ? path.resolve(args[pi + 1]) : path.join(ROOT, 'index.html');
+const oi = args.indexOf('--only');
+const only = oi >= 0 ? String(args[oi + 1] || '') : null;
+if (only !== null && !/^[^/\s]+\/[^/\s]+$/.test(only)) { console.error('--only takes one case as group/name, e.g. homes/hub-empty'); process.exit(2); }
+
+// What each group is, for the about line when --write adds the group to coach-html.json.
+const GROUPS = {
+  homes: 'the Coach hub and connect HTML (renderCoach() on the hub view, one room: the markup has no room branch), frozen '
+    + 'before renderCoach() was rebuilt on _coachHomeModel()',
+};
+// The cases re-captured alone on purpose (--write --only), and why: written into the about line.
+const RECAPTURED = {
+  'homes/hub-cut-emoji': 'the hub rebuilt on _coachHomeModel() cuts its preview in whole characters (contract 6.2), so the half '
+    + 'emoji the 65-unit slice left is now the whole one',
+};
 
 // The repo over local HTTP, with /index.html answered from pageFile.
 function serve() {
@@ -74,17 +93,56 @@ function drift(want, got) {
   return out;
 }
 
+// The about line of a whole capture: the old one while every case it held kept its bytes (a sentence added for each
+// new group), else the line of a page frozen whole at this build.
+function aboutOf(old, got, build) {
+  const same = (g, n) => JSON.stringify(old.cases[g][n]) === JSON.stringify((got[g] || {})[n]);
+  if (old && Object.keys(old.cases).every((g) => Object.keys(old.cases[g]).every((n) => same(g, n)))) {
+    let about = old.about;
+    for (const g of Object.keys(got)) {
+      if (!old.cases[g]) about += ' The ' + g + ' group (' + Object.keys(got[g]).length + ' cases): ' + (GROUPS[g] || 'captured') + ', at web ' + build + '.';
+    }
+    return about;
+  }
+  return 'The coach chat HTML of index.html (web ' + build + '), before md() and _coachBlocksHTML() were rebuilt on block models and _planChangeRows() returned raw text.'
+    + Object.keys(got).filter((g) => GROUPS[g]).map((g) => ' The ' + g + ' group: ' + GROUPS[g] + '.').join('')
+    + ' Made by tests/golden/coach-html.js --write; lone surrogates written as <U+XXXX>.';
+}
+
 (async () => {
   const got = await captureFile();
+  const old = fs.existsSync(JSON_PATH) ? JSON.parse(fs.readFileSync(JSON_PATH, 'utf8')) : null;
+  const build = (fs.readFileSync(pageFile, 'utf8').match(/<meta name="build" content="([^"]+)"/) || [])[1] || '?';
+  if (only !== null) {
+    const [g, n] = only.split('/');
+    if (!got[g] || !(n in got[g])) { console.error('FAIL: the capture has no case ' + only); process.exit(1); }
+    if (write) {
+      if (!old) { console.error('FAIL: --only re-captures one case of an existing ' + path.relative(ROOT, JSON_PATH)); process.exit(1); }
+      const was = old.cases[g] && old.cases[g][n];
+      old.cases[g] = old.cases[g] || {};
+      old.cases[g][n] = got[g][n];
+      const note = ' Re-captured alone (--only): ' + only;
+      if (old.about.indexOf(note) < 0) old.about += note + (RECAPTURED[only] ? ', ' + RECAPTURED[only] : '') + '.';
+      fs.writeFileSync(JSON_PATH, JSON.stringify(old, null, 1) + '\n');
+      console.log('wrote ' + only + ' alone into ' + path.relative(ROOT, JSON_PATH) + (JSON.stringify(was) === JSON.stringify(got[g][n]) ? ' (unchanged)' : ' (changed)'));
+      return;
+    }
+    const want = old ? (old.cases[g] || {})[n] : undefined;
+    if (JSON.stringify(want) !== JSON.stringify(got[g][n])) {
+      console.error('FAIL: the page draws different HTML for ' + only + '\n  want: ' + JSON.stringify(want).slice(0, 600) + '\n  got:  ' + JSON.stringify(got[g][n]).slice(0, 600));
+      process.exit(1);
+    }
+    console.log('ok: ' + only + ' draws the same HTML');
+    return;
+  }
   if (write) {
-    const build = (fs.readFileSync(pageFile, 'utf8').match(/<meta name="build" content="([^"]+)"/) || [])[1] || '?';
-    const doc = { about: 'The coach chat HTML of index.html (web ' + build + '), before md() and _coachBlocksHTML() were rebuilt on block models and _planChangeRows() returned raw text. Made by tests/golden/coach-html.js --write; lone surrogates written as <U+XXXX>.', cases: got };
+    const doc = { about: aboutOf(old, got, build), cases: got };
     fs.writeFileSync(JSON_PATH, JSON.stringify(doc, null, 1) + '\n');
     const n = Object.values(got).reduce((s, g) => s + Object.keys(g).length, 0);
     console.log('wrote ' + path.relative(ROOT, JSON_PATH) + ' (' + n + ' cases from web ' + build + ')');
     return;
   }
-  const want = JSON.parse(fs.readFileSync(JSON_PATH, 'utf8')).cases;
+  const want = old.cases;
   const bad = drift(want, got);
   if (bad.length) {
     console.error('FAIL: the page draws different HTML for ' + bad.length + ' golden case(s): ' + bad.slice(0, 12).join(', '));
