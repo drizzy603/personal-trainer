@@ -958,8 +958,15 @@ serial('P2: the chat after a way out on the page\'s own once its hello asked for
   // the chat off (contract 2.2, 10.3: a stand-in reply, as the mock's scene has fallen back by then). A reply without
   // tabs was negotiated on the classic rule (here the mock's own, the scene having fallen back at the page's dismiss),
   // which no later fallback changes: 60's overlay chat.
-  const INIT = 'window.__fpShellHelloSilent = true; window.__fpTabsFailsafeMs = 400;';
+  // Each boot is hidden (HIDDEN) until its hello has asked for tabs, so the failsafe counts no time before that: visible
+  // from the start, a loaded machine could hold the parser short of the main script for 400 ms of visible time, and the
+  // head's own way out then came before any hello asked (seen at the page lane's gate: no 'no-hello', nothing told).
+  const INIT = HIDDEN + 'window.__fpShellHelloSilent = true; window.__fpTabsFailsafeMs = 400;';
   const out = async (app, tag) => {
+    await app.page.waitForFunction(() => window._fp && _fp.tabs.asked && window.__fpShell && __fpShell.of('hello').length === 1, null, { timeout: 15000 });
+    const asked = await look(app);
+    assert(asked.mode && asked.cls && dismissTabs(asked) === 0, tag + ': hidden, its hello sent: still in tabs mode: ' + J(asked));
+    await ev(app, () => { window.__vis = 'visible'; });
     await app.page.waitForFunction(() => window._fp && _fp.tabs.left, null, { timeout: 15000 });
     await settle(app, 100);
     const o = await look(app);
@@ -1023,8 +1030,13 @@ serial('P2: a broken page still drops the native bar (the head failsafe\'s own w
   // out has nothing to leave, so the head strips the class and the variables and tells the shell itself
   const skipped = edited('try{\n  (function(){\n    var root=document.documentElement, t=_fpTabsTest();',
     'try{\n  (function(){ return;\n    var root=document.documentElement, t=_fpTabsTest();');
-  const sk = await pageBoot('tabs', { html: skipped, seed: { kt_apikey: 'sk-ant-test' }, init: 'window.__fpShellHelloSilent = true; window.__fpTabsFailsafeMs = 400;' });
+  // Hidden until the boot is up (the main script has run), so the failsafe counts only from there: visible from the
+  // start, the head's own way out could come before the main script reached its state, and then nothing set told.
+  const sk = await pageBoot('tabs', { html: skipped, seed: { kt_apikey: 'sk-ant-test' }, init: HIDDEN + 'window.__fpShellHelloSilent = true; window.__fpTabsFailsafeMs = 400;' });
   try {
+    const up = await ev(sk, () => ({ fp: typeof window._fp, cls: document.documentElement.classList.contains('fp-tabs'), dismiss: __fpShell.calls.filter((c) => c[0] === 'dismiss').length }));
+    assert(up.fp === 'object' && up.cls && up.dismiss === 0, 'tabs mode never started: hidden, the main script up: the class on, no dismiss yet: ' + J(up));
+    await ev(sk, () => { window.__vis = 'visible'; });
     await sk.page.waitForFunction(() => !document.documentElement.classList.contains('fp-tabs'), null, { timeout: 15000 });
     await settle(sk, 300);
     const o = await look(sk);
