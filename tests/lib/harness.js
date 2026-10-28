@@ -401,9 +401,12 @@ function MOCK_RULES() {
   }
   // The fallback's messages (10.3), in order: screens.off for a live chat (with the composer's draft) and a live Coach
   // tab (why 'needs'), then screens.off tabs with the fallback's why unless the page asked (dismiss tabs), then
-  // shell.covered off when it was on. s {why, live: [pieces live under the tab root], pageAsked, covered, draft}.
+  // shell.covered off when it was on. s {why, live: [pieces live under the tab root], pageAsked, covered, draft,
+  // linked}: a document that has not said hello (linked false) hears none of them, only the rule changes (FPCore's
+  // LinkState.fallBack; its hello's reply tells it, negotiated on the classic rule).
   function fallBack(s) {
     var out = [];
+    if (s.linked === false) return out;
     if (has(s.live, 'coach')) {
       out.push(['screens.off', typeof s.draft === 'string' && s.draft ? { screen: 'coach', why: 'needs', draft: s.draft } : { screen: 'coach', why: 'needs' }]);
     }
@@ -522,7 +525,7 @@ function shellMock(arg) {
     o = o || {};
     const livePieces = (doc.negotiated || []).filter((p) => (p === 'coach' || p === 'coachHome') && doc.off.indexOf(p) < 0);
     const msgs = R.fallBack({ why, live: livePieces, pageAsked: !!o.pageAsked, covered: doc.covered,
-      draft: window.__fpShell.composer });
+      draft: window.__fpShell.composer, linked: doc.negotiated !== null });
     scene.fellBack = { why, at: Date.now() };
     scene.coach = 'web'; scene.pushed = false;
     (doc.negotiated || []).forEach((p) => { if (p === 'tabs' || p === 'coach' || p === 'coachHome') doc.off.push(p); });
