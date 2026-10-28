@@ -272,6 +272,13 @@ final class CoachHomeModelTests: XCTestCase {
     /// The files Tools/coach-home-fixtures.js writes by hand; every other file in Fixtures/coachHome is the page's own.
     private static let handMade: Set<String> = ["forward-compat", "minimal", "lone-surrogates"]
 
+    /// Every page-built file by name: the eight this file describes and any other the dump writes. The dump and its
+    /// files are P's (contract 15.1, D30), so a state a P-fix adds is read by every case that needs no state before N
+    /// describes it here.
+    private func pageBuilt() -> [String] {
+        FixtureFiles.files(in: "coachHome").map { $0.deletingPathExtension().lastPathComponent }.filter { !Self.handMade.contains($0) }
+    }
+
     /// The web's own words on the hub and the connect screen (renderCoach before build 61, index.html at 91708ae,
     /// 21097-21121 and 21147-21212; the page builds both screens from one model since P6, _coachHomeScreen).
     private enum Web {
@@ -293,9 +300,9 @@ final class CoachHomeModelTests: XCTestCase {
     }
 
     /// What the page held when tests/golden/dump-coach-home.js built each file (its SCENARIOS), as the web's rules
-    /// read it: every route, string and row the tests below expect is derived from it by those rules.
+    /// read it: every route, string and row the tests below expect is derived from it by those rules. The dump's fixed
+    /// revs and boot are not part of it: they are P6's, and each file is held to its own.
     private struct Scenario {
-        var rev: Int
         var room: Room = .heavyweight
         var dynTypeOn = true
         /// A key saved: the hub; none: the connect screen (even during setup).
@@ -319,17 +326,17 @@ final class CoachHomeModelTests: XCTestCase {
     private static let historyCut = "Great work this week: every session done and the squat is moving"
 
     private static let scenarios: [String: Scenario] = [
-        "connect-heavyweight": Scenario(rev: 11, key: false),
-        "connect-lime": Scenario(rev: 12, room: .lime, dynTypeOn: false, key: false),
-        "connect-starter": Scenario(rev: 13, key: false, programme: false, name: nil),
-        "hub-empty": Scenario(rev: 14),
-        "hub-history": Scenario(rev: 15, messages: 4, preview: historyCut + "💪…"),
+        "connect-heavyweight": Scenario(key: false),
+        "connect-lime": Scenario(room: .lime, dynTypeOn: false, key: false),
+        "connect-starter": Scenario(key: false, programme: false, name: nil),
+        "hub-empty": Scenario(),
+        "hub-history": Scenario(messages: 4, preview: historyCut + "💪…"),
         // a reply in flight with the hub showing (coachView 'home'): the next tap into Coach shows the hub
-        "hub-replying": Scenario(rev: 16, messages: 3, loading: true),
-        "hub-programme": Scenario(rev: 17, programme: false, messages: 2, preview: "Four sessions logged."),
+        "hub-replying": Scenario(messages: 3, loading: true),
+        "hub-programme": Scenario(programme: false, messages: 2, preview: "Four sessions logged."),
         // a key saved and setup persisted with no programme (kt_intake): the page booted in setup, and the hub it
         // builds sits under the setup chat
-        "hub-resume": Scenario(rev: 18, programme: false, messages: 2,
+        "hub-resume": Scenario(programme: false, messages: 2,
                                preview: "How many days a week can you train, and for how long each time?", intake: true),
     ]
 
@@ -370,28 +377,49 @@ final class CoachHomeModelTests: XCTestCase {
         return out
     }
 
-    /// The page-built files are the eight dump-coach-home.js writes (contract 6.4, P6): a missing one fails here, and so
-    /// does a new one until this file describes its state.
-    func testPageBuiltFixturesAreTheEightScenarios() {
+    /// The eight files dump-coach-home.js writes (contract 6.4, P6) are all there, beside the hand-made three: a missing
+    /// one fails here. Another page-built file (a state a P-fix adds) is not refused: the cases that need no state read
+    /// it as they read the eight, and the ones derived from a state wait until this file describes it.
+    func testPageBuiltFixturesHoldTheEightScenarios() {
         let names = Set(FixtureFiles.files(in: "coachHome").map { $0.deletingPathExtension().lastPathComponent })
         XCTAssertTrue(Self.handMade.isSubset(of: names), "the hand-made fixtures are missing: run Tools/coach-home-fixtures.js")
-        XCTAssertEqual(names.subtracting(Self.handMade).sorted(), Self.scenarios.keys.sorted(),
-                       "the page-built files (node tests/golden/dump-coach-home.js) and the scenarios this test describes")
+        XCTAssertEqual(Set(Self.scenarios.keys).subtracting(pageBuilt()).sorted(), [],
+                       "page-built files missing: node tests/golden/dump-coach-home.js writes them")
     }
 
-    /// Each page-built file, decoded from bytes and from text alike, draws what the web draws in its state (contract
-    /// 6.2): the route, the meta row, the hero in the web's words, the connect block (the help's two paragraphs joined
-    /// by one "\n", the starter link only without a programme, every string the page's own), and the rows exactly
-    /// when the web shows them. Nothing is skipped or rejected and no string holds U+FFFD.
+    /// Every page-built file, whatever its state, is the page's whole model: decoded from bytes and from text alike,
+    /// v 1, the rev and boot the page sent (a push's rev is above 0, `++_fp.rev`, and the boot is `_fpBoot`, never
+    /// empty: a renamed or retyped one decodes to the compiled 0 or "" and fails), nothing skipped or rejected, and
+    /// no U+FFFD in any string.
+    func testEveryPageBuiltFixtureIsAWholeModel() throws {
+        let names = pageBuilt()
+        XCTAssertGreaterThanOrEqual(names.count, Self.scenarios.count, "the eight at least")
+        for name in names {
+            let data = try FixtureFiles.data("coachHome/\(name).json")
+            let m = try CoachHomeModel.decode(utf8: data)
+            XCTAssertEqual(try CoachHomeModel.decode(String(decoding: data, as: UTF8.self)), m, "\(name): from bytes and from text alike")
+            XCTAssertEqual(m.v, 1, name)
+            let raw = try JSONText.parse(utf8: data)
+            XCTAssertEqual(raw["rev"]?.int, m.rev, "\(name): rev is the page's, a whole number")
+            XCTAssertGreaterThan(m.rev, 0, "\(name): a push's rev, never the compiled 0")
+            XCTAssertEqual(raw["boot"]?.string, m.boot, "\(name): boot is the page's, a string")
+            XCTAssertFalse(m.boot.isEmpty, "\(name): the page's boot, never the compiled empty one")
+            XCTAssertEqual(m.skipped, 0, name)
+            XCTAssertEqual(m.tokens.rejected, [], name)
+            for t in texts(m) {
+                XCTAssertFalse(t.unicodeScalars.contains("\u{FFFD}"), "\(name): U+FFFD in \"\(t)\"")
+            }
+        }
+    }
+
+    /// Each of the eight draws what the web draws in its state (contract 6.2): the room, the route, the meta row, the
+    /// hero in the web's words, the connect block (the help's two paragraphs joined by one "\n", the starter link only
+    /// without a programme, every string the page's own), and the rows exactly when the web shows them.
     func testPageBuiltFixturesDrawWhatTheWebDraws() throws {
         for name in Self.scenarios.keys.sorted() {
             let s = Self.scenarios[name]!
             let data = try FixtureFiles.data("coachHome/\(name).json")
             let m = try CoachHomeModel.decode(utf8: data)
-            XCTAssertEqual(try CoachHomeModel.decode(String(decoding: data, as: UTF8.self)), m, "\(name): from bytes and from text alike")
-            XCTAssertEqual(m.v, 1, name)
-            XCTAssertEqual(m.rev, s.rev, name)
-            XCTAssertEqual(m.boot, "b1791561600000-c3", "\(name): the dump's boot")
             XCTAssertEqual(m.room, s.room, name)
             XCTAssertEqual(m.paper, s.room == .heavyweight, name)
             XCTAssertEqual(m.appearance, s.room == .heavyweight ? .light : .dark, name)
@@ -428,11 +456,6 @@ final class CoachHomeModelTests: XCTestCase {
             let rows = expectedRows(s)
             XCTAssertEqual(m.groups.map(\.head), rows.heads, name)
             XCTAssertEqual(lines(m.groups), rows.lines, name)
-            XCTAssertEqual(m.skipped, 0, name)
-            XCTAssertEqual(m.tokens.rejected, [], name)
-            for t in texts(m) {
-                XCTAssertFalse(t.unicodeScalars.contains("\u{FFFD}"), "\(name): U+FFFD in \"\(t)\"")
-            }
         }
     }
 
@@ -447,7 +470,7 @@ final class CoachHomeModelTests: XCTestCase {
             "hub-programme": "1 exchange · Four sessions logged.",
             "hub-resume": "1 exchange · How many days a week can you train, and for how long each time?",
         ]
-        XCTAssertEqual(subs.keys.sorted(), Self.scenarios.filter { $0.value.key }.keys.sorted(), "every page-built hub")
+        XCTAssertEqual(subs.keys.sorted(), Self.scenarios.filter { $0.value.key }.keys.sorted(), "every page-built hub of the eight")
         for (name, sub) in subs.sorted(by: { $0.key < $1.key }) {
             let open = try XCTUnwrap(try model(name).groups.first?.rows.first, name)
             XCTAssertEqual(open.action, .openChat, name)
@@ -467,14 +490,15 @@ final class CoachHomeModelTests: XCTestCase {
         XCTAssertFalse(sub.contains("%%"), "the preview drops the %% marker lines")
     }
 
-    /// `resume`, the one key the shell's hold reads (contract 8.1, D34): in every page-built file a JSON boolean (read
-    /// with JSONSerialization) equal to the one decoded from bytes and from text, so a page that sent it as a string or a
-    /// number, which the decoder's compiled default turns into false without a word, fails here; and true in hub-resume
-    /// alone (a key saved and setup running), so a renamed key fails too. Its route is still the hub (the page builds
-    /// the hub that sits under the setup chat) and its rows follow the same rules as the others'.
+    /// `resume`, the one key the shell's hold reads (contract 8.1, D34): in every page-built file (the eight and any
+    /// other) a JSON boolean (read with JSONSerialization) equal to the one decoded from bytes and from text, so a page
+    /// that sent it as a string or a number, which the decoder's compiled default turns into false without a word, fails
+    /// here; and of the eight, true in hub-resume alone (a key saved and setup running), so a renamed key fails too. Its
+    /// route is still the hub (the page builds the hub that sits under the setup chat) and its rows follow the same
+    /// rules as the others'.
     func testPageBuiltResumeIsAJSONBooleanTrueOnlyInHubResume() throws {
         var resumed: [String] = []
-        for name in Self.scenarios.keys.sorted() {
+        for name in pageBuilt() {
             let data = try FixtureFiles.data("coachHome/\(name).json")
             let fromBytes = try CoachHomeModel.decode(utf8: data)
             let fromText = try CoachHomeModel.decode(String(decoding: data, as: UTF8.self))
@@ -484,7 +508,7 @@ final class CoachHomeModelTests: XCTestCase {
             let value = try XCTUnwrap(raw["resume"] as? NSNumber, "\(name): resume is missing or not a JSON boolean (\(sent))")
             XCTAssertTrue(CFGetTypeID(value) == CFBooleanGetTypeID(), "\(name): resume is a JSON boolean, not the number \(sent)")
             XCTAssertEqual(value.boolValue, fromBytes.resume, "\(name): the raw resume is the decoded one")
-            if fromBytes.resume { resumed.append(name) }
+            if fromBytes.resume, Self.scenarios[name] != nil { resumed.append(name) }
         }
         XCTAssertEqual(resumed, ["hub-resume"],
                        "true in hub-resume alone: none of the seven others is in setup, and hub-replying shows the hub (coachView 'home')")
@@ -496,15 +520,15 @@ final class CoachHomeModelTests: XCTestCase {
     }
 
     /// The page sends its room's whole scale and palette with every model, the hub's 16 home* sizes added to the
-    /// chat's 26 (contract 6.2, 6.4): every size equals its room's compiled default and every colour its room's
-    /// palette, so page and FPCore are held together as CoachModelTests holds them for the chat. Both rooms are
-    /// page-built (Heavyweight's group head and CTA label 10, Lime's 9: contract delta 14.9).
+    /// chat's 26 (contract 6.2, 6.4), in every page-built file: every size equals its room's compiled default and every
+    /// colour its room's palette, so page and FPCore are held together as CoachModelTests holds them for the chat. Both
+    /// rooms are page-built (Heavyweight's group head and CTA label 10, Lime's 9: contract delta 14.9).
     func testPageBuiltTokensAreTheRoomsCompiledOnes() throws {
         var rooms: Set<Room> = []
-        for name in Self.scenarios.keys.sorted() {
-            let compiled = Tokens.defaults(for: Self.scenarios[name]!.room)
+        for name in pageBuilt() {
             let data = try FixtureFiles.data("coachHome/\(name).json")
             let m = try CoachHomeModel.decode(utf8: data)
+            let compiled = Tokens.defaults(for: m.room)
             rooms.insert(m.room)
             XCTAssertEqual(m.tokens.rejected, [], name)
             let tokens = try JSONText.parse(utf8: data)["tokens"]
