@@ -9,7 +9,8 @@ import FPCore
 /// ShellProbe's parts that need no running probe (11-shell.md H11; contract 15.3 as delta 14.2 and 14.10 changed it), on
 /// a real window: `tapTab`'s control (the bar item labelled with TabsModel's `a11y`, then the controls that draw its
 /// title, then the one a finger at their centre lands in), whose `.touchUpInside` runs the funnel once from a tap and, on
-/// the selected tab, says `again`, and none while no finger could tap the bar (hidden, covered); the hub a `press
+/// the selected tab, says `again`, and none while no finger could tap the bar (hidden, covered in its window or by a
+/// window over it, as the shell's confirm covers it); the hub a `press
 /// {where: hub}` may press (only while the owner sees it); `type`'s rule (keys only into a field that holds them, never
 /// a draft for the key field, never the text in the event); the text input's report (its kind, whether it holds the
 /// keys and text, the label VoiceOver reads, never its text); `axFindAll` (each element once, its first `axFind`'s);
@@ -130,6 +131,64 @@ final class ShellProbeTests: XCTestCase {
         cover.removeFromSuperview()
         let back = try XCTUnwrap(ShellProbe.tapTarget(r.root, "progress").control, "uncovered: a finger reaches it again")
         back.sendActions(for: .touchUpInside)
+        XCTAssertEqual(r.root.selected, "progress")
+        XCTAssertEqual(r.runs.map(\.source), [.tap])
+    }
+
+    /// `tapTab` under the shell's own forwarded confirm (the H11 review, round 2): ShellOverlay's window sits over the
+    /// root's (level normal + 1) and a confirm fills the screen, its Cancel and confirm buttons over the bar's place and a
+    /// dimmed backdrop that cancels on a tap, so a finger on a tab lands on the confirm, where the root window's own hit
+    /// test sees an uncovered bar. The package host has no window scene for ShellOverlay (ScreenHost's toast-window cases
+    /// skip for it), so a stand-in window over the root's plays it (the app's own is H11's in-app steps'): over the whole
+    /// screen it takes the finger (nothing tapped, the selection stays), as it does over the item's place alone (the point
+    /// is carried into the window's own space); a toast's strip under the status bar, or the window hidden, takes none,
+    /// and the bar is tapped.
+    func testTapTabTapsNothingUnderTheShellsConfirm() throws {
+        guard #available(iOS 26.0, *) else { throw XCTSkip("the tab root exists only on iOS 26 and later (D39)") }
+        let r = RootRig(first: "log", look: TabsModel.defaults(for: .heavyweight))
+        defer { r.letGo() }
+        settle(r)
+        let found = ShellProbe.tabControls(r.root, "progress")
+        guard let item = found.controls.first else {
+            throw XCTSkip("this host draws no control under the bar (the probe's tapTab finds them in the app)")
+        }
+        XCTAssertNotNil(ShellProbe.tapTarget(r.root, "progress").control, "the root's window alone: a finger reaches Progress")
+
+        // the confirm's window: over the root's, the whole screen, the dimmed backdrop in it
+        let shell = UIWindow(frame: r.window.frame)
+        shell.windowScene = r.window.windowScene
+        shell.windowLevel = .normal + 1
+        let backdrop = UIView(frame: shell.bounds)
+        backdrop.backgroundColor = UIColor.black.withAlphaComponent(0.6)
+        backdrop.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        shell.addSubview(backdrop)
+        shell.isHidden = false
+        defer { shell.isHidden = true }
+        r.clear()
+        let confirm = [(window: shell, name: "the shell's confirm")]
+        let covered = ShellProbe.tapTarget(r.root, "progress", over: confirm)
+        XCTAssertNil(covered.control, "a finger on Progress lands on the confirm")
+        XCTAssertEqual(covered.why, "a finger on progress lands on the shell's confirm over the bar (on UIView)")
+        XCTAssertEqual(covered.copies, found.controls.count, "the controls are still there: only a finger cannot reach them")
+        XCTAssertNotNil(ShellProbe.tapTarget(r.root, "progress").control, "the root's window still sees an uncovered bar")
+        XCTAssertEqual(r.root.selected, "log")
+        XCTAssertTrue(r.runs.isEmpty, "nothing tapped")
+
+        // over the item's own place alone: the point in the window's own space lands in it
+        shell.frame = item.convert(item.bounds, to: r.window).insetBy(dx: -4, dy: -4)
+        XCTAssertNil(ShellProbe.tapTarget(r.root, "progress", over: confirm).control, "a window over the item takes the finger")
+        // a toast's strip under the status bar: no finger at the bar lands in it
+        shell.frame = CGRect(x: 0, y: 62, width: r.window.bounds.width, height: 64)
+        let toast = ShellProbe.tapTarget(r.root, "progress", over: [(window: shell, name: "the shell's toast")])
+        XCTAssertNotNil(toast.control, toast.why ?? "nil")
+
+        // the whole screen again, then hidden (the confirm answered, no toast): the bar is tapped
+        shell.frame = r.window.frame
+        XCTAssertNil(ShellProbe.tapTarget(r.root, "progress", over: confirm).control)
+        shell.isHidden = true
+        let tap = try XCTUnwrap(ShellProbe.tapTarget(r.root, "progress", over: confirm).control, "hidden: a finger reaches the bar")
+        XCTAssertTrue(found.controls.contains { $0 === tap })
+        tap.sendActions(for: .touchUpInside)
         XCTAssertEqual(r.root.selected, "progress")
         XCTAssertEqual(r.runs.map(\.source), [.tap])
     }

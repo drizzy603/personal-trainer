@@ -36,24 +36,25 @@ import FPCore
 /// scrolled; every state reports where it is), `hideWeb` / `showWeb` (the web view out of its window and back: the
 /// fault Settings > About counts), `done`.
 ///
-/// The tab root (build 61; contract 15.3 as delta 14.2 changed it): `tapTab {tab}` (a finger's tap on the bar item:
-/// the item of the bar whose accessibility label is TabsModel's `a11y`, the controls under the bar that draw its title,
-/// and the one of them a finger at their centre lands in, by the root window's hit test, sent `.touchUpInside`: UIKit's
-/// tap path through `shouldSelect`, never `accessibilityActivate()` and never `selectedIndex`; not found, a bar a sheet
-/// or the fallback hid, a finger there that would land outside the bar, or no funnel run of source `tap` after it, is an
-/// error event, and nothing is tapped; the keyboard's own window is not asked), `retapTab` (the same on the selected
-/// tab, expecting `again`), `stray {tab}` (`selectedIndex` set directly: the root counts and redirects it, I2's fault
-/// injector), `waitTab {tab, ms}` (until the root's selection is `tab`), `navPop` (the Coach stack's finished
-/// interactive pop through the latch, as the edge pan's end makes it), `openURL {url}`, `openURLOnActive {url}`, `share
-/// {comment?, jpeg?, legacy?}` and `sceneCycle` (the App's hooks of those names: a URL opened through the App delegate
-/// now, or when the scene next enters the foreground; a shared photo and comment written to the App Group as the share
-/// extension writes them, `jpeg` naming a file beside the steps or none for one drawn in the app, an error event in a
-/// build without the group's container unless `legacy` asks for the old base64 slot; the scene's connection replayed,
-/// which ends the phase), `sceneDestroy` (UIKit's own request to destroy the scene's session, as StoreProbe's: refused
-/// for this app, one scene on an iPhone, `sceneDestroyRefused`, and the phase goes on at the refusal; with no answer in
-/// 3 s, `sceneDestroyNoAnswer`, the phase ends and the states that follow say whether what the scene held went; a
-/// refusal after that is logged too, `late`). `back`, `edgeBack` and `waitCoach` act on the pushed chat in the Coach
-/// tab's stack as on 60's overlay.
+/// The tab root (build 61; contract 15.3 as delta 14.2 changed it): `tapTab {tab}` (a finger's tap on the bar item: the
+/// item of the bar whose accessibility label is TabsModel's `a11y`, the controls under the bar that draw its title, and
+/// the one of them a finger at their centre lands in, sent `.touchUpInside`: UIKit's tap path through `shouldSelect`,
+/// never `accessibilityActivate()` and never `selectedIndex`; where the finger lands is the hit test of the shell's
+/// windows in the order a finger meets them, its toast window first (a forwarded confirm fills the screen), then the
+/// root's; not found, a bar a sheet or the fallback hid, a finger there that would land on the shell's confirm or
+/// outside the bar, or no funnel run of source `tap` after it, is an error event, and nothing is tapped; the keyboard's
+/// own windows are not asked), `retapTab` (the same on the selected tab, expecting `again`), `stray {tab}`
+/// (`selectedIndex` set directly: the root counts and redirects it, I2's fault injector), `waitTab {tab, ms}` (until
+/// the root's selection is `tab`), `navPop` (the Coach stack's finished interactive pop through the latch, as the edge
+/// pan's end makes it), `openURL {url}`, `openURLOnActive {url}`, `share {comment?, jpeg?, legacy?}` and `sceneCycle`
+/// (the App's hooks of those names: a URL opened through the App delegate now, or when the scene next enters the
+/// foreground; a shared photo and comment written to the App Group as the share extension writes them, `jpeg` naming a
+/// file beside the steps or none for one drawn in the app, an error event in a build without the group's container
+/// unless `legacy` asks for the old base64 slot; the scene's connection replayed, which ends the phase), `sceneDestroy`
+/// (UIKit's own request to destroy the scene's session, as StoreProbe's: refused for this app, one scene on an iPhone,
+/// `sceneDestroyRefused`, and the phase goes on at the refusal; with no answer in 3 s, `sceneDestroyNoAnswer`, the
+/// phase ends and the states that follow say whether what the scene held went; a refusal after that is logged too,
+/// `late`). `back`, `edgeBack` and `waitCoach` act on the pushed chat in the Coach tab's stack as on 60's overlay.
 ///
 /// Reports: every event carries `t` (ms since the probe started), `wall` (epoch ms) and `appState`. `state` holds the
 /// page's own (`pageStateJS`: the tabs-mode fields 10-page.md section 8 names among them), the shell's (`ShellBridge
@@ -692,14 +693,18 @@ final class ShellProbe {
         return (found, found.isEmpty ? "no control under the bar draws \(title)" : nil)
     }
 
-    /// Where a finger on the tab's item lands (delta 14.2; the H11 review): no control while the bar is hidden (a sheet is
-    /// open, or the root fell back) or the root is not in a window; else the root's window hit-tested at the centre of the
-    /// first control that draws the item's title, which must land inside the bar and in one of those controls (UIKit
-    /// draws each item twice: the hit picks the copy a finger reaches). Only the root's window is asked: the keyboard's
-    /// own window is not (T19 taps a tab while the keys are up), and a view over the bar inside the window (a presented
-    /// controller) stops the tap as it would stop a finger. `copies` the controls that draw the title, `why` what stopped.
+    /// Where a finger on the tab's item lands (delta 14.2; the H11 review, rounds 1 and 2): no control while the bar is
+    /// hidden (a sheet is open, or the root fell back) or the root is not in a window; else the point at the centre of the
+    /// first control that draws the item's title is hit-tested in the windows a finger meets before the root's, `over`
+    /// (top first: the shell's toast window, whose forwarded confirm fills the screen with its buttons over the bar's
+    /// place and a backdrop that cancels on a tap; a toast's strip takes only its own place), where any hit stops the tap,
+    /// then in the root's window, where it must land inside the bar and in one of those controls (UIKit draws each item
+    /// twice: the hit picks the copy a finger reaches). The keyboard's own windows are not asked (T19 taps a tab while the
+    /// keys are up), and a view over the bar inside the root's window (a presented controller) stops the tap as it would
+    /// stop a finger. `copies` the controls that draw the title, `why` what stopped.
     @available(iOS 26.0, *)
-    static func tapTarget(_ root: RootTabController, _ tab: String) -> (control: UIControl?, copies: Int, why: String?) {
+    static func tapTarget(_ root: RootTabController, _ tab: String, over: [(window: UIWindow, name: String)] = [])
+        -> (control: UIControl?, copies: Int, why: String?) {
         let found = tabControls(root, tab)
         let copies = found.controls.count
         guard let first = found.controls.first else { return (nil, 0, found.why ?? "not found") }
@@ -708,6 +713,13 @@ final class ShellProbe {
         }
         guard let window = root.view.window else { return (nil, copies, "the tab root is not in a window") }
         let centre = first.convert(CGPoint(x: first.bounds.midX, y: first.bounds.midY), to: window)
+        // a window over the root's takes the finger wherever its own hit test answers (the point carried into its space)
+        for o in over where o.window !== window {
+            if let hit = o.window.hitTest(window.convert(centre, to: o.window), with: nil) {
+                let on = String(describing: type(of: hit))
+                return (nil, copies, "a finger on \(tab) lands on \(o.name) over the bar (on \(on))")
+            }
+        }
         let landed = window.hitTest(centre, with: nil)
         guard let hit = landed, hit.isDescendant(of: root.tabBar) else {
             let on = landed.map { String(describing: type(of: $0)) } ?? "nothing"
@@ -719,9 +731,9 @@ final class ShellProbe {
         return (control, copies, nil)
     }
 
-    /// `tapTab {tab}` / `retapTab`: the control a finger on the tab's item lands in (`tapTarget`), sent `.touchUpInside`;
-    /// `activated` when one funnel run of source `tap` follows (within 1 s), and for `retapTab` when that run is the
-    /// re-tap (`again`). Nothing a finger could not reach is tapped.
+    /// `tapTab {tab}` / `retapTab`: the control a finger on the tab's item lands in (`tapTarget`, over the shell's own
+    /// windows), sent `.touchUpInside`; `activated` when one funnel run of source `tap` follows (within 1 s), and for
+    /// `retapTab` when that run is the re-tap (`again`). Nothing a finger could not reach is tapped.
     private func tapTab(_ op: String, _ step: [String: Any], done: @escaping ([String: Any]) -> Void) {
         guard #available(iOS 26.0, *), let root = tabRoot else {
             return done(["tab": step["tab"] ?? NSNull(), "activated": false, "error": "no tab root (the scene's root is classic)"])
@@ -729,7 +741,7 @@ final class ShellProbe {
         let again = op == "retapTab"
         let tab = again ? root.selected : (step["tab"] as? String ?? "")
         guard ShellTabs.isTab(tab) else { return done(["tab": tab, "activated": false, "error": "no tab \(tab)"]) }
-        let target = Self.tapTarget(root, tab)
+        let target = Self.tapTarget(root, tab, over: shellWindowsOver())
         guard let control = target.control else {
             return done(["tab": tab, "activated": false, "copies": target.copies, "selected": root.selected, "seq": root.seq,
                          "error": target.why ?? "not found"])
@@ -755,6 +767,14 @@ final class ShellProbe {
             }
             done(o)
         }
+    }
+
+    /// The shell's own windows over the root's, top first (`tapTarget`'s `over`): ScreenHost's toast window while it shows
+    /// something (level normal + 1, made key while a confirm is open), named for what fills it. The app makes no other
+    /// window; UIKit's keyboard windows are not the shell's and are not asked.
+    private func shellWindowsOver() -> [(window: UIWindow, name: String)] {
+        guard let overlay = bridge.binding?.screens.overlay, let w = overlay.windowView as? UIWindow else { return [] }
+        return [(w, overlay.confirm != nil ? "the shell's confirm" : "the shell's toast")]
     }
 
     /// The funnel runs with a seq above `seq0`, once there is one or at the deadline (UIKit's tap path runs the funnel in
