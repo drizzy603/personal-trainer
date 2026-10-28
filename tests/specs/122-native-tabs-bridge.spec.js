@@ -28,11 +28,11 @@
 //   two scripts until it came: the way out holds for the document, as one that left at boot (told, no-hello, one
 //   dismiss tabs, the class never back, its own bar on the boot tab), hello names coach alone, so the chat stays on and
 //   presents once on the classic rule, the share read waits for no hello, and a late reply naming tabs changes nothing.
-// - Conformance once H1 has merged (P13; contract 12's Drift row, 15.4 step 4, D42), read from the files the Swift tests
-//   read: FPCore's intents.json `messages` are the plugin's CAPPluginMethod list, each with its @objc func, and
-//   SHELL_METHODS['61'], whose first 11 are SHELL_METHODS['60']; every intent intents.json lists has a page handler; and
-//   every row of the shared tables Fixtures/shell/negotiation.json and bar.json runs through MOCK_RULES in Node and
-//   through the page's mock on a fresh scene, as the Swift tests run them through FPCore and the tab root.
+// - Conformance once H1 has merged (P13; contract 12's Drift row, 15.4 step 4, D42), read from the files the Swift
+//   tests read: FPCore's intents.json `messages` are the plugin's CAPPluginMethod list, each with its @objc func, and
+//   SHELL_METHODS['61'], whose first 11 are SHELL_METHODS['60']; every intent intents.json lists has a page handler;
+//   and every row of the shared tables Fixtures/shell/negotiation.json and bar.json runs through MOCK_RULES in Node
+//   and through the page's mock on a fresh scene, as the Swift tests run them through FPCore and the tab root.
 // Every native boot names its shell (the mark above): FP_SHELL_INERT runs skip this spec.
 const { boot, assert, run, SHELLS, SHELL_METHODS, MOCK_RULES, BASE_PAGE, shellFlag } = require('../lib/harness');
 
@@ -1233,7 +1233,7 @@ serial('P2 follow-up: the head failsafe\'s way out came before the main script r
   }
 });
 
-// ── P13: conformance once H1 has merged (contract 12's Drift row, 15.4 step 4; D42) ─────────────────────────────────────
+// ── P13: conformance once H1 has merged (contract 12's Drift row, 15.4 step 4; D42) ──────────────────────────────────
 // What the shell and the page agree on, read from the files the Swift tests read, so the page's half and the harness
 // that stands in for the shell cannot drift from them unseen.
 const FPCORE_TESTS = path.join(__dirname, '..', '..', 'ios', 'App', 'FPKit', 'Tests', 'FPCoreTests');
@@ -1265,4 +1265,178 @@ serial('P13: drift: intents.json\'s messages are the plugin\'s CAPPluginMethod l
     assert(contract.intents.length >= 31 && missing.length === 0, 'every intent intents.json lists has a page handler: ' + J(missing));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
+});
+
+// The shared tables (D42), every row through the mock's rules in Node (MOCK_RULES) and through the page's mock, the
+// very rules the page specs boot under, on a fresh scene per row of the stand-in page (which records what the shell
+// sends it). A row runs under build 61's binary with every piece offered at document start (contract 2.1's tabs flag,
+// or the same without tabs for a classic root); the pieces the row's base leaves out are off before its hello
+// (__fpShellOff, the mock's word for a piece whose own checks fail), and an OS below 26 is __fpShellIOS. About's needs
+// is the mock's status. The cascade rows that are not a fallback of the tab root (a breaker trip, three failed shell
+// intents, one piece withdrawn) have no door in the mock, which keeps no breaker: what the page hears for them
+// (screens.off coach or coachHome) is what specs 118 and 123 send through FPScreens.call themselves. A screens.off
+// carries {screen, why, draft?} (contract 4.2), so a row's off entries are compared without their needs, which are
+// About's.
+const NEGOTIATION = fpcore('Fixtures', 'shell', 'negotiation.json');
+const BARS = fpcore('Fixtures', 'shell', 'bar.json');
+const PIECES = NEGOTIATION.pieces;
+const inPieces = (l) => PIECES.filter((p) => (l || []).indexOf(p) >= 0);
+const offOf = (base) => PIECES.filter((p) => base.indexOf(p) < 0);
+const ROOT_FLAGS = { tabs: JSON.parse(CONTRACT_FLAGS.tabs), classic: Object.assign(JSON.parse(CONTRACT_FLAGS.inert61), { screens: PIECES.slice() }) };
+const offsOf = (msgs) => msgs.filter((m) => m[0] === 'screens.off').map((m) => ({ screen: m[1].screen, why: m[1].why }));
+const offsWant = (list) => list.map((o) => ({ screen: o.screen, why: o.why }));
+const onOf = (st) => PIECES.filter((p) => st.screens[p] && st.screens[p].on);
+const needsOf = (st) => {
+  const n = {};
+  PIECES.forEach((p) => { const x = st.screens[p]; if (x && x.off === 'needs') n[p] = x.needs; });
+  return n;
+};
+// The scene fell back earlier (a linked document, then the policy), and this is its next document.
+const fallenBack = async (app) => {
+  await ev(app, async () => {
+    await window.Capacitor.Plugins.TrovoShell.hello({ v: 1, page: 'P0', screens: ['coachHome', 'coach', 'tabs'], boot: 'b0' });
+    await window.__fpShell.fallBack('policy');
+  });
+  await app.reload();
+};
+// One row on the page's mock, on the scene the caller prepared: the pieces off before the hello and the OS, then
+// o.hello (page build P1), then o.act (a fallback of the tab root: 'switch' through setSwitch off, 'page' through
+// dismiss tabs, any other word through the mock's own door), then o.again (a second hello in the same document).
+// Returns the reply, the screens.off the page heard after the hello, the fallback and the declines they brought, the
+// second reply, and the status at the end. drain(): the shell's queue sends one message a task, so 40 tasks let a
+// handful through whatever the machine's load.
+const onPage = (app, o) => ev(app, async (o) => {
+  const P = window.Capacitor.Plugins.TrovoShell, S = window.__fpShell;
+  const drain = async () => { for (let i = 0; i < 40; i++) await new Promise((r) => setTimeout(r, 0)); };
+  const said = (e) => String((e && e.message) || e);
+  window.__fpShellOff = o.off;
+  if (o.ios) window.__fpShellIOS = o.ios;
+  const before = S.state().scene, out = {};
+  if (o.hello) { out.reply = await P.hello({ v: o.hello.v, page: 'P1', screens: o.hello.screens, boot: 'b1' }); await drain(); }
+  window.__in.length = 0;
+  if (o.act) {
+    if (o.act === 'switch') out.act = await P.setSwitch({ screen: 'tabs', on: false }).then(() => 'ok', said);
+    else if (o.act === 'page') out.act = await P.dismiss({ screen: 'tabs' }).then(() => 'ok', said);
+    else out.act = await S.fallBack(o.act).then(() => 'ok', said);
+    await drain();
+  }
+  out.off = window.__in.filter((m) => m[0] === 'screens.off').map((m) => ({ screen: m[1].screen, why: m[1].why }));
+  if (o.again) out.again = await P.hello({ v: 1, page: 'P1', screens: o.again, boot: 'b1' });
+  const after = S.state().scene;
+  out.fellBack = !before.fellBack && after.fellBack ? after.fellBack.why : null;
+  out.declined = o.pieces.filter((p) => after.declined[p] !== undefined && before.declined[p] === undefined);
+  out.status = await P.status({});
+  return out;
+}, Object.assign({ pieces: PIECES }, o));
+
+serial('P13: Fixtures/shell/negotiation.json, every row through MOCK_RULES in Node and through the page\'s mock on a fresh scene: the dependency rule (on, and About\'s needs), each hello (its reply, tabs, the declines, the fallback it brings, the needs after it), and the cascades and root changes a fallback of the tab root brings (the screens.off the page hears in order, the declines, the same document and the next)', async () => {
+  const R = MOCK_RULES();
+  const bad = [];
+  const want = (tag, got, exp) => { if (J(got) !== J(exp)) bad.push(tag + ': want ' + J(exp) + ', got ' + J(got)); };
+  assert(J(PIECES) === J(SHELLS.tabs.binary), 'the table\'s pieces are the 61 binary\'s, in order: ' + J(PIECES));
+  const n = { resolve: 0, hello: 0, cascade: 0, noDoor: 0, rootChange: 0 };
+  const apps = { tabs: await stub(ROOT_FLAGS.tabs), classic: await stub(ROOT_FLAGS.classic) };
+  try {
+    // resolve: the dependency rule alone, at document start (no hello)
+    for (const r of NEGOTIATION.resolve) {
+      const tag = 'resolve ' + J(r.base) + (r.tabsRoot ? ' under a tab root' : ' under a classic root');
+      want(tag + ' (Node)', inPieces(R.depend(r.base, r.tabsRoot)), r.on);
+      const app = apps[r.tabsRoot ? 'tabs' : 'classic'];
+      await freshScene(app);
+      const p = await onPage(app, { off: offOf(r.base) });
+      want(tag + ' (page)', { on: onOf(p.status), needs: needsOf(p.status) }, { on: r.on, needs: r.needs });
+      n.resolve++;
+    }
+    // hello: the reply, tabs, the declines for P1, the fallback this hello brings, About's needs after it
+    for (const r of NEGOTIATION.hello) {
+      const tag = 'hello "' + r.case + '"';
+      const flag = r.root === 'classic' ? ROOT_FLAGS.classic : ROOT_FLAGS.tabs;
+      const h = R.hello(flag, r.hello, { live: r.root === 'tabs', off: offOf(r.base) });
+      const w = Object.assign({}, r.want);
+      delete w.needs;
+      want(tag + ' (Node)', { v: h.v, why: h.why, screens: h.screens, tabs: h.screens.indexOf('tabs') >= 0, declined: h.declined, fellBack: h.fellBack }, w);
+      const app = apps[r.root === 'classic' ? 'classic' : 'tabs'];
+      await freshScene(app);
+      if (r.root === 'fellBack') await fallenBack(app);
+      const p = await onPage(app, { off: offOf(r.base), ios: r.os < 26 ? r.os : 0, hello: r.hello });
+      want(tag + ' (page)', { v: p.reply.v, why: p.reply.why || null, screens: p.reply.screens, tabs: !!p.reply.tabs, declined: p.declined,
+        fellBack: p.fellBack, needs: needsOf(p.status) }, r.want);
+      n.hello++;
+    }
+    // cascade: a linked document (a hello naming all three, base = live) and an event
+    for (const r of NEGOTIATION.cascade) {
+      const tag = 'cascade "' + r.case + '"';
+      const e = r.event, k = Object.keys(e);
+      const piece = k.length === 1 && (k[0] === 'trip' || k[0] === 'withdraw') && PIECES.indexOf(e[k[0]]) >= 0 ? e[k[0]] : null;
+      if (!piece && !(k.length === 1 && e.tripShell === true)) { bad.push(tag + ': an event this case does not know: ' + J(e)); continue; }
+      if (piece !== 'tabs') { n.noDoor++; continue; }   // a breaker or one piece withdrawn: no door in the mock
+      const why = k[0] === 'trip' ? 'failures' : 'policy';
+      if (r.root === 'tabs') {
+        const msgs = R.fallBack({ why, live: r.live.filter((p) => p !== 'tabs'), pageAsked: false, covered: false, linked: true });
+        want(tag + ' (Node)', offsOf(msgs), offsWant(r.want.off));
+      }
+      const app = apps[r.root];
+      await freshScene(app);
+      const p = await onPage(app, { off: offOf(r.live), hello: { v: 1, screens: ALL }, act: why });
+      want(tag + ' (page: the document)', p.reply.screens, r.live);
+      want(tag + ' (page)', { off: p.off, fellBack: p.fellBack }, { off: offsWant(r.want.off), fellBack: r.want.fellBack });
+      n.cascade++;
+    }
+    // rootChange: the host's fallback (the policy, the device switch, the page's dismiss tabs), linked or not
+    for (const r of NEGOTIATION.rootChange) {
+      const tag = 'rootChange "' + r.case + '"';
+      const act = r.pageAsked ? 'page' : r.why;
+      const off = offOf(r.base);
+      if (r.root === 'tabs') {
+        const msgs = R.fallBack({ why: r.why, live: r.linked ? r.live.filter((p) => p !== 'tabs') : [], pageAsked: r.pageAsked, covered: false, linked: r.linked });
+        want(tag + ' (Node)', offsOf(msgs), offsWant(r.want.off));
+        want(tag + ' (Node: the same document)', R.hello(ROOT_FLAGS.tabs, { v: 1, screens: ALL }, { live: false, off: r.linked ? off.concat(r.live) : off }).screens,
+          r.want.sameDocument);
+        want(tag + ' (Node: the next document)', R.hello(ROOT_FLAGS.tabs, { v: 1, screens: ALL }, { live: false, off }).screens, r.want.nextDocument);
+      }
+      const app = apps[r.root];
+      await freshScene(app);
+      const p = await onPage(app, { off, hello: r.linked ? { v: 1, screens: ALL } : null, act, again: ALL });
+      if (r.linked) want(tag + ' (page: the document)', p.reply.screens, r.live);
+      want(tag + ' (page)', { fellBack: p.fellBack, off: p.off, declined: p.declined, sameDocument: p.again.screens },
+        { fellBack: r.want.fellBack, off: offsWant(r.want.off), declined: r.want.declined, sameDocument: r.want.sameDocument });
+      await app.reload();
+      const next = await onPage(app, { off, hello: { v: 1, screens: ALL } });
+      want(tag + ' (page: the next document)', next.reply.screens, r.want.nextDocument);
+      n.rootChange++;
+    }
+  } finally { for (const k in apps) await apps[k].close(); }
+  assert(bad.length === 0, bad.length + ' row(s) differ from negotiation.json:\n    ' + bad.join('\n    '));
+  assert(n.resolve === NEGOTIATION.resolve.length && n.hello === NEGOTIATION.hello.length && n.rootChange === NEGOTIATION.rootChange.length
+    && n.cascade + n.noDoor === NEGOTIATION.cascade.length && n.resolve && n.hello && n.cascade && n.rootChange, 'every row ran: ' + J(n));
+});
+
+serial('P13: Fixtures/shell/bar.json, every row through MOCK_RULES in Node and through the page\'s mock on a fresh scene: on a live tab root the bar is hidden (h 0, safe kept) exactly when a sheet is open over a web tab or a web Coach tab; after the fallback it is hidden for good (sheets refused off) and the Coach tab is web', async () => {
+  const R = MOCK_RULES();
+  const bad = [];
+  const app = await stub('tabs');
+  const bar = SHELLS.tabs.tabs.bar;
+  try {
+    for (const r of BARS.rows) {
+      const tag = 'bar ' + J(r);
+      const h = R.barH({ fellBack: r.fellBack ? { why: 'policy' } : null, selected: r.selected, coach: r.coach, sheetsOpen: r.sheets, h: bar.h });
+      if ((h === 0) !== r.hidden) bad.push(tag + ' (Node): h ' + h);
+      await freshScene(app);
+      const p = await ev(app, async (r) => {
+        const P = window.Capacitor.Plugins.TrovoShell, S = window.__fpShell;
+        if (r.coach === 'native') { await P.model({ screen: 'coachHome', rev: 1, json: '{"v":1}' }); await P.present({ screen: 'coachHome' }); }
+        else if (r.coach === 'web') await P.dismiss({ screen: 'coachHome' });
+        if (S.state().scene.selected !== r.selected) await P.selectTab({ tab: r.selected });
+        if (r.fellBack) await S.fallBack('policy');
+        const sheets = await P.sheets({ open: r.sheets }).then((a) => a, (e) => ({ refused: String((e && e.message) || e) }));
+        const sc = S.state().scene;
+        return { sheets, state: { selected: sc.selected, coach: sc.coach, fellBack: !!sc.fellBack } };
+      }, r);
+      if (J(p.state) !== J({ selected: r.selected, coach: r.coach, fellBack: r.fellBack })) bad.push(tag + ' (page): the row\'s state not reached: ' + J(p.state));
+      else if (r.fellBack ? !/^off: /.test(p.sheets.refused || '') : !(p.sheets.bar && p.sheets.bar.h === (r.hidden ? 0 : bar.h) && p.sheets.bar.safe === bar.safe)) {
+        bad.push(tag + ' (page): sheets answered ' + J(p.sheets));
+      }
+    }
+  } finally { await app.close(); }
+  assert(BARS.rows.length > 0 && bad.length === 0, bad.length + ' row(s) differ from bar.json:\n    ' + bad.join('\n    '));
 });
