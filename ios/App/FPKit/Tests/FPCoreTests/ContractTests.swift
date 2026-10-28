@@ -219,7 +219,7 @@ final class ContractTests: XCTestCase {
     func testScreenGate() {
         var book = BreakerBook()
         func gate(deviceOff: Set<String> = [], policy: Policy = .defaults, page: String? = "P1") -> ([String], ScreenGate.Off?) {
-            let r = ScreenGate.evaluate(binary: ["coach"], deviceOff: deviceOff, policy: policy, book: book, shellBuild: "60", pageBuild: page)
+            let r = ScreenGate.evaluate(binary: ["coach"], deviceOff: deviceOff, policy: policy, book: book, shellBuild: "60", pageBuild: page, os: 27)
             return (r.on, r.off["coach"])
         }
         XCTAssertEqual(gate().0, ["coach"])
@@ -233,6 +233,73 @@ final class ContractTests: XCTestCase {
         XCTAssertEqual(gate().1, .breaker(trip))
         XCTAssertEqual(gate(page: "P2").0, ["coach"])
         XCTAssertEqual(gate(deviceOff: ["coach"]).1, .deviceSwitch, "the owner's switch is named first")
+    }
+
+    /// Build 61's gate (contract 2.2): the OS (for `tabs` alone), the device switch, the policy file, a crash verdict for
+    /// the (shell, page) pair, the breaker for the page build, a decline by the page build, then the dependencies; each
+    /// piece names the first own reason that applies, and `needs` only once its own checks pass.
+    func testBuild61sGateInItsOrder() throws {
+        let all = ShellContract.binaryScreens
+        var book = BreakerBook()
+        func gate(_ os: Int = 27, deviceOff: Set<String> = [], policy: Policy = .defaults, page: String? = "P1",
+                  tabsRoot: Bool = true) -> (on: [String], off: [String: ScreenGate.Off]) {
+            ScreenGate.evaluate(binary: all, deviceOff: deviceOff, policy: policy, book: book, shellBuild: "61", pageBuild: page,
+                                tabsRoot: tabsRoot, os: os)
+        }
+        XCTAssertEqual(gate().on, all)
+        XCTAssertEqual(gate().off, [:])
+        // every own reason at once for tabs: each step in turn names the first that applies
+        let pair = try XCTUnwrap(book.recordStaleMarkers([CrashMarker(piece: .tabs, pageBuild: "P1", shellBuild: "61")], at: t0).first)
+        let trip = try XCTUnwrap(book.trip(screen: "tabs", pageBuild: "P1", reason: .failures, detail: "3 in a row", at: t0))
+        XCTAssertTrue(book.decline(piece: "tabs", page: "P1"))
+        let off = Policy(screens: ["tabs": .off])
+        XCTAssertEqual(gate(18, deviceOff: ["tabs"], policy: off).off["tabs"], .os)
+        XCTAssertEqual(gate(27, deviceOff: ["tabs"], policy: off).off["tabs"], .deviceSwitch)
+        XCTAssertEqual(gate(27, policy: off).off["tabs"], .policy)
+        XCTAssertEqual(gate().off["tabs"], .crashMarker(pair))
+        book.clearDisabled(piece: "tabs")
+        XCTAssertEqual(gate().off["tabs"], .breaker(trip))
+        book.screens["tabs"] = nil
+        XCTAssertEqual(gate().off["tabs"], .declined(page: "P1"))
+        XCTAssertNil(gate(page: "P2").off["tabs"], "a decline for another page build leaves the piece on")
+        XCTAssertEqual(gate(page: "P2").on, all)
+        XCTAssertNil(gate(page: nil).off["tabs"], "no page build known: no decline read")
+        // the pieces that need tabs, under the root still live: needs, never an own reason of theirs
+        XCTAssertEqual(gate().off["coachHome"], .needs(["tabs"]))
+        XCTAssertEqual(gate().off["coach"], .needs(["coachHome"]))
+        XCTAssertEqual(gate().on, [])
+        XCTAssertTrue(book.turnBackOn(screen: "tabs"))
+        XCTAssertEqual(gate().on, all, "Try again clears the decline")
+        // the OS: 17 and 18 turn tabs off os and leave coach on (the classic rule); 26 and 27 leave it to the other steps
+        for os in [17, 18] {
+            for root in [false, true] {
+                let g = gate(os, tabsRoot: root)
+                XCTAssertEqual(g.on, ["coach"], "iOS \(os): no tab root below 26, whatever the host says")
+                XCTAssertEqual(g.off, ["tabs": .os, "coachHome": .needs(["tabs"])], "iOS \(os)")
+            }
+            XCTAssertEqual(gate(os, deviceOff: ["coach"]).off["coach"], .deviceSwitch)
+            XCTAssertEqual(ScreenGate.base(binary: all, deviceOff: [], policy: .defaults, book: book, shellBuild: "61", pageBuild: "P1", os: os).on,
+                           ["coach", "coachHome"], "the root decision reads tabs in base: the classic root")
+        }
+        for os in [26, 27] {
+            XCTAssertEqual(gate(os).on, all, "iOS \(os)")
+            XCTAssertEqual(gate(os, tabsRoot: false).off, ["tabs": .needs(["root"]), "coachHome": .needs(["tabs"])], "iOS \(os), a classic root")
+            XCTAssertEqual(ScreenGate.base(binary: all, deviceOff: [], policy: .defaults, book: book, shellBuild: "61", pageBuild: "P1", os: os).on, all)
+        }
+        XCTAssertEqual(ScreenGate.tabsMinOS, 26)
+        // needs only when the piece's own checks pass: coach off by the policy takes the Coach tab with it (joint)
+        let coachOff = gate(policy: Policy(screens: ["coach": .off]))
+        XCTAssertEqual(coachOff.off, ["coach": .policy, "coachHome": .needs(["coach"])])
+        XCTAssertEqual(coachOff.on, ["tabs"])
+        let homeOff = gate(deviceOff: ["coachHome"])
+        XCTAssertEqual(homeOff.off, ["coachHome": .deviceSwitch, "coach": .needs(["coachHome"])])
+        XCTAssertEqual(homeOff.on, ["tabs"])
+        // the classic root: coach as 60, the bar and the Coach tab say what they need
+        XCTAssertEqual(gate(tabsRoot: false).on, ["coach"])
+        // the classic root (tabsRoot's default) is build 60's semantics for a 60 binary, on every OS (the floor is tabs')
+        for os in [17, 18, 26, 27] {
+            XCTAssertEqual(ScreenGate.evaluate(binary: ["coach"], deviceOff: [], policy: .defaults, book: book, shellBuild: "60", pageBuild: "P1", os: os).on, ["coach"])
+        }
     }
 
     func testStoreGate() {

@@ -10,6 +10,11 @@ import Foundation
 // - `ShellCounters` are the counters the host keeps across launches: the web view leaving its window while the app is
 //   active, the page going hidden while a native screen covers it and the app is in use (neither ever happens by
 //   design), breaker trips and crash markers. The host adds this launch's own counts.
+// - Build 61 (contract 10.5): a piece may also be off `os` (`tabs` below iOS 26), `page` (declined by the page build
+//   being served) or `needs` (with what it needs: pieces, or `["root"]` for `tabs` whose checks pass under a root that
+//   is not a live tab root); the status names the root built at scene connect (a fallen-back tab root stays "tabs"),
+//   the fallback (`fellBack {why, at}`), the shell's device switches, the policy file's last fetch, and two counters:
+//   selections made outside the funnel (`strays`) and the web view leaving its window in any app state (`leftAny`).
 
 /// The shell's counters, totals kept across launches (the host stores them, `encoded()`), each with its last time.
 public struct ShellCounters: Codable, Equatable, Sendable {
@@ -44,6 +49,11 @@ public struct ShellCounters: Codable, Equatable, Sendable {
     public var trips = Count()
     /// Crash markers found at launch that turned a screen off for their (shell, page) pair.
     public var markers = Count()
+    /// Selections made outside the tab root's funnel (contract 10.5, I2), redirected through it: stays 0.
+    public var strays = Count()
+    /// The web view left its window in any app state, outside a scene's teardown (build 61, shipped in Release beside
+    /// `leftWindow`): stays 0 outside the moves that background the app on purpose.
+    public var leftAny = Count()
     /// When the host started keeping these totals.
     public var since: Date?
 
@@ -57,6 +67,8 @@ public struct ShellCounters: Codable, Equatable, Sendable {
         hidden = (try? c.decodeIfPresent(Count.self, forKey: .hidden)) ?? Count()
         trips = (try? c.decodeIfPresent(Count.self, forKey: .trips)) ?? Count()
         markers = (try? c.decodeIfPresent(Count.self, forKey: .markers)) ?? Count()
+        strays = (try? c.decodeIfPresent(Count.self, forKey: .strays)) ?? Count()
+        leftAny = (try? c.decodeIfPresent(Count.self, forKey: .leftAny)) ?? Count()
         since = (try? c.decodeIfPresent(Date.self, forKey: .since)) ?? nil
     }
 
@@ -85,22 +97,50 @@ public struct LaunchCounts: Equatable, Sendable {
     public var markersFound: [String] = []
     /// Of them, those that gave a verdict.
     public var markers = 0
+    public var strays = 0
+    public var leftAny = 0
 
-    public init(leftWindow: Int = 0, hidden: Int = 0, trips: Int = 0, markersFound: [String] = [], markers: Int = 0) {
+    public init(leftWindow: Int = 0, hidden: Int = 0, trips: Int = 0, markersFound: [String] = [], markers: Int = 0,
+                strays: Int = 0, leftAny: Int = 0) {
         self.leftWindow = leftWindow
         self.hidden = hidden
         self.trips = trips
         self.markersFound = markersFound
         self.markers = markers
+        self.strays = strays
+        self.leftAny = leftAny
+    }
+}
+
+/// A live tab root that fell back (contract 10.3, 10.5): why, in the fixed words, and when.
+public struct FellBack: Equatable, Sendable {
+    public var why: FellBackWhy
+    public var at: Date
+
+    public init(why: FellBackWhy, at: Date) {
+        self.why = why
+        self.at = at
     }
 }
 
 /// Settings > About's view of the native screens, the answer to TrovoShell `status` (and `reset`).
 public enum ScreenStatus {
-    /// - `binary`: this binary's screens; `gate`: ScreenGate for the page build being served; `live`: the screens this
-    ///   document shows now (the link's); `book`: the breaker book (every crash verdict a screen holds is listed).
+    /// The root a scene built at its connection (contract 1.3): a tab root stays `tabs` after it falls back.
+    public enum Root: String, Equatable, Sendable {
+        case tabs
+        case classic
+    }
+
+    /// - `binary`: this binary's screens; `gate`: ScreenGate for the page build being served, on the scene's root;
+    ///   `live`: the screens this document shows now (the link's); `book`: the breaker book (every crash verdict a
+    ///   screen holds is listed).
+    /// - Build 61 (contract 10.5): `root`, the root built at scene connect; `fellBack`, the fallback this scene took, or
+    ///   nil; `switches`, the shell's own device switches (`["tabs": false]` when the owner turned the bar off);
+    ///   `policy`, the policy file's state, for its last fetch's time and result (nil when the host keeps none).
     public static func json(shell: String, page: String?, binary: [String], gate: (on: [String], off: [String: ScreenGate.Off]),
-                            live: [String], book: BreakerBook, counters: ShellCounters, launch: LaunchCounts) -> JSONValue {
+                            live: [String], book: BreakerBook, counters: ShellCounters, launch: LaunchCounts,
+                            root: Root = .classic, fellBack: FellBack? = nil, switches: [String: Bool] = [:],
+                            policy: PolicyState? = nil) -> JSONValue {
         var screens: [String: JSONValue] = [:]
         for s in binary {
             var o: [String: JSONValue] = ["on": .bool(gate.on.contains(s)), "live": .bool(live.contains(s)), "off": .null, "trip": .null,
@@ -121,6 +161,16 @@ public enum ScreenStatus {
                 o["why"] = .string(t.detail)
                 o["at"] = ms(t.at)
                 o["canReset"] = true
+            case .os?:
+                // no switch and no Try again: the binary's own rule (contract 10.5)
+                o["off"] = "os"
+            case .declined?:
+                // Try again clears the decline (contract 10.1)
+                o["off"] = "page"
+                o["canReset"] = true
+            case .needs(let pieces)?:
+                o["off"] = "needs"
+                o["needs"] = .array(pieces.map(JSONValue.string))
             case nil:
                 break
             }
@@ -134,15 +184,22 @@ public enum ScreenStatus {
         }
         var markers = count(counters.markers, launch.markers).object ?? [:]
         markers["found"] = .array(launch.markersFound.map(JSONValue.string))
+        var fell = JSONValue.null
+        if let f = fellBack { fell = ["why": .string(f.why.rawValue), "at": ms(f.at)] }
+        var fetched = JSONValue.null
+        if let p = policy { fetched = ["at": p.lastAttemptAt.map(ms) ?? .null, "result": p.lastResult.map(JSONValue.string) ?? .null] }
         return [
             "v": 1, "shell": .string(shell), "page": page.map(JSONValue.string) ?? .null, "screens": .object(screens),
             "verdicts": .array(verdicts),
+            "root": .string(root.rawValue), "fellBack": fell, "switches": .object(switches.mapValues(JSONValue.bool)), "policy": fetched,
             "counters": [
                 "since": counters.since.map(ms) ?? .null,
                 "leftWindow": count(counters.leftWindow, launch.leftWindow),
                 "hidden": count(counters.hidden, launch.hidden),
                 "trips": count(counters.trips, launch.trips),
                 "markers": .object(markers),
+                "strays": count(counters.strays, launch.strays),
+                "leftAny": count(counters.leftAny, launch.leftAny),
             ],
         ]
     }
