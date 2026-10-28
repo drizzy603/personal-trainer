@@ -2470,6 +2470,9 @@ final class ScreenHostTests: XCTestCase {
         XCTAssertEqual(s["homeRev"] as? Int, 13)
         XCTAssertEqual(s["connecting"] as? Bool, false)
         XCTAssertEqual(s["keyField"] as? String, "empty")
+        let ground = try XCTUnwrap(s["homeGround"] as? [String: Any], "the room N's root draws the ground in")
+        XCTAssertEqual(ground["room"] as? String, "heavyweight", "the first frame's (the rig's StackState)")
+        XCTAssertEqual(ground["paper"] as? Bool, true)
         XCTAssertEqual((host.describe()["home"] as? [String: Any])?["rev"] as? Int, 13, "the store's own report")
         // again: the same controller, nothing replaced
         XCTAssertTrue(host.present("coachHome"))

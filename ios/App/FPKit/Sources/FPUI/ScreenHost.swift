@@ -197,6 +197,9 @@ public final class ScreenHost: NSObject {
     /// Where the hub's meta row ends, as it last reported (the toast's anchor while the home is on top of the selected
     /// tab). Kept across a push and pop of the chat: the root reports it once per hub (N8's probe), not again after a pop.
     private var homeMetaBottom: CGFloat?
+    /// The room and paper N's root draws the home's ground in (the first frame's, contract 6.1), as handed to it when the
+    /// controller was made; nil before. `describe()`'s stack reports it.
+    private var homeGround: (room: Room, paper: Bool)?
     /// How the overlay's room is made from the newest model, the chat's or the hub's, at a system text size.
     private var overlayRoom: ((DynamicTypeSize) -> RoomTheme)?
     private var ops: [Op] = []
@@ -454,6 +457,7 @@ public final class ScreenHost: NSObject {
         let root = CoachHomeScreenRoot(store: home, room: s.state.room, paper: s.state.paper) { [weak self] y in
             self?.homeMetaReported(y)
         }
+        homeGround = (root.room, root.paper)
         let h = ScreenHostingController(rootView: AnyView(root))
         h.paper = home.model?.paper ?? s.state.paper
         h.overrideUserInterfaceStyle = h.paper ? .light : .dark
@@ -1476,7 +1480,8 @@ public final class ScreenHost: NSObject {
     /// the home, `root` for anyone else's root), `interactivePop` (whether it would begin now), `contentPop` (iOS 26's
     /// content pop on: false while attached, null below iOS 26), what is under way (`waitHeldByUIKit`: an op UIKit holds
     /// until the tab is back), and the home's (H10): `homeRoute` and `homeRev` of its newest model, `connecting` (a key on
-    /// its way) and `keyField` (`empty` or `typed`, never the field's text, contract 5).
+    /// its way), `keyField` (`empty` or `typed`, never the field's text, contract 5) and `homeGround` (the room and paper
+    /// N's root draws its ground in: the first frame's, contract 6.1; null before the home is made).
     private func describeStack() -> Any {
         guard let s = stack else { return NSNull() }
         let nav = s.nav
@@ -1496,6 +1501,7 @@ public final class ScreenHost: NSObject {
             "homeRev": home.model?.rev ?? NSNull(),
             "connecting": home.connecting,
             "keyField": home.keyFieldTyped ? "typed" : "empty",
+            "homeGround": homeGround.map { ["room": $0.room.id, "paper": $0.paper] as [String: Any] } ?? NSNull(),
         ] as [String: Any]
     }
 }

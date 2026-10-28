@@ -79,7 +79,8 @@ private final class Weak {
 /// snapshot, undecodable ones trip it with the chat, `resume` holds a tap, the chat goes over it and comes back to it
 /// with the markers and the toast anchor following, the drop and the teardown empty its store, and the key field's text
 /// is in no report. Tests 42-43 (delta 17.13): the probe's hub press is an error under the shell's confirm, and the
-/// probe hears the root's mode change and fallback under no funnel run.
+/// probe hears the root's mode change and fallback under no funnel run. Test 44: the hub's ground takes the first
+/// frame's room (contract 6.1). Test 45: the page's one pass from a WEB Coach tab pushes the chat over the hub.
 @available(iOS 26.0, *)
 @MainActor
 final class ShellBridgeTabsTests: XCTestCase {
@@ -189,9 +190,10 @@ final class ShellBridgeTabsTests: XCTestCase {
     }
 
     /// A scene as SceneDelegate builds it (H9), its page loaded and, unless `hello` is nil, linked with those screens.
-    /// `flag`: the App's `window.__FP_SHELL` script goes in after the install, as `capacitorDidLoad` adds it.
+    /// `flag`: the App's `window.__FP_SHELL` script goes in after the install, as `capacitorDidLoad` adds it. `room`: the
+    /// first frame's (the root's look before any TabsModel, contract 6.1).
     private func scene(first: String = "log", allowed: Bool = true, hello screens: [String]? = ShellBridgeTabsTests.all,
-                       bridge: ShellBridge? = nil, flag: Bool = false) async throws -> TabsScene {
+                       bridge: ShellBridge? = nil, flag: Bool = false, room: Room = .heavyweight) async throws -> TabsScene {
         let s = TabsScene(bridge: bridge ?? makeBridge())
         scenes.append(s)
         let launch = ShellLaunch(tabRootAllowed: allowed, first: first, barGuess: RootTabController.predicted(screen: s.window.bounds.size))
@@ -203,7 +205,7 @@ final class ShellBridgeTabsTests: XCTestCase {
         }
         if s.installed.tabsRoot {
             s.bridge.section("tabs") {
-                let root = RootTabController(web: s.web, webView: s.webView, first: first, look: TabsModel.defaults(for: .heavyweight))
+                let root = RootTabController(web: s.web, webView: s.webView, first: first, look: TabsModel.defaults(for: room))
                 root.postScreenChanged = { [weak s, weak root] arg in s?.post(arg, root: root) }
                 s.root = root
                 s.bridge.adopt(root: root)
@@ -2458,6 +2460,74 @@ final class ShellBridgeTabsTests: XCTestCase {
         XCTAssertEqual(fallback["coachMode"] as? String, "web")
     }
     #endif
+
+    /// H10 (contract 6.1, 15.2): the hub's ground is drawn in the first frame's room, the root's look before any
+    /// TabsModel (read at the adoption, inside SceneDelegate's build), whatever room the hub's own models draw in: a Lime
+    /// first frame gives N's root Lime's ground under a Heavyweight hub model, and a later TabsModel changes nothing there
+    /// (the controller is made once). Heavyweight's own first frame: test 34's scene, asserted here too.
+    func test44TheHubsGroundTakesTheFirstFramesRoom() async throws {
+        func ground(_ s: TabsScene) -> [String: Any]? {
+            ((s.binding?.screens.describe()["stack"] as? [String: Any])?["homeGround"]) as? [String: Any]
+        }
+        let s = try await scene(first: "coach", room: .lime)
+        let root = try XCTUnwrap(s.root)
+        XCTAssertEqual(root.firstRoom, "dark")
+        XCTAssertTrue((s.binding?.screens.describe()["stack"] as? [String: Any])?["homeGround"] is NSNull, "no home made yet")
+        try await presentHome(s, rev: 2)   // the hub's model is Heavyweight's
+        XCTAssertEqual(root.coachMode, .native)
+        XCTAssertEqual(ground(s)?["room"] as? String, "dark", "the first frame's room, not the model's")
+        XCTAssertEqual(ground(s)?["paper"] as? Bool, false)
+        _ = try await message(s, "model", ["screen": "tabs", "rev": 3, "json": tabsModelJSON(rev: 3, room: "heavyweight", paper: true,
+            tint: "#0a43f5", idle: "#6b6b6b", titles: [:])]).get()
+        XCTAssertEqual(ground(s)?["room"] as? String, "dark", "made once: a later TabsModel changes no ground")
+
+        let t = try await scene(first: "coach")
+        try await presentHome(t, rev: 2)
+        XCTAssertEqual(ground(t)?["room"] as? String, "heavyweight")
+        XCTAssertEqual(ground(t)?["paper"] as? Bool, true)
+    }
+
+    /// H10 (contract 1.4, 3.6): the page's one pass from a WEB Coach tab while Coach is selected (a document that
+    /// declares the tab again: its hub's model, `present coachHome`, the chat's model, `present coach`, back to back in
+    /// one turn). The home is already the stack's root, so nothing at the stack's bottom changes and ScreenHost's queue
+    /// waits no turn: the root shows the stack again and the chat is pushed over the hub, never dropped by UIKit
+    /// (refused) and shown.
+    func test45ThePagesOnePassFromAWebTabPushesTheChatOverTheHub() async throws {
+        let s = try await scene(first: "coach")
+        let root = try XCTUnwrap(s.root)
+        let b = try XCTUnwrap(s.binding)
+        try await presentHome(s, rev: 2)
+        let home = try XCTUnwrap(root.coachSlot.home)
+        _ = try await message(s, "dismiss", ["screen": "coachHome"]).get()
+        XCTAssertEqual(root.coachMode, .web)
+        XCTAssertTrue(root.coachSlot.nav.view.isHidden, "WEB hides the stack")
+        try await sleep(0.3)
+        let pass: [(String, [String: Any])] = [
+            ("model", ["screen": "coachHome", "rev": 3, "json": try homeJSON(rev: 3)]),
+            ("present", ["screen": "coachHome"]),
+            ("model", ["screen": "coach", "rev": 4, "json": try coachModelJSON(rev: 4)]),
+            ("present", ["screen": "coach"]),
+        ]
+        var answered: [Bool] = []
+        for (method, options) in pass {
+            s.bridge.pageMessage(method, options: options, webView: s.webView) { r in
+                if case .success = r { answered.append(true) } else { answered.append(false) }
+            }
+        }
+        XCTAssertEqual(answered, [true, true, true, true], "each answered in the turn")
+        XCTAssertEqual(root.coachMode, .native)
+        XCTAssertFalse(root.coachSlot.nav.view.isHidden)
+        try await expect("the chat pushed over the hub", within: 10) { root.coachSlot.nav.viewControllers.count == 2 }
+        try await expect("the link idle", within: 10) { b.pageLink.pending == 0 && b.screens.describe()["busy"] as? Bool == false }
+        XCTAssertTrue(root.coachSlot.nav.viewControllers.first === home, "over the same hub")
+        XCTAssertEqual(b.screens.transitions, ["present coach"], "never refused")
+        XCTAssertEqual(b.screens.shown, ["coach", "coachHome"])
+        XCTAssertEqual((b.screens.describe()["screens"] as? [String: Any]).flatMap { ($0["coach"] as? [String: Any])?["presented"] as? Bool },
+                       true, "UIKit showed it")
+        try await sleep(0.3)
+        let offs = await calls(s, "screens.off")
+        XCTAssertEqual(offs.count, 0, "the page keeps the native chat")
+    }
 }
 
 /// The stand-in page never came up: the case fails there, saying so.
