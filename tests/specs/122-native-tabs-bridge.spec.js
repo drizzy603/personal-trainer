@@ -1098,7 +1098,10 @@ serial('P2: a broken page still drops the native bar (the head failsafe\'s own w
 // the page asks (GET /release). The page asks once the head's way out has been seen (window.__fpTabsTold and exactly one
 // dismiss tabs recorded), from a 10 ms poll its init installs, so the event loop, and with it the head's failsafe, runs
 // while the main script waits, for as long as that condition takes and never for a set time. A hold that nothing
-// released is answered after 15 s as 'timeout': the case then fails on `released`, and the run never hangs.
+// released is answered after 15 s as 'timeout': the case then fails on `released`, and the run never hangs. The case
+// closes the hold in a finally of its own, after the boot's close() even when that throws (any page error under the 61
+// flag, a store drift); the server and the valve are unref'd as well, so a hold left open can never keep the spec's
+// process alive.
 const http = require('http');
 async function parserHold() {
   const held = [], st = { released: null };
@@ -1111,8 +1114,10 @@ async function parserHold() {
     res.writeHead(404); res.end();
   });
   await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+  srv.unref();
   const base = 'http://127.0.0.1:' + srv.address().port;
   const valve = setTimeout(() => release('timeout'), 15000);
+  valve.unref();
   return {
     st,
     html: (src) => {
@@ -1219,6 +1224,6 @@ serial('P2 follow-up: the head failsafe\'s way out came before the main script r
       const end = await look(app);
       assert(classOnce(cls) && !end.cls && J(end.vars) === '{}' && dismissTabs(end) === 1,
         tag + ': fp-tabs on from the head, off at its way out and never back; no --fp-*; one dismiss tabs in the whole document: ' + J([cls, end.vars, end.tabsCalls]));
-    } finally { if (app) await app.close(); hold.close(); }
+    } finally { try { if (app) await app.close(); } finally { hold.close(); } }
   }
 });
