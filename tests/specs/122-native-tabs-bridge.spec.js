@@ -32,7 +32,9 @@
 //   tests read: FPCore's intents.json `messages` are the plugin's CAPPluginMethod list, each with its @objc func, and
 //   SHELL_METHODS['61'], whose first 11 are SHELL_METHODS['60']; every intent intents.json lists has a page handler;
 //   and every row of the shared tables Fixtures/shell/negotiation.json and bar.json runs through MOCK_RULES in Node
-//   and through the page's mock on a fresh scene, as the Swift tests run them through FPCore and the tab root.
+//   and through the page's mock on a fresh scene, as the Swift tests run them through FPCore and the tab root (a
+//   cascade the mock has no door for, a breaker trip or one piece withdrawn, is counted and named, never skipped
+//   unseen).
 // Every native boot names its shell (the mark above): FP_SHELL_INERT runs skip this spec.
 const { boot, assert, run, SHELLS, SHELL_METHODS, MOCK_RULES, BASE_PAGE, shellFlag } = require('../lib/harness');
 
