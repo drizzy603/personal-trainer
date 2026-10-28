@@ -5,8 +5,10 @@
 #
 # The gate's first form grepped the Release binary for the Debug launch arguments and probe names (-fpShellProbe,
 # -fpOpenURL, -devNav, tapTab, sceneReplay). Swift keeps a literal of 15 UTF-8 bytes or fewer as an immediate (a small
-# string) in optimized code, never as a C string, so on arm64 that grep finds nothing whatever the binary holds, and on
-# x86_64 only some of them (the H11 review). This checks each slice of the Release binary for:
+# string) in optimized code, never as a C string, so on arm64 that grep sees a token only where it happens to sit inside
+# a longer literal, and on x86_64 only some of the rest (the H11 review: a Release build with the Debug code compiled in
+# read 2 lines on arm64, StoreProbe's "no sceneReplay: ..." and "-fpShellProbeLog", and none for the -devNav reader).
+# This checks each slice of the Release binary for:
 #   1. the type names only Debug code defines, in the binary's strings (Swift's type metadata keeps them in every build);
 #   2. one long literal (16 bytes or more: a C string in every build) from each Debug-only area;
 #   3. Debug-only members by their demangled symbol names (a Release `build` keeps its symbol table; an archive strips it,
