@@ -78,7 +78,8 @@ private final class Weak {
 /// the Coach stack's root, its models decode inside `model coachHome@`, a reload keeps it on its last model until the
 /// snapshot, undecodable ones trip it with the chat, `resume` holds a tap, the chat goes over it and comes back to it
 /// with the markers and the toast anchor following, the drop and the teardown empty its store, and the key field's text
-/// is in no report.
+/// is in no report. Tests 42-43 (delta 17.13): the probe's hub press is an error under the shell's confirm, and the
+/// probe hears the root's mode change and fallback under no funnel run.
 @available(iOS 26.0, *)
 @MainActor
 final class ShellBridgeTabsTests: XCTestCase {
@@ -2387,6 +2388,76 @@ final class ShellBridgeTabsTests: XCTestCase {
         XCTAssertEqual(offs.count, 0, "the page keeps the native chat")
         XCTAssertTrue(b.link.isLive("coach"))
     }
+
+    #if DEBUG
+    // MARK: 42-43. The probe on N's hub (delta 17.13)
+
+    /// `press {label, where: hub}` through the probe's own step with N's hub on top of the selected NATIVE Coach tab
+    /// (delta 17.13): while the shell's confirm, which the page forwards while the Coach tab covers it, is open over the
+    /// hub, the step is an error event that presses nothing, said before the accessibility runtime is touched, and the
+    /// page hears no row's intent. Answered (the toast window's Cancel), the confirm is gone and the hub is the probe's to
+    /// press again. (A press that lands is the app's to show: SwiftUI vends no element inside the hub's scroll view to a
+    /// test host with no accessibility client, CoachHomeOptions.)
+    func test42TheProbesHubPressIsAnErrorUnderTheShellsConfirm() async throws {
+        let (bridge, probe, heard) = probed()
+        let s = try await scene(first: "coach", bridge: bridge)
+        let root = try XCTUnwrap(s.root)
+        let b = try XCTUnwrap(s.binding)
+        try await presentHome(s, rev: 2)
+        root.view.layoutIfNeeded()
+        let hub = try XCTUnwrap(b.screens.hostView("coachHome"))
+        XCTAssertTrue(ShellProbe.hubCheck(root, hosted: hub).view === hub, "the hub on screen, no confirm")
+        _ = try await message(s, "confirm", ["id": "c1.b1", "title": "Clear chat history?", "confirm": "Clear"]).get()
+        XCTAssertEqual(b.screens.openConfirm, "c1.b1")
+        _ = await js(s, "window.__got = []; 0")
+        let words = "the hub is covered: the shell's confirm is open"
+        await runSteps(probe, [["op": "press", "label": "Open Chat", "where": "hub"]])
+        let refused = try XCTUnwrap(heard.last("press"))
+        XCTAssertEqual(refused["pressed"] as? Bool, false)
+        XCTAssertEqual(refused["error"] as? String, words)
+        XCTAssertEqual(refused["why"] as? String, words)
+        XCTAssertEqual(refused["where"] as? String, "hub")
+        XCTAssertEqual(refused["control"] as? String, "Open Chat")
+        XCTAssertEqual(refused["matches"] as? Int, 0, "no element looked for")
+        try await sleep(0.3)
+        let sent = await calls(s, "coachHome.openChat")
+        XCTAssertEqual(sent.count, 0, "nothing reached the page")
+        XCTAssertEqual(b.screens.openConfirm, "c1.b1", "the confirm untouched")
+
+        XCTAssertTrue(b.screens.overlay.tapConfirm(false), "the confirm answered: Cancel")
+        try await expect("the page heard the answer") { await self.calls(s, "confirm").map { $0.args["yes"] as? Bool } == [false] }
+        XCTAssertNil(b.screens.openConfirm)
+        let again = ShellProbe.hubCheck(root, hosted: b.screens.hostView("coachHome"), confirmOpen: b.screens.openConfirm != nil)
+        XCTAssertNil(again.why)
+        XCTAssertTrue(again.view === hub, "the hub is the probe's to press again")
+    }
+
+    /// The probe hears the root's screen changes that no funnel run made (delta 17.13's info; contract 15.3): the Coach
+    /// tab turning NATIVE while Coach is selected (the page's `present coachHome`: `why: mode`, the hub heard) and the
+    /// fallback (`why: fallback`, the web view heard), each `by: root` with `seq: null` beside the root's own seq then.
+    func test43TheProbeHearsAModeChangeAndTheFallbackUnderNoRun() async throws {
+        let (bridge, _, heard) = probed()
+        let s = try await scene(first: "coach", bridge: bridge)
+        let root = try XCTUnwrap(s.root)
+        try await presentHome(s, rev: 2)
+        let mode = try XCTUnwrap(heard.all("screenChanged").last { $0["why"] as? String == "mode" },
+                                 "the mode change heard: \(heard.all("screenChanged"))")
+        XCTAssertTrue(mode["seq"] is NSNull, "no funnel run made it")
+        XCTAssertEqual(mode["by"] as? String, "root")
+        XCTAssertEqual(mode["target"] as? String, "native", "the hub")
+        XCTAssertEqual(mode["coachMode"] as? String, "native")
+        XCTAssertEqual(mode["selected"] as? String, "coach")
+        XCTAssertEqual(mode["rootSeq"] as? Int, root.seq)
+        _ = try await message(s, "dismiss", ["screen": "tabs"]).get()   // the page leaves tabs mode: the fallback
+        XCTAssertNotNil(root.fellBack)
+        let fallback = try XCTUnwrap(heard.all("screenChanged").last { $0["why"] as? String == "fallback" },
+                                     "the fallback heard: \(heard.all("screenChanged"))")
+        XCTAssertTrue(fallback["seq"] is NSNull, "no funnel run made it")
+        XCTAssertEqual(fallback["by"] as? String, "root")
+        XCTAssertEqual(fallback["target"] as? String, "web", "the page")
+        XCTAssertEqual(fallback["coachMode"] as? String, "web")
+    }
+    #endif
 }
 
 /// The stand-in page never came up: the case fails there, saying so.

@@ -30,11 +30,11 @@ import FPCore
 /// composer's words set), `press {label}` / `press {ledger: undo|keep}` / `press {label, where: overlay|hub}` (a
 /// control of the chat, of the toast window or of the native Coach tab's hub or connect screen, by its accessible name,
 /// or the newest PLAN CHANGES card's button; on the hub an error event when the hub is not on screen: Coach not selected
-/// or not NATIVE, held blank, covered by the pushed chat, or out of its window; when no control has the name; or when
-/// the activation returns false), `waitCoach {until, ms}` (the chat idle, a reply, a card, none, a confirm,
-/// a toast, up, down), `resign` (the native input gives the keys back), `scroll {to: top|end}` (the conversation
-/// scrolled; every state reports where it is), `hideWeb` / `showWeb` (the web view out of its window and back: the
-/// fault Settings > About counts), `done`.
+/// or not NATIVE, held blank, covered by the pushed chat or by the shell's confirm, hidden, or out of its window;
+/// when no control has the name; or when the activation returns false), `waitCoach {until, ms}` (the chat idle, a
+/// reply, a card, none, a confirm, a toast, up, down), `resign` (the native input gives the keys back), `scroll {to:
+/// top|end}` (the conversation scrolled; every state reports where it is), `hideWeb` / `showWeb` (the web view out of
+/// its window and back: the fault Settings > About counts), `done`.
 ///
 /// The tab root (build 61; contract 15.3 as delta 14.2 changed it): `tapTab {tab}` (a finger's tap on the bar item: the
 /// item of the bar whose accessibility label is TabsModel's `a11y`, the controls under the bar that draw its title, and
@@ -74,10 +74,10 @@ import FPCore
 /// made, and `why`: `run`, `hold`, `mode`, `fallback`; `by: screens`, ScreenHost's own, a screen up or down or the
 /// stack's new top; each with the root's `rootSeq`, selection and Coach mode then), `trovoOpen` (a deep link's
 /// `_trovoOpen` returned), `ping` (a confirming ping and its outcome), `fellBack`, `document`, `intent` (PageLink's
-/// records: names, keys and outcomes, never arguments). No event carries the text of a `type`, `send` or `draft` step,
-/// the key field's text or an intent's argument (contract 5 K4, D47); the composer's own words, no secret (K4), are
-/// where build 60's tools read them: the chat store's `draft` in the state's `shell.screens` and a coach model's
-/// `draft`.
+/// records: names, keys and outcomes, never arguments). No step's own event carries its text (a `type`, `send` or
+/// `draft` step's), and no event the key field's text or an intent's argument (contract 5 K4, D47); the composer's own
+/// words, no secret (K4), still appear where build 60's tools read them: the chat store's `draft` in later states'
+/// `shell.screens` and a coach model's `draft`.
 @MainActor
 final class ShellProbe {
     static var shared: ShellProbe?
@@ -981,8 +981,9 @@ final class ShellProbe {
 
     /// `press {label, where: "hub"}`: the hub's control of that accessibility label, activated through its element, only
     /// while the owner sees the hub (`hubCheck`). Every failure is an error event that presses nothing: no hub on screen
-    /// (said before the accessibility runtime is turned on), no control of that name, an activation that returns false.
-    /// `why` repeats `error` (the chat's presses say `why`).
+    /// or the shell's confirm over it (said before the accessibility runtime is turned on, and checked again after
+    /// the first press's wait for it), no control of that name, an activation that returns false. `why` repeats
+    /// `error` (the chat's presses say `why`).
     private func pressHub(_ step: [String: Any], _ b: ShellBridge.Binding?, done: @escaping ([String: Any]) -> Void) {
         let label = step["label"] as? String ?? ""
         func failed(_ words: String, matches: Int = 0) {
@@ -1005,21 +1006,25 @@ final class ShellProbe {
     }
 
     /// The hub `press {where: "hub"}` may press, or why none: the binding's tab root through `hubCheck`, with ScreenHost's
-    /// `coachHome` host (H10) as the hub when there is one, else the home the root's Coach stack holds at its bottom.
+    /// `coachHome` host (H10) as the hub when there is one, else the home the root's Coach stack holds at its
+    /// bottom, and whether the shell's confirm is open over it (ScreenHost's `openConfirm`).
     private func hubTarget(_ b: ShellBridge.Binding?) -> (view: UIView?, why: String?) {
         guard let b else { return (nil, "no binding") }
         guard #available(iOS 26.0, *), let root = b.tabRoot as? RootTabController else {
             return (nil, "no hub: no tab root (the scene's root is classic)")
         }
-        return Self.hubCheck(root, hosted: b.screens.hostView("coachHome"))
+        return Self.hubCheck(root, hosted: b.screens.hostView("coachHome"), confirmOpen: b.screens.openConfirm != nil)
     }
 
     /// Whether the owner sees the native Coach tab's hub, the one `hosted` (ScreenHost's `coachHome` host, H10) or else the
     /// home at the bottom of the Coach stack: the tab NATIVE and selected, not held blank for a push on its way, the hub
-    /// the stack's top (not covered by the pushed chat), in a window and shown. A press anywhere else would send what the
-    /// owner cannot.
+    /// the stack's top (not covered by the pushed chat), every view up to the window shown, in a window, and no
+    /// confirm of the shell's open over it (`confirmOpen`, delta 17.13: a forwarded confirm fills the screen from the
+    /// toast window and ScreenHost hides the stack from VoiceOver under it, so neither a finger nor VoiceOver reaches
+    /// the hub, though the accessibility walk would). A press anywhere else would send what the owner cannot.
     @available(iOS 26.0, *)
-    static func hubCheck(_ root: RootTabController, hosted: UIView?) -> (view: UIView?, why: String?) {
+    static func hubCheck(_ root: RootTabController, hosted: UIView?,
+                         confirmOpen: Bool = false) -> (view: UIView?, why: String?) {
         guard root.fellBack == nil else { return (nil, "no hub: the tab root fell back") }
         guard root.coachMode == .native else { return (nil, "no hub: the Coach tab is \(root.coachMode.rawValue), not native") }
         guard root.selected == "coach" else { return (nil, "the hub is not on screen: \(root.selected) is selected") }
@@ -1034,6 +1039,7 @@ final class ShellProbe {
             v = x.superview
         }
         guard hub.window != nil else { return (nil, "the hub is not on screen: out of its window") }
+        guard !confirmOpen else { return (nil, "the hub is covered: the shell's confirm is open") }
         return (hub, nil)
     }
 
