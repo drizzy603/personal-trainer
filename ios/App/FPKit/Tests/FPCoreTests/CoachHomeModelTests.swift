@@ -3,8 +3,8 @@ import XCTest
 import FPCore
 
 /// CoachHomeModel v1 (contract 6.2): the hand-made fixtures of Tools/coach-home-fixtures.js and the decoder's
-/// rules. The page-built files (P6's tests/golden/dump-coach-home.js) join Fixtures/coachHome later; the first
-/// test decodes whatever is there.
+/// rules, the row and connect intent map (N6), and the eight files the page builds itself (P6's
+/// tests/golden/dump-coach-home.js), read against the web's own rules (N13). The first test decodes every file.
 final class CoachHomeModelTests: XCTestCase {
     private func model(_ name: String) throws -> CoachHomeModel {
         try CoachHomeModel.decode(utf8: FixtureFiles.data("coachHome/\(name).json"))
@@ -265,5 +265,267 @@ final class CoachHomeModelTests: XCTestCase {
                 XCTAssertFalse(p.contains(piece), "a printed form holds '\(piece)'")
             }
         }
+    }
+
+    // MARK: The page-built fixtures (N13)
+
+    /// The files Tools/coach-home-fixtures.js writes by hand; every other file in Fixtures/coachHome is the page's own.
+    private static let handMade: Set<String> = ["forward-compat", "minimal", "lone-surrogates"]
+
+    /// The web's own words on the hub and the connect screen (renderCoach before build 61, index.html at 91708ae,
+    /// 21097-21121 and 21147-21212; the page builds both screens from one model since P6, _coachHomeScreen).
+    private enum Web {
+        static let connectBody = "Plug in your Claude API key and the coach can talk through sessions, build a custom programme, and react to what you log."
+        static let emptyBody = "Your coach is wired in. Ask about today's session, your form, your programme — anything from your data is fair game."
+        static let help = [
+            "Get a key from your Anthropic account: console.anthropic.com → API Keys → Create key, then paste it here.",
+            "Anthropic bills usage to your own account — typically a few cents per chat. A Claude subscription does not include API access.",
+        ]
+        static let starter = "No key? Build a starter plan instead →"
+        static let replying = "Coach is replying…"
+        static let noMessages = "No messages yet — tap to start"
+
+        /// "1 exchange", "2 exchanges": the hero's body and Open Chat's sub count ceil(messages / 2).
+        static func exchanges(_ messages: Int) -> String {
+            let n = (messages + 1) / 2
+            return "\(n) exchange" + (n == 1 ? "" : "s")
+        }
+    }
+
+    /// What the page held when tests/golden/dump-coach-home.js built each file (its SCENARIOS), as the web's rules
+    /// read it: every route, string and row the tests below expect is derived from it by those rules.
+    private struct Scenario {
+        var rev: Int
+        var room: Room = .heavyweight
+        var dynTypeOn = true
+        /// A key saved: the hub; none: the connect screen (even during setup).
+        var key = true
+        /// The test seed's programme (week 6 of 12, block Build); false: none.
+        var programme = true
+        /// The owner's first name; nil: none ("Welcome.", the avatar "?").
+        var name: String? = "Kalani"
+        var messages = 0
+        /// The newest message's line as the page cuts it: %% lines dropped, 65 characters, then an ellipsis.
+        var preview = ""
+        /// A reply in flight.
+        var loading = false
+        /// Setup running (intakeMode).
+        var intake = false
+        /// The chat open (coachView 'chat'); false: the hub ('home').
+        var chatView = false
+    }
+
+    /// hub-history's newest reply up to its 65th character, an emoji: 64 ASCII characters.
+    private static let historyCut = "Great work this week: every session done and the squat is moving"
+
+    private static let scenarios: [String: Scenario] = [
+        "connect-heavyweight": Scenario(rev: 11, key: false),
+        "connect-lime": Scenario(rev: 12, room: .lime, dynTypeOn: false, key: false),
+        "connect-starter": Scenario(rev: 13, key: false, programme: false, name: nil),
+        "hub-empty": Scenario(rev: 14),
+        "hub-history": Scenario(rev: 15, messages: 4, preview: historyCut + "💪…"),
+        // a reply in flight with the hub showing (coachView 'home'): the next tap into Coach shows the hub
+        "hub-replying": Scenario(rev: 16, messages: 3, loading: true),
+        "hub-programme": Scenario(rev: 17, programme: false, messages: 2, preview: "Four sessions logged."),
+        // a key saved and setup persisted with no programme (kt_intake): the page booted in setup, and the hub it
+        // builds sits under the setup chat
+        "hub-resume": Scenario(rev: 18, programme: false, messages: 2,
+                               preview: "How many days a week can you train, and for how long each time?", intake: true),
+    ]
+
+    private static func line(_ head: String, _ act: String, _ title: String, _ sub: String?, _ icon: String?) -> String {
+        "\(head) › \(act) | \(title) | \(sub ?? "-") | \(icon ?? "-")"
+    }
+
+    /// The hub's rows, one line each: "<group head> › <do> | <title> | <sub or -> | <icon or ->".
+    private func lines(_ groups: [CoachHomeModel.Group]) -> [String] {
+        groups.flatMap { g in g.rows.map { Self.line(g.head, $0.action.rawValue, $0.title, $0.sub, $0.icon?.rawValue) } }
+    }
+
+    /// The rows exactly when the web shows them: Open Chat always, its sub by the state; Build My Programme only
+    /// without a programme; Clear Chat History only with messages; Disconnect always. The connect screen has none.
+    private func expectedRows(_ s: Scenario) -> (heads: [String], lines: [String]) {
+        guard s.key else { return ([], []) }
+        let sub = s.loading ? Web.replying : s.messages > 0 ? Web.exchanges(s.messages) + " · " + s.preview : Web.noMessages
+        var heads = ["Conversation"]
+        var rows = [Self.line("Conversation", "openChat", "Open Chat", sub, "chat")]
+        if !s.programme {
+            heads.append("Programme")
+            rows.append(Self.line("Programme", "startIntake", "Build My Programme", "Generate a custom training plan", "programme"))
+        }
+        heads.append("Account")
+        if s.messages > 0 { rows.append(Self.line("Account", "clearChat", "Clear Chat History", nil, "trash")) }
+        rows.append(Self.line("Account", "disconnect", "Disconnect", nil, "disconnect"))
+        return (heads, rows)
+    }
+
+    /// Every string a model hands the views.
+    private func texts(_ m: CoachHomeModel) -> [String] {
+        var out = [m.meta.label, m.meta.avatar ?? "", m.hero.greet, m.hero.title, m.hero.accent, m.hero.body]
+        if let c = m.connect { out += [c.label, c.placeholder, c.cta.label, c.cta.title, c.help, c.starter?.label ?? ""] }
+        for g in m.groups {
+            out.append(g.head)
+            for r in g.rows { out += [r.title, r.sub ?? ""] }
+        }
+        return out
+    }
+
+    /// The page-built files are the eight dump-coach-home.js writes (contract 6.4, P6): a missing one fails here, and so
+    /// does a new one until this file describes its state.
+    func testPageBuiltFixturesAreTheEightScenarios() {
+        let names = Set(FixtureFiles.files(in: "coachHome").map { $0.deletingPathExtension().lastPathComponent })
+        XCTAssertTrue(Self.handMade.isSubset(of: names), "the hand-made fixtures are missing: run Tools/coach-home-fixtures.js")
+        XCTAssertEqual(names.subtracting(Self.handMade).sorted(), Self.scenarios.keys.sorted(),
+                       "the page-built files (node tests/golden/dump-coach-home.js) and the scenarios this test describes")
+    }
+
+    /// Each page-built file, decoded from bytes and from text alike, draws what the web draws in its state (contract
+    /// 6.2): the route, the meta row, the hero in the web's words, the connect block (the help's two paragraphs joined
+    /// by one "\n", the starter link only without a programme, every string the page's own), and the rows exactly
+    /// when the web shows them. Nothing is skipped or rejected and no string holds U+FFFD.
+    func testPageBuiltFixturesDrawWhatTheWebDraws() throws {
+        for name in Self.scenarios.keys.sorted() {
+            let s = Self.scenarios[name]!
+            let data = try FixtureFiles.data("coachHome/\(name).json")
+            let m = try CoachHomeModel.decode(utf8: data)
+            XCTAssertEqual(try CoachHomeModel.decode(String(decoding: data, as: UTF8.self)), m, "\(name): from bytes and from text alike")
+            XCTAssertEqual(m.v, 1, name)
+            XCTAssertEqual(m.rev, s.rev, name)
+            XCTAssertEqual(m.boot, "b1791561600000-c3", "\(name): the dump's boot")
+            XCTAssertEqual(m.room, s.room, name)
+            XCTAssertEqual(m.paper, s.room == .heavyweight, name)
+            XCTAssertEqual(m.appearance, s.room == .heavyweight ? .light : .dark, name)
+            XCTAssertEqual(m.dynTypeOn, s.dynTypeOn, name)
+            XCTAssertEqual(m.route, s.key ? .hub : .connect, "\(name): the connect screen with no key, else the hub")
+            XCTAssertEqual(m.resume, s.key && (s.intake || (s.loading && s.chatView)), "\(name): resume")
+            // the meta row: the week (the test seed's 6 of 12) and the programme's block, then the owner's initial
+            XCTAssertEqual(m.meta.label, "COACH · WK 06 / 12" + (s.programme ? " · BUILD" : ""), name)
+            XCTAssertEqual(m.meta.avatar, s.name.map { String($0.prefix(1)).uppercased() } ?? "?", name)
+            // the hero, in the web's words
+            XCTAssertEqual(m.hero.greet, s.name.map { "Hi \($0)." } ?? "Welcome.", name)
+            XCTAssertEqual(m.hero.title, s.key ? "Coach" : "Connect", name)
+            XCTAssertEqual(m.hero.accent, s.key ? "ready." : "your coach.", name)
+            let body = !s.key ? Web.connectBody : s.messages > 0
+                ? Web.exchanges(s.messages) + " so far. Pick up where you left off, or start a new thread." : Web.emptyBody
+            XCTAssertEqual(m.hero.body, body, name)
+            // the connect block, on the connect screen only
+            if s.key {
+                XCTAssertNil(m.connect, "\(name): the hub has no connect block")
+            } else {
+                let c = try XCTUnwrap(m.connect, name)
+                XCTAssertEqual(c.label, "Anthropic API Key", name)
+                XCTAssertEqual(c.placeholder, "sk-ant-...", name)
+                XCTAssertEqual(c.cta, .init(label: "CONNECT", title: "Save key & start coaching"), name)
+                XCTAssertEqual(c.help, Web.help.joined(separator: "\n"), name)
+                XCTAssertEqual(c.help.unicodeScalars.filter { $0 == "\n" }.count, 1, "\(name): two paragraphs, one \\n")
+                XCTAssertEqual(c.starter?.label, s.programme ? nil : Web.starter, "\(name): the starter link only without a programme")
+                // the page sends every one of them: none is the decoder's default for a part left out
+                let raw = try XCTUnwrap(JSONText.parse(utf8: data)["connect"], name)
+                XCTAssertEqual([raw["label"]?.string, raw["placeholder"]?.string, raw["cta"]?["label"]?.string,
+                                raw["cta"]?["title"]?.string, raw["help"]?.string, raw["starter"]?["label"]?.string],
+                               [c.label, c.placeholder, c.cta.label, c.cta.title, c.help, c.starter?.label], "\(name): the page's own words")
+            }
+            let rows = expectedRows(s)
+            XCTAssertEqual(m.groups.map(\.head), rows.heads, name)
+            XCTAssertEqual(lines(m.groups), rows.lines, name)
+            XCTAssertEqual(m.skipped, 0, name)
+            XCTAssertEqual(m.tokens.rejected, [], name)
+            for t in texts(m) {
+                XCTAssertFalse(t.unicodeScalars.contains("\u{FFFD}"), "\(name): U+FFFD in \"\(t)\"")
+            }
+        }
+    }
+
+    /// Open Chat's sub follows the state (a reply in flight, "N exchanges · <the newest message>", none yet), and the
+    /// preview is cut at 65 characters in whole characters: hub-history's 65th is an emoji after 64 ASCII ones, where
+    /// the web's 65-unit slice before build 61 kept only its first half.
+    func testPageBuiltOpenChatSubPerState() throws {
+        let subs = [
+            "hub-empty": "No messages yet — tap to start",
+            "hub-history": "2 exchanges · Great work this week: every session done and the squat is moving💪…",
+            "hub-replying": "Coach is replying…",
+            "hub-programme": "1 exchange · Four sessions logged.",
+            "hub-resume": "1 exchange · How many days a week can you train, and for how long each time?",
+        ]
+        XCTAssertEqual(subs.keys.sorted(), Self.scenarios.filter { $0.value.key }.keys.sorted(), "every page-built hub")
+        for (name, sub) in subs.sorted(by: { $0.key < $1.key }) {
+            let open = try XCTUnwrap(try model(name).groups.first?.rows.first, name)
+            XCTAssertEqual(open.action, .openChat, name)
+            XCTAssertEqual(open.sub, sub, name)
+        }
+        // the cut: the 64 ASCII characters and the emoji whole, then the ellipsis; no half emoji, raw or escaped, and
+        // no U+FFFD in the file, and the %% lines left out
+        XCTAssertEqual(Self.historyCut.utf16.count, 64, "the emoji's first half is the 65th UTF-16 unit")
+        let text = try FixtureFiles.text("coachHome/hub-history.json")
+        XCTAssertEqual(JSONText.loneSurrogates(in: text), 0)
+        XCTAssertFalse(text.unicodeScalars.contains("\u{FFFD}"))
+        let sub = try XCTUnwrap(try model("hub-history").groups.first?.rows.first?.sub)
+        let preview = Array(sub.unicodeScalars.dropFirst("2 exchanges · ".unicodeScalars.count))
+        XCTAssertEqual(preview.count, 66, "65 characters, then the ellipsis")
+        XCTAssertEqual(preview.last, "\u{2026}" as Unicode.Scalar)
+        XCTAssertEqual(preview.dropLast().last, "\u{1F4AA}" as Unicode.Scalar, "the 65th character is the whole emoji")
+        XCTAssertFalse(sub.contains("%%"), "the preview drops the %% marker lines")
+    }
+
+    /// `resume`, the one key the shell's hold reads (contract 8.1, D34): in every page-built file a JSON boolean (read
+    /// with JSONSerialization) equal to the one decoded from bytes and from text, so a page that sent it as a string or a
+    /// number, which the decoder's compiled default turns into false without a word, fails here; and true in hub-resume
+    /// alone (a key saved and setup running), so a renamed key fails too. Its route is still the hub (the page builds
+    /// the hub that sits under the setup chat) and its rows follow the same rules as the others'.
+    func testPageBuiltResumeIsAJSONBooleanTrueOnlyInHubResume() throws {
+        var resumed: [String] = []
+        for name in Self.scenarios.keys.sorted() {
+            let data = try FixtureFiles.data("coachHome/\(name).json")
+            let fromBytes = try CoachHomeModel.decode(utf8: data)
+            let fromText = try CoachHomeModel.decode(String(decoding: data, as: UTF8.self))
+            XCTAssertEqual(fromText.resume, fromBytes.resume, "\(name): resume from bytes and from text alike")
+            let raw = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any], name)
+            let value = try XCTUnwrap(raw["resume"] as? NSNumber,
+                                      "\(name): resume is missing or not a JSON boolean (\(String(describing: raw["resume"])))")
+            XCTAssertEqual(CFGetTypeID(value), CFBooleanGetTypeID(), "\(name): resume is a JSON boolean, not the number \(value)")
+            XCTAssertEqual(value.boolValue, fromBytes.resume, "\(name): the raw resume is the decoded one")
+            if fromBytes.resume { resumed.append(name) }
+        }
+        XCTAssertEqual(resumed, ["hub-resume"],
+                       "true in hub-resume alone: none of the seven others is in setup, and hub-replying shows the hub (coachView 'home')")
+        let m = try model("hub-resume")
+        XCTAssertTrue(m.resume)
+        XCTAssertEqual(m.route, .hub, "the hub under the setup chat")
+        XCTAssertEqual(m.groups.flatMap(\.rows).map(\.action), [.openChat, .startIntake, .clearChat, .disconnect],
+                       "no programme and a conversation: every row the hub has")
+    }
+
+    /// The page sends its room's whole scale and palette with every model, the hub's 16 home* sizes added to the
+    /// chat's 26 (contract 6.2, 6.4): every size equals its room's compiled default and every colour its room's
+    /// palette, so page and FPCore are held together as CoachModelTests holds them for the chat. Both rooms are
+    /// page-built (Heavyweight's group head and CTA label 10, Lime's 9: contract delta 14.9).
+    func testPageBuiltTokensAreTheRoomsCompiledOnes() throws {
+        var rooms: Set<Room> = []
+        for name in Self.scenarios.keys.sorted() {
+            let compiled = Tokens.defaults(for: Self.scenarios[name]!.room)
+            let data = try FixtureFiles.data("coachHome/\(name).json")
+            let m = try CoachHomeModel.decode(utf8: data)
+            rooms.insert(m.room)
+            XCTAssertEqual(m.tokens.rejected, [], name)
+            let tokens = try JSONText.parse(utf8: data)["tokens"]
+            let color = try XCTUnwrap(tokens?["color"]?.object, name), type = try XCTUnwrap(tokens?["type"]?.object, name)
+            let space = try XCTUnwrap(tokens?["space"]?.object, name), radius = try XCTUnwrap(tokens?["radius"]?.object, name)
+            let font = try XCTUnwrap(tokens?["font"]?.object, name)
+            XCTAssertGreaterThan(color.count, 30, name)
+            for (key, value) in color.sorted(by: { $0.key < $1.key }) {
+                guard let token = ColorToken(rawValue: key) else { XCTFail("\(name): color.\(key) is not a token"); continue }
+                XCTAssertEqual(RGBA(css: value.string ?? ""), compiled.color(token), "\(name) color.\(key)")
+            }
+            XCTAssertEqual(Set(type.keys), Set(TypeToken.allCases.map(\.rawValue)), "\(name): the chat's sizes and the hub's 16")
+            for t in TypeToken.allCases { XCTAssertEqual(type[t.rawValue]?.double, compiled.size(t), "\(name) type.\(t.rawValue)") }
+            XCTAssertEqual(Set(space.keys), Set(SpaceToken.allCases.map(\.rawValue)), name)
+            XCTAssertEqual(Set(radius.keys), Set(RadiusToken.allCases.map(\.rawValue)), name)
+            XCTAssertEqual(Set(font.keys), Set(FontToken.allCases.map(\.rawValue)), name)
+            for t in SpaceToken.allCases { XCTAssertEqual(space[t.rawValue]?.double, compiled.space(t), "\(name) space.\(t.rawValue)") }
+            for t in RadiusToken.allCases { XCTAssertEqual(radius[t.rawValue]?.double, compiled.radius(t), "\(name) radius.\(t.rawValue)") }
+            for t in FontToken.allCases { XCTAssertEqual(font[t.rawValue]?.string, compiled.font(t), "\(name) font.\(t.rawValue)") }
+            XCTAssertEqual(m.tokens, compiled, "\(name): the decoded tokens are the room's compiled defaults")
+        }
+        XCTAssertEqual(rooms, [.heavyweight, .lime], "both rooms are page-built")
     }
 }
