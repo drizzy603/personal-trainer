@@ -27,10 +27,24 @@ concurrency:
   group: ios-build-${{ github.ref }}
   cancel-in-progress: true
 
+# The Xcode the app ships with, named once (.github/scripts/select-xcode.sh selects /Applications/Xcode_<version>.app,
+# which on GitHub's images follows that version's newest patch, and checks that it is that Xcode).
+env:
+  # The owner's Mac archives with Xcode 27.1 (27A9275); this moves when that Mac's does. GitHub has Xcode 27 only on
+  # the xcode-27 label, a public preview (runner-images issue 14404: no SLA, and queueing while capacity grows). Its
+  # image of 2026-10-26 has macOS 27, Xcode 27.0, 27.1 (27A9275, the default) and 27.2 RC, and the iOS 27.0 and 27.1
+  # runtimes, none of 26.x. macos-latest is macos-26 (image of 2026-10-13: Xcode 26.0.1 to 26.6, the iOS 26.2, 26.4.1
+  # and 26.5 runtimes). The app build and fpkit-mac run on xcode-27 with this Xcode; when GitHub gives Xcode 27 a GA
+  # label (or drops the preview's), move their runs-on there.
+  XCODE_SHIP: '27.1'
+
 jobs:
+  # The App target as it ships: built by the Xcode the archive is made with (signing is the archive's business). A
+  # build with macos-latest's Xcode 26.6 proved a compiler and SDK the app is never built with, and could pass where
+  # 27.1 fails.
   build:
     name: Build (unsigned)
-    runs-on: macos-latest
+    runs-on: xcode-27
     timeout-minutes: 20
 
     steps:
@@ -48,8 +62,8 @@ jobs:
       - name: Sync web assets into iOS bundle
         run: npm run sync
 
-      - name: Select latest stable Xcode
-        run: sudo xcode-select -s /Applications/Xcode.app
+      - name: Select the Xcode the app ships with
+        run: bash .github/scripts/select-xcode.sh "$XCODE_SHIP"
 
       - name: Build (no signing)
         working-directory: ios/App
@@ -65,17 +79,18 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             build
 
-  # FPKit (ios/App/FPKit), the native half of the move to SwiftUI. FPCore and FPStore run on the Mac.
+  # FPKit (ios/App/FPKit), the native half of the move to SwiftUI. FPCore and FPStore run on the Mac, compiled by the
+  # Xcode the app ships with, on macOS 27 like the owner's Mac.
   fpkit-mac:
     name: FPKit tests on macOS (FPCore, FPStore)
-    runs-on: macos-latest
+    runs-on: xcode-27
     timeout-minutes: 20
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Select latest stable Xcode
-        run: sudo xcode-select -s /Applications/Xcode.app
+      - name: Select the Xcode the app ships with
+        run: bash .github/scripts/select-xcode.sh "$XCODE_SHIP"
 
       - name: Toolchain
         run: |
