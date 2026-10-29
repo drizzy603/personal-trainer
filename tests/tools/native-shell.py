@@ -205,14 +205,27 @@ def scen_smoke(c):
     ok = [l for l in out.splitlines() if 'fp: ping ok v1' in l and 'app.kt.trainer:shell' in l]
     c.rep.check(s, 'a -fpSmoke launch logs "fp: ping ok v1" (subsystem app.kt.trainer)', bool(ok), (ok or lines or ['no line'])[-1].strip()[:160])
     p, sh = page(e), shellst(e)
-    c.rep.check(s, 'hello negotiates v1 with the coach (the page and the link agree)', p.get('fp', {}).get('v') == 1
-                and (p.get('fp', {}).get('hello') or {}).get('screens') == ['coach'] and sh.get('phase') == 'linked' and sh.get('negotiated') == ['coach'],
-                '%s / %s %s' % (p.get('fp', {}).get('hello'), sh.get('phase'), sh.get('negotiated')))
+    # The screens compiled into the binary (FPCore ShellContract.binaryScreens): build 60 the chat alone, build 61 the
+    # chat, the native Coach tab's home and the tab root (20-order 9 item 11). The root decides what is offered and
+    # negotiated: the classic root offers the chat alone, as build 60 did; the tab root (T16's smoke) all three.
+    binary = ['coach'] if int(c.opts.shell) < 61 else ['coach', 'coachHome', 'tabs']
+    root = (sh.get('root') or {}).get('kind')
+    hello = sorted((p.get('fp', {}).get('hello') or {}).get('screens') or [])
     flag = p.get('flag') or {}
-    c.rep.check(s, 'the flag offers the coach (ScreenGate when the web view was set up) and names the binary\'s screens', flag.get('screens') == ['coach']
-                and flag.get('v') == 1 and flag.get('binary') == ['coach'], flag)
+    want = ['coach', 'coachHome', 'tabs'] if root == 'tabs' else ['coach']
+    c.rep.check(s, 'hello negotiates v1 with %s (the page and the link agree; root %s)' % (', '.join(want), root), p.get('fp', {}).get('v') == 1
+                and hello == want and sh.get('phase') == 'linked' and sorted(sh.get('negotiated') or []) == want,
+                '%s / %s %s' % (p.get('fp', {}).get('hello'), sh.get('phase'), sh.get('negotiated')))
+    bar = (flag.get('tabs') or {}).get('bar') or {}
+    if root == 'tabs':
+        offered = sorted(flag.get('screens') or []) == want and (bar.get('h') or 0) > 0 and (bar.get('safe') or 0) >= 0
+        what = 'the flag offers the three pieces with the tab root\'s first bar and names the binary\'s screens'
+    else:
+        offered = flag.get('screens') == ['coach'] and 'tabs' not in flag
+        what = 'the flag offers the coach (ScreenGate when the web view was set up) and names the binary\'s screens'
+    c.rep.check(s, what, offered and flag.get('v') == 1 and sorted(flag.get('binary') or []) == binary, flag)
     c.rep.check(s, 'the page booted with the bridge (bootDone through TrovoShell)', sh.get('bootDones', 0) >= 1, sh.get('bootDones'))
-    c.rep.fact(s, 'shell %s, page %s' % (c.opts.shell, c.page))
+    c.rep.fact(s, 'shell %s, page %s, root %s' % (c.opts.shell, c.page, root))
     note(c, s, ev)
 
 
@@ -269,7 +282,9 @@ def scen_chat(c):
                 {'up': sb.get('up'), 'latched': sb.get('latched'), 'tab': pb.get('tab'), 'view': pb.get('view'), 'transitions': sb.get('transitions')})
     cov = [r.get('outcome') for r in intents(ev, 'shell.covered')]
     c.rep.check(s, 'shell.covered went on before and off after (both done)', len(cov) >= 2 and all(o == 'done' for o in cov), cov)
-    c.rep.check(s, 'the marker is gone with the chat', not sb.get('markers'), sb.get('markers'))
+    # describe()'s markers lists every .marker file: a 61 binary's section and model markers rest at 0 there; the crash
+    # markers are the screens' own (presenting.<screen>.marker, "presenting <screen>@...")
+    c.rep.check(s, 'the marker is gone with the chat', not [l for l in sb.get('markers') or [] if l.startswith('presenting ')], sb.get('markers'))
     vis = [page(e).get('visEvents') for e in ev.all('state')]
     c.rep.check(s, 'no visibilitychange in the page while the chat was up (present to Back)', all(v == [] for v in vis) and all(page(e).get('vis') == 'visible' for e in ev.all('state')), vis)
     c.rep.check(s, 'the web view never left its window', all((shellst(e).get('leftWindow') or 0) == 0 for e in ev.all('state')), [shellst(e).get('leftWindow') for e in ev.all('state')])
