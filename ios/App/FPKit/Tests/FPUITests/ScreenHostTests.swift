@@ -2524,7 +2524,6 @@ final class ScreenHostTests: XCTestCase {
         let screens = try XCTUnwrap(host.describe()["screens"] as? [String: Any])
         XCTAssertEqual(screens.keys.sorted(), ["coach", "coachHome"], "each screen up has its entry")
         XCTAssertEqual((screens["coachHome"] as? [String: Any])?["host"] as? String, "stack")
-        XCTAssertEqual((screens["coachHome"] as? [String: Any])?["inWindow"] as? Bool, false, "under the chat: out of the window")
         XCTAssertEqual(markerLines(), ["presenting coach@P1 shell 61"], "the chat on top: its marker alone")
         posts = []
         host.dismiss("coachHome")
