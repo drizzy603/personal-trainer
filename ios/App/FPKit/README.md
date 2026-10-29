@@ -526,9 +526,10 @@ screenshots/shoot.py drive the page's dev-nav hook with them instead of writing 
 [The coach's API base](#the-coachs-api-base-in-a-test-launch)).
 `-fpOffline` keeps the page's own update check off and, without `-fpPolicyFile`, fetches no policy file either:
 the compiled defaults are in force for the launch (every piece on, whatever the phone's last good copy says), so from
-build 61 an iOS 26+ phone takes the tab root unless its own data turns `tabs` off. From build 61 `-fpPolicyFile`,
-`-devTheme` and `-devNav` also act at the scene's connection, before the root is decided, beside SceneDelegate's own
-`-fpOpenURL`: see the screen bridge's Debug launch arguments above.
+build 61 an iOS 26+ phone takes the tab root unless its own data turns `tabs` off. From build 61 `-fpPolicyFile` and
+`-devNav` also act at the scene's connection before the root is decided (the policy file can pin the classic root;
+the route's head is the first tab), and `-devTheme` right after it (the first frame's room, once the root is chosen),
+beside SceneDelegate's own `-fpOpenURL`: see the screen bridge's Debug launch arguments above.
 
 **A background launch can boot the page.** A watch message or a Health delivery can launch the phone app with no one
 looking. The hub answers the watch from its cache either way, and the web view may never load; but UIKit can also
@@ -633,7 +634,11 @@ xcodebuild -scheme FPKit-Package -destination 'platform=iOS Simulator,id=<udid>'
 ```
 
 CI (`.github/workflows/ios-build.yml`) runs `swift test` on macOS (job `fpkit-mac`) and both commands above
-on the newest iOS runtime's first iPhone (job `fpkit-ios`), beside the app build.
+on the newest iOS runtime's first iPhone (job `fpkit-ios`), beside the app build. Since build 61's drain the iOS
+tests run in three parts on their own runners, each inside the job's 30 minutes: `renders` and `tabs` take the classes
+the job's `RENDERS` and `TABS` name (the coach renders; `ShellBridgeTabsTests`), `rest` skips exactly those, so a new
+class always runs somewhere. A named class that no longer exists, or a part that runs no test, fails the job; a
+part whose test step passes 22 minutes warns that it is time to split again.
 
 `.build` (SwiftPM's build folder, or the link to it) is ignored by the root `.gitignore`. xcodebuild leaves
 an empty `.swiftpm/` folder here, which git does not see.
