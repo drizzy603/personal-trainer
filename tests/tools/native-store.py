@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """The native store scenarios (plan task S5): FPStore attached to the real app, in an iOS simulator.
 
-tests/native-store.sh builds the app (as build 60, Debug) and calls this. Every scenario drives the real index.html in
-the real Capacitor shell through the app's own launch arguments (FPHost's StoreProbe, Debug builds only), so nothing
-writes WebKit's file behind the facade except the scenarios that are about exactly that (WebKit wiped). The host reads
-the two SQLite files itself (WebKit's localstorage.sqlite3 and FPStore's store.sqlite, copied first) and decides; the
-app only acts and reports.
+tests/native-store.sh builds the app (Debug, as build 61 at least, through tests/tools/fp-build.sh into
+~/Library/Caches/FPKit/<checkout>/dd-store, holding the paired simulators' sim.lock) and calls this. Every scenario
+drives the real index.html in the real Capacitor shell through the app's own launch arguments (FPHost's StoreProbe, Debug
+builds only), so nothing writes WebKit's file behind the facade except the scenarios that are about exactly that (WebKit
+wiped). The host reads the two SQLite files itself (WebKit's localstorage.sqlite3 and FPStore's store.sqlite, copied
+first) and decides; the app only acts and reports.
 
   native-store.py --phone UDID --app App.app [--app59 App59.app] [--only a,b] [--sweep N]
 
