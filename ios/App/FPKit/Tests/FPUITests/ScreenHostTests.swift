@@ -2669,8 +2669,9 @@ final class ScreenHostTests: XCTestCase {
     }
 
     /// The hub's meta row moves as the hub scrolls, each step a new anchor (N7's review): the toast's strip is measured
-    /// again only for another toast, room or width (the strip's height, everywhere); in a window scene the strip moves
-    /// with each anchor, measured once.
+    /// again only for another toast, room or width (the strip's height, everywhere), and the window's frame, which
+    /// `layout()` sets from `frame(screen:statusBottom:)` (read here: this host has no window scene, so no window is
+    /// made), moves 8 px under each anchor with the strip measured once; a confirm takes the whole screen.
     func testTheToastStripIsMeasuredOncePerToastAsTheAnchorMoves() throws {
         let overlay = ShellOverlay()
         let saved = ToastRequest(text: "Saved", style: nil, undo: nil)
@@ -2690,18 +2691,35 @@ final class ScreenHostTests: XCTestCase {
         _ = overlay.stripHeight(long, width: 320)
         XCTAssertEqual(overlay.measures, 4)
 
-        try XCTSkipIf(UIApplication.shared.connectedScenes.isEmpty, "the toast window needs a window scene (tests/native-shell.sh checks it in the app)")
-        host.toast(ToastRequest(text: "Saved", style: nil, undo: nil))
-        let first = host.overlay.measures
-        XCTAssertGreaterThan(first, 0)
-        for y in stride(from: 100.0, through: 140.0, by: 4.0) { host.overlay.setAnchor(CGFloat(y)) }
-        XCTAssertEqual(host.overlay.measures, first, "the strip moved, measured once")
-        let frame = NSCoder.cgRect(for: try XCTUnwrap(host.overlay.describe()["frame"] as? String))
-        XCTAssertEqual(frame.minY, 148, accuracy: 0.5, "8 px under the last anchor")
-        host.toast(ToastRequest(text: String(repeating: "A longer forwarded toast ", count: 6), style: "err", undo: nil))
-        XCTAssertEqual(host.overlay.measures, first + 1, "another toast: measured")
-        host.overlay.setRoom(RoomTheme.defaults(.lime))
-        XCTAssertEqual(host.overlay.measures, first + 2, "another room: measured")
+        // the window's frame as layout() sets it, through the overlay's own toast (with a window scene layout() reads the
+        // same frame first, measuring no more)
+        let shown = ShellOverlay()
+        let screen = CGRect(x: 0, y: 0, width: 390, height: 844)
+        shown.show(toast: saved)
+        let gap = shown.theme.px(8)
+        let bare = shown.frame(screen: screen, statusBottom: 47)
+        XCTAssertEqual(bare, CGRect(x: 0, y: 47 + gap, width: 390, height: h), "under the status bar with no anchor: the strip")
+        XCTAssertEqual(shown.measures, 1)
+        var heard = 0
+        for y in stride(from: 100.0, through: 140.0, by: 4.0) {
+            shown.setAnchor(CGFloat(y))
+            let f = shown.frame(screen: screen, statusBottom: { () -> CGFloat in heard += 1; return 47 }())
+            XCTAssertEqual(f.minY, CGFloat(y) + gap, accuracy: 0.5, "8 px under the anchor")
+            XCTAssertEqual(f.height, h)
+        }
+        XCTAssertEqual(shown.measures, 1, "the strip moved with each anchor, measured once")
+        XCTAssertEqual(heard, 0, "the status bar is read only without an anchor")
+        shown.show(toast: long)
+        XCTAssertGreaterThan(shown.frame(screen: screen, statusBottom: 47).height, h + 30)
+        XCTAssertEqual(shown.measures, 2, "another toast: measured")
+        shown.setRoom(RoomTheme.defaults(.lime))
+        _ = shown.frame(screen: screen, statusBottom: 47)
+        XCTAssertEqual(shown.measures, 3, "another room: measured")
+        shown.show(confirm: ConfirmRequest(id: "c1", title: "Sure?", body: nil, confirm: nil, cancel: nil, tone: nil))
+        XCTAssertEqual(shown.frame(screen: screen, statusBottom: 47), screen, "a confirm: the whole screen")
+        XCTAssertEqual(shown.measures, 3)
+        shown.show(confirm: nil)
+        shown.show(toast: nil)
     }
 }
 #endif

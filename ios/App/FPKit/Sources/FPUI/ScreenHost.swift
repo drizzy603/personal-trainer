@@ -1756,8 +1756,9 @@ final class ShellOverlay {
                     })
     }
 
-    /// The window's frame: the whole screen for a confirm, the toast's own strip for a toast, hidden for neither. The
-    /// toast is measured on a controller of its own, so the strip fits the toast being shown, not the one before it.
+    /// The window: made on the first toast or confirm (in the foreground scene), drawing what it shows in the newest room,
+    /// at `frame(screen:statusBottom:)`; hidden for neither. The toast is measured on a controller of its own, so the
+    /// strip fits the toast being shown, not the one before it.
     private func layout() {
         guard toast != nil || confirm != nil else {
             window?.isHidden = true
@@ -1779,15 +1780,25 @@ final class ShellOverlay {
         window.overrideUserInterfaceStyle = theme.interfaceStyle
         host.overrideUserInterfaceStyle = theme.interfaceStyle
         host.rootView = content(toast: toast, confirm: confirm)
-        let screen = window.windowScene?.screen.bounds ?? UIScreen.main.bounds
-        if confirm != nil {
-            window.frame = screen
-        } else {
-            let top = anchor ?? (window.windowScene?.windows.first { $0.isKeyWindow && $0 !== window }?.safeAreaInsets.top ?? 47)
-            let height = toast.map { stripHeight($0, width: screen.width) } ?? 0
-            window.frame = CGRect(x: 0, y: top + theme.px(8), width: screen.width, height: height)
-        }
+        window.frame = frame(screen: window.windowScene?.screen.bounds ?? UIScreen.main.bounds,
+                             statusBottom: Self.statusBottom(beside: window))
         window.isHidden = false
+    }
+
+    /// The status bar's bottom in the key window beside the overlay's own (its safe area's top; 47 with none).
+    private static func statusBottom(beside window: UIWindow) -> CGFloat {
+        window.windowScene?.windows.first { $0.isKeyWindow && $0 !== window }?.safeAreaInsets.top ?? 47
+    }
+
+    /// The window's frame for what it shows (`layout()` sets it; a test reads it with no window scene): the whole screen
+    /// for a confirm, else the toast's own strip 8 px under the anchor (the chat's header or the hub's meta row), or under
+    /// the key window's status bar (`statusBottom`, read only then), its height measured once per toast, room and width
+    /// (`stripHeight`): the strip only moves as the hub's meta row does.
+    func frame(screen: CGRect, statusBottom: @autoclosure () -> CGFloat) -> CGRect {
+        if confirm != nil { return screen }
+        let top = anchor ?? statusBottom()
+        let height = toast.map { stripHeight($0, width: screen.width) } ?? 0
+        return CGRect(x: 0, y: top + theme.px(8), width: screen.width, height: height)
     }
 
     /// The toast measured last: its strip's height for that toast, room and width. The hub's meta row moves as the hub
