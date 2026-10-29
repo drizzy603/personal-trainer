@@ -2,9 +2,11 @@
 """The native shell scenarios (plan task C5): the TrovoShell plugin, ScreenHost and PageLink in the real app, in an iOS
 simulator.
 
-tests/native-shell.sh builds the app (as build 60, Debug) and calls this. Every scenario drives the real index.html in
-the real Capacitor shell through the app's own launch arguments (FPUI's ShellProbe, Debug builds only: `-fpShellProbe
-<steps>`); the app acts and reports, this decides. Shots of what the owner would see go to --out.
+tests/native-shell.sh builds the app (Debug, as build 61 at least, through tests/tools/fp-build.sh into
+~/Library/Caches/FPKit/<checkout>/dd-shell, holding the paired simulators' sim.lock) and calls this. Every scenario
+drives the real index.html in the real Capacitor shell through the app's own launch arguments (FPUI's ShellProbe, Debug
+builds only: `-fpShellProbe <steps>`); the app acts and reports, this decides. Shots of what the owner would see go to
+--out.
 
   native-shell.py --phone UDID --app App.app [--only a,b] [--out DIR]
 
@@ -55,6 +57,20 @@ API_KEY = 'sk-ant-probe-not-a-key'
 RUNS = [0]
 OVER_FULL_SCREEN = 5          # UIModalPresentationStyle.overFullScreen
 LIGHT, DARK = 1, 2            # UIUserInterfaceStyle
+TAB_IDS = ('log', 'progress', 'coach', 'settings')   # the page's FP_TAB_IDS: the tabs a flag's tabs.selected may name
+BAR_H, BAR_SAFE = 83, (34, 0)  # the tab root's first bar (delta 14.1): 83 on every iPhone, safe = the window's inset
+
+
+def is_num(v, allowed):
+    """v is a number (never a bool) equal to one of allowed."""
+    return type(v) in (int, float) and v in allowed
+
+
+def marker_state(line):
+    """The state byte of a short-section marker line (contract 10.2: the marker line, a newline, then 1 inside a section
+    and 0 outside), None for a line with none (a screen's presenting marker)."""
+    head, nl, tail = (line or '').rpartition('\n')
+    return tail if nl and len(tail) == 1 else None
 
 
 def shell_probe(sim, name, phases, args=(), timeout=90, verdicts=False, during=None, until='done', out=None):
@@ -216,10 +232,18 @@ def scen_smoke(c):
     c.rep.check(s, 'hello negotiates v1 with %s (the page and the link agree; root %s)' % (', '.join(want), root), p.get('fp', {}).get('v') == 1
                 and hello == want and sh.get('phase') == 'linked' and sorted(sh.get('negotiated') or []) == want,
                 '%s / %s %s' % (p.get('fp', {}).get('hello'), sh.get('phase'), sh.get('negotiated')))
-    bar = (flag.get('tabs') or {}).get('bar') or {}
+    tabs = flag.get('tabs') or {}
+    bar = tabs.get('bar') or {}
     if root == 'tabs':
-        offered = sorted(flag.get('screens') or []) == want and (bar.get('h') or 0) > 0 and (bar.get('safe') or 0) >= 0
-        what = 'the flag offers the three pieces with the tab root\'s first bar and names the binary\'s screens'
+        # The tab root's own checks, one per cause (contract 2.1's canonical flag, delta 14.1's bar): the root is live,
+        # its first bar is 83 high over the window's inset (34 or 0), and the flag names the tab the first frame shows.
+        fell = (sh.get('root') or {}).get('fellBack')
+        c.rep.check(s, 'the tab root is live (describe().root.fellBack is null)', fell is None, fell)
+        offered = sorted(flag.get('screens') or []) == want
+        what = 'the flag offers the three pieces and names the binary\'s screens'
+        c.rep.check(s, 'the flag\'s first bar is %d high (delta 14.1: every iPhone the tab root runs on)' % BAR_H, is_num(bar.get('h'), (BAR_H,)), bar)
+        c.rep.check(s, 'the flag\'s first bar sits over the window\'s bottom inset (safe 34 or 0)', is_num(bar.get('safe'), BAR_SAFE), bar)
+        c.rep.check(s, 'the flag names the first frame\'s tab (tabs.selected: log, progress, coach or settings)', tabs.get('selected') in TAB_IDS, tabs.get('selected'))
     else:
         offered = flag.get('screens') == ['coach'] and 'tabs' not in flag
         what = 'the flag offers the coach (ScreenGate when the web view was set up) and names the binary\'s screens'
@@ -282,9 +306,13 @@ def scen_chat(c):
                 {'up': sb.get('up'), 'latched': sb.get('latched'), 'tab': pb.get('tab'), 'view': pb.get('view'), 'transitions': sb.get('transitions')})
     cov = [r.get('outcome') for r in intents(ev, 'shell.covered')]
     c.rep.check(s, 'shell.covered went on before and off after (both done)', len(cov) >= 2 and all(o == 'done' for o in cov), cov)
-    # describe()'s markers lists every .marker file: a 61 binary's section and model markers rest at 0 there; the crash
-    # markers are the screens' own (presenting.<screen>.marker, "presenting <screen>@...")
-    c.rep.check(s, 'the marker is gone with the chat', not [l for l in sb.get('markers') or [] if l.startswith('presenting ')], sb.get('markers'))
+    # describe()'s markers lists every .marker file in FPShell: the screens' crash markers ("presenting <screen>@...", one
+    # file while the screen is up) and a 61 binary's short-section markers (section.tabs, model.<screen>: the line, then
+    # 1 inside a section and 0 outside, contract 10.2). At rest after Back: no screen marker, and every section and model
+    # marker at 0 (one left at 1 is a crash verdict at the next launch, which every tool launch's -fpIgnoreMarker hides).
+    rest = sb.get('markers') or []
+    c.rep.check(s, 'the marker is gone with the chat, and every section and model marker rests at 0', not [l for l in rest
+                if l.startswith('presenting ') or marker_state(l) != '0'], rest)
     vis = [page(e).get('visEvents') for e in ev.all('state')]
     c.rep.check(s, 'no visibilitychange in the page while the chat was up (present to Back)', all(v == [] for v in vis) and all(page(e).get('vis') == 'visible' for e in ev.all('state')), vis)
     c.rep.check(s, 'the web view never left its window', all((shellst(e).get('leftWindow') or 0) == 0 for e in ev.all('state')), [shellst(e).get('leftWindow') for e in ev.all('state')])
