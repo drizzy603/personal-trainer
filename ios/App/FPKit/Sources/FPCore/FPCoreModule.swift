@@ -37,6 +37,11 @@ import Foundation
 /// - `TabsModel.swift`: tabs model v1 (build 61), what the native tab bar wears, built by the page: room,
 ///   `paper`, the selected and idle colours, and each of the four fixed tabs' title and accessibility label;
 ///   compiled per-room defaults for the first frame. The bar's order and glyphs are the shell's.
+/// - `Pieces.swift`: build 61's pieces that depend on each other (`ShellPieces`): `tabs` needs a live tab root,
+///   `coachHome` needs `tabs` and `coach`'s own checks, `coach` is joint with `coachHome` under a tab root and alone
+///   (60's overlay) under a classic one; `needs` for a piece off only because of another; what a hello comes to under a
+///   live tab root (the fallback, the page build's declines). One rule for the gate, every hello, every cascade and
+///   About, held as a table in Tests/FPCoreTests/Fixtures/shell/negotiation.json.
 public enum FPCoreModule {
     /// The module's name: its folder under Sources/, and the category its log lines can use.
     public static let name = "FPCore"

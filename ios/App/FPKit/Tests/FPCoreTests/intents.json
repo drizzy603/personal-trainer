@@ -31,7 +31,16 @@
     {"name": "coach.draftTaken", "args": {"nonce": "string"}, "timeout": 2, "does": "The native composer took the page's draft with this nonce"},
     {"name": "confirm", "args": {"id": "string", "yes": "bool"}, "timeout": 2, "does": "The answer to a forwarded confirm; after a reload: {ok: false, error: 'stale'}"},
     {"name": "toast.undo", "args": {"id": "string"}, "timeout": 2, "does": "Undo on a forwarded toast"},
-    {"name": "screens.off", "args": {"screen": "string", "why": "string?"}, "timeout": 2, "does": "A native screen is off for the rest of the document: the page shows its own again. why: no-hello or failures (the native breaker, kept for the page build), withdrawn (the policy file or the device switch, until the next document)"}
+    {"name": "screens.off", "args": {"screen": "string", "why": "string?", "draft": "string?"}, "timeout": 2, "answers": "{ok, took?}", "does": "A native piece is off for the rest of the document: the page shows its own again. why: no-hello or failures (the native breaker, kept for the page build), withdrawn (the policy file or the device switch, until the next document), needs (a piece this one needs went off); for screen tabs the fallback's word (page, refused, no-hello, failures, policy, switch). draft (screen coach only): the native composer's unsent words; the page stores them durably (its composer and kt_coach_handover) and only then answers took: true"},
+    {"name": "tabs.select", "args": {"tab": "string", "seq": "int", "again": "bool?"}, "timeout": 2, "answers": "{ok, tab}", "does": "Tabs mode: the shell selected tab (the owner's tap, a deep link, a stray redirected) as funnel run seq; the page runs its local switch when seq is newer than any it has seen and never calls selectTab back; again: the owner's re-tap of the selected tab. off when the page is not in tabs mode"},
+    {"name": "tabs.bar", "args": {"h": "int", "safe": "int", "rev": "int"}, "timeout": 2, "does": "Tabs mode: a bar geometry change the shell made on its own (whole points); applied only when rev is newer. off when the page is not in tabs mode"},
+    {"name": "coachHome.snapshot", "args": {}, "timeout": 5, "answers": "{ok, json}", "does": "The CoachHomeModel now, as _nativeJSON(model); off when the native Coach tab is not in use in this document"},
+    {"name": "coachHome.openChat", "args": {}, "timeout": 2, "does": "openCoachChat: the chat's present follows and the shell pushes it; off, nokey"},
+    {"name": "coachHome.setKey", "args": {"secret": "string"}, "timeout": 2, "does": "The connect screen's key (saveApiKey's rule without the DOM, answered before any network); the only carrier of the key, never printed or recorded; off, stale (a key is already saved), invalid (checked in that order)"},
+    {"name": "coachHome.disconnect", "args": {}, "timeout": 2, "does": "clearApiKey (its confirm is forwarded); off, nokey, stale"},
+    {"name": "coachHome.clearChat", "args": {}, "timeout": 2, "does": "_confirmClearChat (its confirm is forwarded); off, empty, stale"},
+    {"name": "coachHome.startIntake", "args": {}, "timeout": 2, "does": "startRoutineIntake (asks first over an existing chat); off, nokey, has-programme, intake, stale"},
+    {"name": "coachHome.openStarter", "args": {}, "timeout": 2, "does": "Select Log through the page's own switchTab, then openStarterIntake; off, has-programme"}
   ],
   "answers": {
     "ok": "{ok: true, ...}",
@@ -39,7 +48,7 @@
     "failed": "{ok: false, error: 'unknown-intent' | 'bad-args' | 'exception'}, a timeout, a script error or an answer without ok: counted by the 3-failure breaker"
   },
   "messages": [
-    {"name": "hello", "args": {"v": "int", "page": "string", "screens": "[string]", "boot": "string?"}, "answers": "{v, screens, up?} (v 0 and why when refused; up: screens the shell still shows from the document before, which the page takes over or dismisses)", "does": "The page speaks contract v and can hand these screens to Swift"},
+    {"name": "hello", "args": {"v": "int", "page": "string", "screens": "[string]", "boot": "string?"}, "answers": "{v, screens, up?, tabs?} (v 0 and why when refused; up: screens the shell still shows from the document before, which the page takes over or dismisses; tabs {selected, seq, bar: {h, safe, rev}} iff tabs is negotiated)", "does": "The page speaks contract v and can hand these screens to Swift"},
     {"name": "bootDone", "args": {"page": "string"}, "does": "The end of boot whatever painted: disarms the store breaker; the OTA confirm moves here"},
     {"name": "present", "args": {"screen": "string"}, "does": "Show the native screen"},
     {"name": "dismiss", "args": {"screen": "string"}, "does": "The page left the screen (another tab, the runner, the end of intake)"},
@@ -47,8 +56,11 @@
     {"name": "toast", "args": {"text": "string", "style": "string", "undo": "string?"}, "does": "showToast or showUndoToast while a native screen covers the page; style ok, pr or err"},
     {"name": "confirm", "args": {"id": "string", "title": "string", "body": "string", "confirm": "string", "cancel": "string", "tone": "string"}, "does": "_ktConfirm while a native screen covers the page; tone danger, accent or neutral"},
     {"name": "log", "args": {"text": "string", "level": "string?"}, "does": "A line for the shell's log"},
-    {"name": "status", "args": {}, "answers": "{v, shell, page, screens: {<screen>: {on, live, off, trip, why, at, canReset}}, verdicts, counters: {since, leftWindow, hidden, trips, markers}}", "does": "Settings > About: every native screen this binary has, whether the next document may show it and why not (off: device, policy, crash, breaker; trip: no-hello or failures), and the shell's counters (this launch and in all)"},
+    {"name": "status", "args": {"refresh": "bool?"}, "answers": "{v, shell, page, screens: {<screen>: {on, live, off, trip, why, at, canReset}}, verdicts, counters: {since, leftWindow, hidden, trips, markers}}", "does": "Settings > About: every native screen this binary has, whether the next document may show it and why not (off: device, policy, crash, breaker; trip: no-hello or failures), and the shell's counters (this launch and in all); refresh: true (About's Check the switches now) runs a forced policy fetch first, at most once a minute"},
     {"name": "reset", "args": {"screen": "string"}, "answers": "the status after", "does": "Settings > About's Try the native chat again: the screen's crash verdicts and native breaker record go, so the next document may show it (this one keeps what it negotiated)"},
-    {"name": "visibility", "args": {"state": "string", "at": "int?"}, "does": "The page went hidden or visible (document.visibilityState, at its Date.now()) while a native screen covered it; the shell counts a hidden page while the app is in use, never by design"}
+    {"name": "visibility", "args": {"state": "string", "at": "int?"}, "does": "The page went hidden or visible (document.visibilityState, at its Date.now()) while a native screen covered it; the shell counts a hidden page while the app is in use, never by design"},
+    {"name": "selectTab", "args": {"tab": "string", "intent": "string?"}, "answers": "{tab, seq}: the shell's selection after the funnel and the counter", "does": "Tabs mode: the page's switchTab asks the shell to select tab before its local switch; intent (chat, intake) is what the page is about to show there. Rejected off (no live tab root) or bad-tab"},
+    {"name": "sheets", "args": {"open": "bool"}, "answers": "{bar: {h, safe, rev}}", "does": "Tabs mode: whether an overlay that covers the page's own bar is open in this document (sent at the end of boot, then on every net change); the bar hides on a web tab while open. Rejected off (no live tab root)"},
+    {"name": "setSwitch", "args": {"screen": "string", "on": "bool"}, "answers": "the status after", "does": "The shell's own device switch for a piece the root decides (only tabs): off acts at once and at every launch after, on from the next launch. Rejected no-switch for any other screen"}
   ]
 }

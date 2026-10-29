@@ -70,8 +70,24 @@ public enum Intent: Equatable, Sendable {
     /// Undo on a forwarded toast.
     case toastUndo(id: String)
     /// A native screen is off for the rest of the document: the page shows its own again. `why` is
-    /// LinkState's `ScreenOffReason.code`: no-hello, failures or withdrawn.
-    case screensOff(screen: String, why: String?)
+    /// LinkState's `ScreenOffReason.code` (no-hello, failures, withdrawn, needs) or, for `tabs`, the fallback's
+    /// `FellBackWhy`. `draft` (only with `coach`, contract 4.2): the native composer's unsent words, which the page takes.
+    case screensOff(screen: String, why: String?, draft: String? = nil)
+    /// Tabs mode (contract 4.1): the shell selected `tab` (the owner's tap, a deep link, a stray redirected) as funnel run
+    /// `seq`; `again` is the owner's re-tap of the selected tab.
+    case tabsSelect(tab: String, seq: Int, again: Bool?)
+    /// Tabs mode: a bar geometry change the shell made on its own.
+    case tabsBar(BarMetrics)
+    /// The native Coach tab's model now (answers {ok, json}).
+    case coachHomeSnapshot
+    case coachHomeOpenChat
+    /// The connect screen's key (contract 5): the only intent that carries it, under `secret` (never `key`, `id` or
+    /// `nonce`, which PageLink records). Printed as `•••`.
+    case coachHomeSetKey(secret: String)
+    case coachHomeDisconnect
+    case coachHomeClearChat
+    case coachHomeStartIntake
+    case coachHomeOpenStarter
 
     /// The name `FPScreens.call` receives.
     public var name: String {
@@ -98,6 +114,15 @@ public enum Intent: Equatable, Sendable {
         case .confirm: return "confirm"
         case .toastUndo: return "toast.undo"
         case .screensOff: return "screens.off"
+        case .tabsSelect: return "tabs.select"
+        case .tabsBar: return "tabs.bar"
+        case .coachHomeSnapshot: return "coachHome.snapshot"
+        case .coachHomeOpenChat: return "coachHome.openChat"
+        case .coachHomeSetKey: return "coachHome.setKey"
+        case .coachHomeDisconnect: return "coachHome.disconnect"
+        case .coachHomeClearChat: return "coachHome.clearChat"
+        case .coachHomeStartIntake: return "coachHome.startIntake"
+        case .coachHomeOpenStarter: return "coachHome.openStarter"
         }
     }
 
@@ -105,7 +130,9 @@ public enum Intent: Equatable, Sendable {
     public var arguments: [String: JSONValue] {
         switch self {
         case .ping, .coachSnapshot, .coachStop, .coachRetry, .coachBack, .coachCancelIntake,
-             .coachRestorePrevious, .coachRegenerate, .coachOpenSettings, .coachClearImage:
+             .coachRestorePrevious, .coachRegenerate, .coachOpenSettings, .coachClearImage,
+             .coachHomeSnapshot, .coachHomeOpenChat, .coachHomeDisconnect, .coachHomeClearChat, .coachHomeStartIntake,
+             .coachHomeOpenStarter:
             return [:]
         case .shellCovered(let on): return ["on": .bool(on)]
         case .coachSend(let text, let image, let usePending, let nonce):
@@ -121,10 +148,17 @@ public enum Intent: Equatable, Sendable {
         case .coachDraftTaken(let nonce): return ["nonce": .string(nonce)]
         case .confirm(let id, let yes): return ["id": .string(id), "yes": .bool(yes)]
         case .toastUndo(let id): return ["id": .string(id)]
-        case .screensOff(let screen, let why):
+        case .screensOff(let screen, let why, let draft):
             var a: [String: JSONValue] = ["screen": .string(screen)]
             if let why { a["why"] = .string(why) }
+            if let draft { a["draft"] = .string(draft) }
             return a
+        case .tabsSelect(let tab, let seq, let again):
+            var a: [String: JSONValue] = ["tab": .string(tab), "seq": .number(Double(seq))]
+            if let again { a["again"] = .bool(again) }
+            return a
+        case .tabsBar(let bar): return ["h": .number(Double(bar.h)), "safe": .number(Double(bar.safe)), "rev": .number(Double(bar.rev))]
+        case .coachHomeSetKey(let secret): return ["secret": .string(secret)]
         }
     }
 
@@ -139,9 +173,14 @@ public enum Intent: Equatable, Sendable {
     /// How long PageLink waits for the answer.
     public var timeout: TimeInterval { IntentSignature.named(name)?.timeout ?? 2 }
 
-    /// The native screen it belongs to, for the breaker; nil for the shell's own (ping, covered,
-    /// confirm, toast, screens.off), which count against every live screen.
-    public var screen: String? { name.hasPrefix("coach.") ? "coach" : nil }
+    /// The native piece it belongs to, for the breaker (contract 4.4): the name's part before the first `.` when it is a
+    /// binary piece (`coach.*`, `coachHome.*`, `tabs.*`); nil for the shell's own (ping, shell.covered, confirm,
+    /// toast.undo, screens.off), which count against every live piece.
+    public var screen: String? {
+        guard let dot = name.firstIndex(of: ".") else { return nil }
+        let head = String(name[..<dot])
+        return ShellContract.binaryScreens.contains(head) ? head : nil
+    }
 
     /// A fresh nonce for a send.
     public static func nonce() -> String { "n" + UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased().prefix(16) }
@@ -174,6 +213,11 @@ public enum Intent: Equatable, Sendable {
             guard let s = v.string else { throw ParseError.wrongType(k) }
             return s
         }
+        func int(_ k: String) throws -> Int {
+            guard let v = a[k] else { throw ParseError.missing(k) }
+            guard let i = v.int else { throw ParseError.wrongType(k) }
+            return i
+        }
         switch name {
         case "ping": self = .ping
         case "shell.covered": self = .shellCovered(on: try flag("on"))
@@ -202,9 +246,47 @@ public enum Intent: Equatable, Sendable {
         case "coach.draftTaken": self = .coachDraftTaken(nonce: try str("nonce"))
         case "confirm": self = .confirm(id: try str("id"), yes: try flag("yes"))
         case "toast.undo": self = .toastUndo(id: try str("id"))
-        case "screens.off": self = .screensOff(screen: try str("screen"), why: try optionalStr("why"))
+        case "screens.off": self = .screensOff(screen: try str("screen"), why: try optionalStr("why"), draft: try optionalStr("draft"))
+        case "tabs.select": self = .tabsSelect(tab: try str("tab"), seq: try int("seq"), again: try optionalFlag("again"))
+        case "tabs.bar": self = .tabsBar(BarMetrics(h: try int("h"), safe: try int("safe"), rev: try int("rev")))
+        case "coachHome.snapshot": self = .coachHomeSnapshot
+        case "coachHome.openChat": self = .coachHomeOpenChat
+        case "coachHome.setKey": self = .coachHomeSetKey(secret: try str("secret"))
+        case "coachHome.disconnect": self = .coachHomeDisconnect
+        case "coachHome.clearChat": self = .coachHomeClearChat
+        case "coachHome.startIntake": self = .coachHomeStartIntake
+        case "coachHome.openStarter": self = .coachHomeOpenStarter
         default: throw ParseError.unknownName(name)
         }
+    }
+}
+
+// MARK: Printed forms (contract 5 K4)
+
+/// An intent prints as its name and arguments, with `secret` shown as `•••`: no log line, string interpolation, `dump` or
+/// XCTest failure message can print the owner's API key, even by mistake.
+extension Intent: CustomStringConvertible, CustomDebugStringConvertible, CustomReflectable {
+    /// The arguments that are never printed.
+    public static let secretArguments: Set<String> = ["secret"]
+    static let redacted = "•••"
+
+    /// The arguments as printed: `secret` replaced.
+    var printedArguments: [String: JSONValue] {
+        var a = arguments
+        for k in Self.secretArguments where a[k] != nil { a[k] = .string(Self.redacted) }
+        return a
+    }
+
+    public var description: String {
+        let a = printedArguments
+        guard !a.isEmpty else { return name }
+        return name + " " + JSONValue.object(a).jsonText
+    }
+
+    public var debugDescription: String { "Intent(" + description + ")" }
+
+    public var customMirror: Mirror {
+        Mirror(self, children: ["name": name, "arguments": JSONValue.object(printedArguments).jsonText], displayStyle: .enum)
     }
 }
 
@@ -276,7 +358,16 @@ public struct IntentSignature: Equatable, Sendable {
         .init("coach.draftTaken", ["nonce": "string"]),
         .init("confirm", ["id": "string", "yes": "bool"]),
         .init("toast.undo", ["id": "string"]),
-        .init("screens.off", ["screen": "string", "why": "string?"]),
+        .init("screens.off", ["screen": "string", "why": "string?", "draft": "string?"]),
+        .init("tabs.select", ["tab": "string", "seq": "int", "again": "bool?"]),
+        .init("tabs.bar", ["h": "int", "safe": "int", "rev": "int"]),
+        .init("coachHome.snapshot", timeout: 5),
+        .init("coachHome.openChat"),
+        .init("coachHome.setKey", ["secret": "string"]),
+        .init("coachHome.disconnect"),
+        .init("coachHome.clearChat"),
+        .init("coachHome.startIntake"),
+        .init("coachHome.openStarter"),
     ]
 
     public static func named(_ name: String) -> IntentSignature? { all.first { $0.name == name } }

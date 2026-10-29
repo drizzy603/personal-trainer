@@ -24,6 +24,78 @@ final class BreakerTests: XCTestCase {
         XCTAssertEqual(CrashMarker.Piece.store.name, "store")
     }
 
+    /// Build 61's marker kinds (contract 10.2): the tab root's short sections and each model's decode.
+    func testTabsAndModelMarkerLines() {
+        let tabs = CrashMarker(piece: .tabs, pageBuild: "P", shellBuild: "61")
+        XCTAssertEqual(tabs.line, "tabs@P shell 61")
+        XCTAssertEqual(CrashMarker(line: tabs.line), tabs)
+        let model = CrashMarker(piece: .model("coachHome"), pageBuild: "P", shellBuild: "61")
+        XCTAssertEqual(model.line, "model coachHome@P shell 61")
+        XCTAssertEqual(CrashMarker(line: model.line), model)
+        XCTAssertEqual(CrashMarker(line: "model coach@20261020-1 shell 61\n"), CrashMarker(piece: .model("coach"), pageBuild: "20261020-1", shellBuild: "61"))
+        XCTAssertEqual(CrashMarker(line: "tabs@P", defaultShell: "61"), tabs, "the short form is this binary's")
+        XCTAssertEqual([tabs.piece.name, model.piece.name, CrashMarker.Piece.model("tabs").name], ["tabs", "coachHome", "tabs"])
+        XCTAssertNotEqual(CrashMarker.Piece.screen("coachHome"), CrashMarker.Piece.model("coachHome"), "a screen's marker is not its model's")
+        // an unknown first word, or a kind without its piece, reads as nothing (as build 60 reads all of these)
+        for bad in ["opening tabs@P shell 61", "section tabs@P shell 61", "tabs coach@P shell 61", "model@P shell 61", "model coachHome shell 61",
+                    "model @P shell 61", "model coachHome@ shell 61", "tabsx@P shell 61", "model coachHome@P extra shell 61", "Tabs@P shell 61"] {
+            XCTAssertNil(CrashMarker(line: bad), bad)
+        }
+        XCTAssertNil(StoreOpMarker.read(Data("tabs@P shell 61\n1".utf8)), "the store's reader takes only its own")
+        // a verdict per kind, worded for About: the tab root's gives the classic root, a model's turns its piece off
+        var book = BreakerBook()
+        let added = book.recordStaleMarkers([tabs, model, CrashMarker(piece: .model("tabs"), pageBuild: "P", shellBuild: "61")], at: t0)
+        XCTAssertEqual(added.map(\.piece), ["tabs", "coachHome", "tabs"])
+        XCTAssertEqual(added.map(\.why), ["crash marker: the app closed during a tab change",
+                                          "crash marker: the app closed while reading a native coachHome model",
+                                          "crash marker: the app closed while reading a native tabs model"])
+        XCTAssertEqual(book.disabled.filter { $0.piece == "tabs" }.count, 1, "one verdict per pair: the newest")
+        XCTAssertEqual(book.disabled(piece: "tabs", shell: "61", page: "P")?.why, "crash marker: the app closed while reading a native tabs model")
+        XCTAssertNotNil(book.disabled(piece: "coachHome", shell: "61", page: "P"))
+        XCTAssertNil(book.disabled(piece: "coachHome", shell: "61", page: "P2"))
+    }
+
+    /// Declines (contract 10.1): per page build, kept with the book, cleared by Try again; a book from build 60 reads
+    /// whole, and a field another build wrote differently resets only itself.
+    func testDeclinesPerPageBuild() throws {
+        var book = BreakerBook()
+        XCTAssertFalse(book.declined(piece: "tabs", page: "P1"))
+        XCTAssertTrue(book.decline(piece: "tabs", page: "P1"))
+        XCTAssertFalse(book.decline(piece: "tabs", page: "P1"), "the same decline again changes nothing")
+        XCTAssertTrue(book.declined(piece: "tabs", page: "P1"))
+        XCTAssertFalse(book.declined(piece: "tabs", page: "P2"), "a new page build is offered it again")
+        XCTAssertFalse(book.declined(piece: "coachHome", page: "P1"))
+        XCTAssertTrue(book.decline(piece: "coachHome", page: "P1"))
+        XCTAssertTrue(book.decline(piece: "tabs", page: "P2"), "a newer page build's decline replaces the older")
+        XCTAssertFalse(book.declined(piece: "tabs", page: "P1"))
+        XCTAssertEqual(book.declined, ["tabs": "P2", "coachHome": "P1"])
+        // kept with the book
+        XCTAssertEqual(BreakerBook.decoded(book.encoded()), book)
+        let stored = try XCTUnwrap(try JSONText.parse(utf8: book.encoded()).object)
+        XCTAssertEqual(stored["declined"], ["coachHome": "P1", "tabs": "P2"])
+        // build 60's book (no declined) reads whole
+        let sixty = Data(#"{"disabled":[{"at":1791500000000,"page":"P1","piece":"coach","shell":"60","why":"crash marker: x"}],"screens":{"coach":{"failures":1,"pageBuild":"P1","recent":["timeout"]}},"store":{"trips":1}}"#.utf8)
+        let read = BreakerBook.decoded(sixty)
+        XCTAssertEqual(read.declined, [:])
+        XCTAssertEqual(read.screens["coach"]?.failures, 1)
+        XCTAssertEqual(read.disabled.map(\.piece), ["coach"])
+        XCTAssertEqual(read.store.trips, 1)
+        // a declined written differently resets alone
+        let odd = BreakerBook.decoded(Data(#"{"declined":["tabs"],"store":{"trips":2}}"#.utf8))
+        XCTAssertEqual(odd.declined, [:])
+        XCTAssertEqual(odd.store.trips, 2)
+        XCTAssertEqual(BreakerBook.decoded(Data(#"{"declined":{"tabs":"P1","coachHome":3}}"#.utf8)).declined, [:], "the whole field or nothing")
+        // Try again clears the piece's decline with its verdicts and its breaker record; another piece's stays
+        _ = book.recordFailure(screen: "tabs", pageBuild: "P2", detail: "timeout", at: t0, limit: 3)
+        XCTAssertTrue(book.turnBackOn(screen: "tabs"))
+        XCTAssertFalse(book.declined(piece: "tabs", page: "P2"))
+        XCTAssertNil(book.screens["tabs"])
+        XCTAssertTrue(book.declined(piece: "coachHome", page: "P1"))
+        XCTAssertFalse(book.turnBackOn(screen: "tabs"), "nothing left: nothing changes")
+        XCTAssertTrue(book.turnBackOn(screen: "coachHome"))
+        XCTAssertEqual(book.declined, [:])
+    }
+
     func testStoreOpMarkerFile() throws {
         let idle = StoreOpMarker.file(shell: "60", page: "20261012-1", inFlight: false)
         let offset = StoreOpMarker.stateOffset(shell: "60", page: "20261012-1")

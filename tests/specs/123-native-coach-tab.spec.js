@@ -22,8 +22,8 @@
 //   selected the chat is dismissed; with no key the chat is dismissed and the connect route is the model's; with
 //   kt_native_off both are dismissed once each and the web Coach drawn; tabs in up is ignored, never dismissed.
 // - screens.off (4.2): coachHome needs; coach with a draft taken by the putBack rule (every case of the shared vectors,
-//   Fixtures/draft/putback.json, through the handler) and answered took; a draft off coach ignored; a numeric draft
-//   bad-args; the mock's composer cleared only after took.
+//   Fixtures/draft/putback.json, through the handler, with the web composer off screen and, P13, on it: its box) and
+//   answered took; a draft off coach ignored; a numeric draft bad-args; the mock's composer cleared only after took.
 // - The words survive (P-D15, I16): kt_coach_handover is written before the took answer, is device-only bookkeeping
 //   (no backup carries it), comes back after a reload in the fallen-back scene, after a relaunch and in the first
 //   paint of a reload on the Coach tab in setup (then to the native setup chat as its draft), goes back to a
@@ -508,6 +508,38 @@ serial('screens.off: coach with a draft is taken by the putBack rule (an empty c
     for (const v of out.vectors) {
       assert(v.got === v.want && v.page === v.want && J(v.a) === '{"ok":true,"took":true}' && v.key === (v.want.trim() ? v.want : null),
         'putback.json "' + v.name + '": ' + J(v));
+    }
+  } finally { await app.close(); }
+});
+
+// The shared vectors with the web composer on screen (P13; contract 12's Drift row, D42): the hand-over's other path,
+// where the composer is the box the owner sees (#coach-input), read for the merge and written back with the merged words
+// (_fpTakeDraft); the case above runs them with the composer off screen (its copy and the key) and through _fpPutBack.
+serial('screens.off: every shared vector (Fixtures/draft/putback.json) with the web composer on screen: its box is the composer, and the box, the web composer\'s draft and the handed-over key are the vector\'s result, answered took', async () => {
+  const app = await pageBoot('tabs');
+  try {
+    await ready(app);
+    const out = await ev(app, async (VECTORS) => {
+      // the shell takes the Coach tab away first (needs), so the chat on the Coach tab is the web's, with its box
+      await FPScreens.call('screens.off', { screen: 'coachHome', why: 'needs' }); await __w(30);
+      switchTab('coach'); openCoachChat(); await __w(40);
+      const r = [];
+      for (const c of VECTORS.cases) {
+        localStorage.removeItem('kt_coach_handover');
+        const box = document.getElementById('coach-input');
+        if (!box) { r.push({ name: c.name, box: 'none on screen' }); continue; }
+        box.value = c.composer;
+        const a = await FPScreens.call('screens.off', { screen: 'coach', why: 'failures', draft: c.words });
+        await __w(20);
+        const after = document.getElementById('coach-input');
+        r.push({ name: c.name, a, box: after ? after.value : 'none on screen', draft: _coachDraft.v, key: __key(), want: c.result });
+      }
+      return r;
+    }, VECTORS);
+    assert(VECTORS.cases.length >= 20 && out.length === VECTORS.cases.length, 'every vector ran: ' + out.length);
+    for (const v of out) {
+      assert(J(v.a) === '{"ok":true,"took":true}' && v.box === v.want && v.draft === v.want && v.key === (v.want.trim() ? v.want : null),
+        'putback.json "' + v.name + '", the box on screen: ' + J(v));
     }
   } finally { await app.close(); }
 });

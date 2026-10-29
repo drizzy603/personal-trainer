@@ -19,6 +19,13 @@ import Foundation
 // - Store breaker: armed at each document start while the facade is attached, disarmed by `bootDone`.
 //   A launch that finds it armed (a document never finished booting) runs without the facade, once
 //   (harmless in shadow: the next facade launch reconciles what WebKit took meanwhile).
+// - Build 61 (contract 10.1, 10.2): two short-section marker kinds, written whatever the app's state because
+//   their windows are milliseconds: `tabs@<page> shell <n>` around the tab root's construction, each funnel
+//   run, each bar hide or show and the fallback (a verdict gives the classic root), and `model <screen>@<page>
+//   shell <n>` around each model's decode and apply (a verdict turns that piece off for the pair). Build 60
+//   reads neither (it lists `presenting.*.marker` only, and its line reader returns nil for them). And
+//   declines: a page build that left `tabs` out of its hello (a version refusal, a `dismiss {screen:'tabs'}`),
+//   or `coachHome` while naming `tabs`, is not offered that piece again until a new page build or Try again.
 
 /// Why a native screen went off for a page build.
 public enum TripReason: String, Codable, Equatable, Sendable {
@@ -85,7 +92,7 @@ public struct ScreenBreaker: Codable, Equatable, Sendable {
 
 /// A piece turned off by a crash marker, for one (shell build, page build) pair.
 public struct DisabledPair: Codable, Equatable, Sendable {
-    /// "coach", "store".
+    /// "coach", "store", "tabs", "coachHome" (`CrashMarker.Piece.name`).
     public var piece: String
     public var shell: String
     public var page: String
@@ -107,12 +114,19 @@ public struct CrashMarker: Equatable, Hashable, Sendable {
     public enum Piece: Equatable, Hashable, Sendable {
         case screen(String)
         case store
+        /// The tab root's short sections (contract 10.2): its construction, a funnel run, a bar hide or show, the
+        /// fallback. A verdict gives the classic root.
+        case tabs
+        /// A model's decode and apply for a screen (contract 10.2). A verdict turns that piece off for the pair.
+        case model(String)
 
-        /// "coach", "store".
+        /// "coach", "store", "tabs", or the model's screen.
         public var name: String {
             switch self {
             case .screen(let s): return s
             case .store: return "store"
+            case .tabs: return "tabs"
+            case .model(let s): return s
             }
         }
     }
@@ -127,11 +141,14 @@ public struct CrashMarker: Equatable, Hashable, Sendable {
         self.shellBuild = shellBuild
     }
 
-    /// "presenting coach@20261012-1 shell 60", "store@20261012-1 shell 60".
+    /// "presenting coach@20261012-1 shell 60", "store@20261012-1 shell 60", "tabs@20261020-1 shell 61",
+    /// "model coachHome@20261020-1 shell 61".
     public var line: String {
         switch piece {
         case .screen(let s): return "presenting \(s)@\(pageBuild) shell \(shellBuild)"
         case .store: return "store@\(pageBuild) shell \(shellBuild)"
+        case .tabs: return "tabs@\(pageBuild) shell \(shellBuild)"
+        case .model(let s): return "model \(s)@\(pageBuild) shell \(shellBuild)"
         }
     }
 
@@ -148,24 +165,28 @@ public struct CrashMarker: Equatable, Hashable, Sendable {
         }
         guard let markerShell = shell, !markerShell.isEmpty else { return nil }
         let target: String
-        let isScreen: Bool
-        if rest.count == 2, rest.first == "presenting" {
+        let first: String?
+        if rest.count == 2, rest.first == "presenting" || rest.first == "model" {
             target = rest.last!
-            isScreen = true
+            first = rest.first
         } else if rest.count == 1 {
             target = rest.first!
-            isScreen = false
+            first = nil
         } else {
             return nil
         }
         guard let at = target.firstIndex(of: "@") else { return nil }
         let name = String(target[..<at]), page = String(target[target.index(after: at)...])
         guard !name.isEmpty, !page.isEmpty else { return nil }
-        if isScreen {
-            piece = .screen(name)
-        } else {
-            guard name == "store" else { return nil }
-            piece = .store
+        switch first {
+        case "presenting"?: piece = .screen(name)
+        case "model"?: piece = .model(name)
+        default:
+            switch name {
+            case "store": piece = .store
+            case "tabs": piece = .tabs
+            default: return nil
+            }
         }
         pageBuild = page
         self.shellBuild = markerShell
@@ -261,6 +282,10 @@ public struct BreakerBook: Codable, Equatable, Sendable {
     /// Pieces turned off by crash markers, newest last.
     public var disabled: [DisabledPair] = []
     public var store = StoreBreaker()
+    /// Pieces declined by a page build (contract 10.1): piece to the page build that declined it. Only that page build
+    /// counts, so a new page build is offered the piece again; build 60 drops the field when it rewrites the book
+    /// (back on 61 a declining page build then costs one more fallback launch, contract 2.5).
+    public var declined: [String: String] = [:]
 
     /// Crash verdicts kept for About (older ones belong to builds long gone).
     public static let keepDisabled = 20
@@ -274,6 +299,7 @@ public struct BreakerBook: Codable, Equatable, Sendable {
         screens = (try? c.decodeIfPresent([String: ScreenBreaker].self, forKey: .screens)) ?? [:]
         disabled = (try? c.decodeIfPresent([DisabledPair].self, forKey: .disabled)) ?? []
         store = (try? c.decodeIfPresent(StoreBreaker.self, forKey: .store)) ?? StoreBreaker()
+        declined = (try? c.decodeIfPresent([String: String].self, forKey: .declined)) ?? [:]
     }
 
     /// The book as the host stores it.
@@ -372,6 +398,22 @@ public struct BreakerBook: Codable, Equatable, Sendable {
         return t
     }
 
+    // MARK: Declines
+
+    /// The page build declined the piece (its hello left `tabs` out, a version refusal, `dismiss {screen:'tabs'}`, or
+    /// `coachHome` left out while naming `tabs`). True when the book changed.
+    @discardableResult
+    public mutating func decline(piece: String, page: String) -> Bool {
+        guard declined[piece] != page else { return false }
+        declined[piece] = page
+        return true
+    }
+
+    /// Whether this page build declined the piece.
+    public func declined(piece: String, page: String) -> Bool {
+        declined[piece] == page
+    }
+
     // MARK: Crash markers
 
     /// At launch, every marker found: each turns its piece off for its pair. Returns the new verdicts.
@@ -383,6 +425,8 @@ public struct BreakerBook: Codable, Equatable, Sendable {
             switch m.piece {
             case .screen(let s): what = "the app closed while the native \(s) screen was up"
             case .store: what = "the app closed during a native copy save"
+            case .tabs: what = "the app closed during a tab change"
+            case .model(let s): what = "the app closed while reading a native \(s) model"
             }
             let pair = DisabledPair(piece: m.piece.name, shell: m.shellBuild, page: m.pageBuild, why: "crash marker: \(what)", at: now)
             disabled.removeAll { $0.piece == pair.piece && $0.shell == pair.shell && $0.page == pair.page }
@@ -404,14 +448,15 @@ public struct BreakerBook: Codable, Equatable, Sendable {
         disabled.removeAll { $0.piece == piece }
     }
 
-    /// Settings > About's "Try the native chat again": the screen's crash verdicts (every pair) and its native breaker
-    /// record (the trip and the counts, kept for one page build) go, so ScreenGate offers it again at the next hello.
-    /// True when anything went.
+    /// Settings > About's "Try the native chat again": the screen's crash verdicts (every pair), its native breaker
+    /// record (the trip and the counts, kept for one page build) and its decline go, so ScreenGate offers it again at the
+    /// next hello (the next launch for `tabs`). True when anything went.
     @discardableResult
     public mutating func turnBackOn(screen: String) -> Bool {
         let before = self
         clearDisabled(piece: screen)
         screens[screen] = nil
+        declined[screen] = nil
         return self != before
     }
 }

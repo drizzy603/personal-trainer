@@ -9,8 +9,8 @@ import FPStore
 ///
 /// `-fpProbe <steps file>` (a JSON file in `Documents/fp-probe/`, written there by the host) turns it on. The file
 /// holds phases, `{"phases": [[step, ...], ...]}`: phase k runs once the k-th page of this process finished booting
-/// (StoreAttach's bootDone), so a step that starts a new document (killWebContent, reload, sceneDestroy) ends its
-/// phase and the next one runs on the new page. Every event goes to `Documents/fp-probe/<log>` (`-fpProbeLog`,
+/// (StoreAttach's bootDone), so a step that starts a new document (killWebContent, reload, sceneDestroy, sceneCycle)
+/// ends its phase and the next one runs on the new page. Every event goes to `Documents/fp-probe/<log>` (`-fpProbeLog`,
 /// default `probe.jsonl`) as one JSON object per line, before the next step starts, so a SIGKILL step leaves a whole
 /// record behind. The host reads that log and the two SQLite files (WebKit's and the store's) and decides; this
 /// file only acts and reports.
@@ -18,12 +18,20 @@ import FPStore
 /// Steps: `wait {ms}`, `js {src, args}` (an async function body run in the page world; its JSON result logged),
 /// `state {label}` (page reads, WebKit's own values and the store's, hashed, with the facade's counters, the
 /// CapacitorHttp patch, any alert on screen and StoreAttach's status), `status`, `conflicts`, `sigkill {afterMs}`,
-/// `killWebContent`, `reload`, `hide`, `show`, `race {seconds, checkpoints, snaps}`, `sceneDestroy`,
-/// `waitState {state, timeoutMs}` (the app's state: active, inactive or background), `stageOta {build, html}`,
-/// `stagePutBack {snap}` (`@wipe`: rule 3's snapshot), `policy {file, json}`, `defaults {keys}`, `done`.
+/// `killWebContent`, `reload`, `hide`, `show`, `race {seconds, checkpoints, snaps}`, `sceneDestroy`, `sceneCycle` (the
+/// App's `sceneReplay`: its event names the new root, `tabs` or `classic`), `waitState {state, timeoutMs}` (the app's
+/// state: active, inactive or background), `stageOta {build, html}`, `stagePutBack {snap}` (`@wipe`: rule 3's
+/// snapshot), `policy {file, json}`, `defaults {keys}`, `done`.
 @MainActor
-final class StoreProbe {
+public final class StoreProbe {
     static var shared: StoreProbe?
+
+    /// The App's root factory (contract 15.3; 11-shell.md H9), set by the App in a Debug build: SceneDelegate's teardown
+    /// of the scene (the old window and page let go), then its connection's body on the same window scene (a new window,
+    /// a new SuperoViewController, its deep-link observer and the root the gate decides). It answers the new root's kind,
+    /// `tabs` or `classic`, or nil when the scene's delegate cannot replay it. `sceneCycle` runs it; nothing builds a root
+    /// any other way.
+    public static var sceneReplay: (@MainActor (UIWindowScene) -> String?)?
 
     unowned let attach: StoreAttach
     let dir: URL
@@ -36,6 +44,8 @@ final class StoreProbe {
     private weak var webView: WKWebView?
     private var hidden: (superview: UIView, index: Int, frame: CGRect)?
     private var sceneRefused = false
+    /// The window `sceneCycle` replaced, while it is alive.
+    private weak var replacedWindow: UIWindow?
     private let t0 = Date()
 
     static func startIfAsked(attach: StoreAttach, arguments a: [String]) {
@@ -235,19 +245,29 @@ final class StoreProbe {
                 MainActor.assumeIsolated { if self.sceneRefused { next() } else { endPhase() } }
             }
         case "sceneCycle":
-            // What a reconnect does inside the process, step by step: the disconnect's call into StoreAttach, the new
-            // scene's connection, and a new SuperoViewController from Main.storyboard in the window (UIKit makes one
-            // per scene connection), whose web view loads a new page; the old controller and its web view go.
-            guard let wv = webView, let window = wv.window,
-                  let vc = UIStoryboard(name: "Main", bundle: .main).instantiateInitialViewController() else {
-                event("sceneCycle", ["error": "no window or storyboard"])
+            // What a reconnect does inside the process (UIKit never makes one on an iPhone: it refuses the destruction):
+            // the App's root factory runs sceneDidDisconnect's body, which lets go of the window and the page, and then
+            // the connection's body on the same window scene, which builds a new window, a new SuperoViewController (its
+            // web view loads a new page) and the root the gate decides, exactly as a scene connection does.
+            guard let scene = webView?.window?.windowScene else {
+                event("sceneCycle", ["error": "no window scene"])
                 next()
                 return
             }
-            attach.sceneDisconnected(webView: wv)
-            attach.sceneConnected()
-            event("sceneCycle", ["newController": String(describing: type(of: vc))])
-            window.rootViewController = vc
+            guard let replay = Self.sceneReplay else {
+                event("sceneCycle", ["error": "no sceneReplay: the App set no root factory"])
+                next()
+                return
+            }
+            replacedWindow = webView?.window
+            guard let root = replay(scene) else {
+                event("sceneCycle", ["error": "the scene's delegate cannot replay a connection"])
+                next()
+                return
+            }
+            let window = webView?.window
+            event("sceneCycle", ["root": root, "newWindow": window != nil && window !== replacedWindow,
+                                 "oldWindowAlive": replacedWindow != nil, "alive": attach.pagesAlive])
             endPhase()
         case "stageOta":
             let build = step["build"] as? String ?? ""

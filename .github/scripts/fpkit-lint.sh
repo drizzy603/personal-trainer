@@ -7,11 +7,12 @@
 #     test targets declare, e.g. `final class RecordingWebView: WKWebView`) must call WebKitWarmUp.ensure() first;
 #     WebKitWarmUp.swift itself is the warm-up and is exempt;
 #   - a file under Tests/FPHostTests (which cannot see FPUITests' WebKitWarmUp) may construct one only when it is on the
-#     reviewed list below, i.e. it carries its own warm-up loop (KTUIProxyTests replaces a first view that never loads).
+#     reviewed list below, i.e. it carries its own warm-up loop (KTUIProxyTests replaces a first view that never loads)
+#     or never loads a page in one (StoreAttachTests binds web views as capacitorDidLoad does and loads nothing).
 # One annotation per offending file, at its first construction. Exit 0 = clean, 1 = a file breaks the rule.
 # Usage: bash .github/scripts/fpkit-lint.sh   (from anywhere; it finds the repo from its own path)
 
-HOST_REVIEWED="KTUIProxyTests.swift"
+HOST_REVIEWED="KTUIProxyTests.swift StoreAttachTests.swift"
 
 cd "$(dirname "$0")/../.." || exit 2
 TESTS=ios/App/FPKit/Tests

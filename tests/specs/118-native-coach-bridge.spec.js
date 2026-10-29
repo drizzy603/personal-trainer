@@ -26,9 +26,12 @@
 //   chat; no programmatic focus while covered; the page's models are FPCore's golden fixtures. The
 //   shell's flag without TrovoShell (build 60's store half, before task C5) is inert: no FPScreens, no
 //   hello, the web chat.
-// - Build 61 (plan task P8): the intents sweep also calls the nine intents contract 4.1 adds (listed
-//   here until intents.json carries them) and allows contract 4.5's reasons; under build 60's shell
-//   every coachHome.* answers off and changes nothing, and tabs.* without arguments are bad-args.
+// - Build 61 (plan task P8): the intents sweep also calls the nine intents contract 4.1 adds and allows
+//   contract 4.5's reasons; under build 60's shell every coachHome.* answers off and changes nothing,
+//   and tabs.* without arguments are bad-args. Since H1 intents.json lists all 31 (P13): the sweep
+//   reads it alone, asks it for at least 31, and finds the nine there with contract 4.1's arguments
+//   (compared as objects, whatever their key order, as FPCore's IntentTests read them); every answer is
+//   {ok:true} or {ok:false} with bad-args or one of contract 4.5's reasons, never ok missing or a bare refusal.
 const fs = require('fs');
 const path = require('path');
 const { boot, assert, run } = require('../lib/harness');
@@ -1198,8 +1201,8 @@ serial('C5: a hello answer naming the chat still up (a reload under it): the pag
   } finally { await inert.close(); }
 });
 
-// The nine intents build 61 adds (contract 4.1), with their arguments as the contract lists them. H1 appends them to
-// intents.json after screens.off; until it does the sweep calls them from here (P13 then asks intents.json for 31).
+// The nine intents build 61 adds (contract 4.1), with their arguments as the contract lists them. H1 appended them to
+// intents.json after screens.off, so the sweep calls intents.json's list alone and holds it to these (P13).
 const INTENTS_61 = [
   { name: 'tabs.select', args: { tab: 'string', seq: 'int', again: 'bool?' } },
   { name: 'tabs.bar', args: { h: 'int', safe: 'int', rev: 'int' } },
@@ -1214,10 +1217,20 @@ const INTENTS_61 = [
 // The reasons a page may answer (contract 4.5): v1's own, then build 61's off, nokey, invalid and has-programme.
 const REASONS = ['busy', 'stale', 'gone', 'idle', 'just-sent', 'intake', 'not-intake', 'unknown-model', 'empty', 'off', 'nokey', 'invalid',
   'has-programme'];
+// A JSON object's keys have no order (FPCore's IntentTests compare intents.json's args as a dictionary): compare with
+// every object's keys sorted, arrays as they are.
+const canon = (x) => (Array.isArray(x) ? x.map(canon) : x && typeof x === 'object'
+  ? Object.keys(x).sort().reduce((o, k) => { o[k] = canon(x[k]); return o; }, {}) : x);
 
-serial('C3: every intent of contract v1 (FPCore intents.json) and the nine build 61 adds is known, refuses missing arguments and answers only the contract\'s reasons; under build 60\'s shell every coachHome.* answers off and changes nothing; no shell, no bridge', async () => {
+serial('C3: every intent of FPCore intents.json (contract v1\'s and the nine build 61 adds, at least 31) is known, refuses missing arguments and answers only the contract\'s reasons; under build 60\'s shell every coachHome.* answers off and changes nothing; no shell, no bridge', async () => {
   const listed = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'ios', 'App', 'FPKit', 'Tests', 'FPCoreTests', 'intents.json'), 'utf8')).intents;
-  const intents = listed.concat(INTENTS_61.filter((n) => !listed.some((i) => i.name === n.name)));
+  // contract 4.5: intents.json lists at least 31 (v1's 22 and build 61's nine, each with contract 4.1's arguments)
+  assert(listed.length >= 31, 'intents.json lists at least 31 intents: ' + listed.length);
+  for (const n of INTENTS_61) {
+    const i = listed.find((x) => x.name === n.name);
+    assert(i && JSON.stringify(canon(i.args)) === JSON.stringify(canon(n.args)), n.name + ': in intents.json with contract 4.1\'s arguments: ' + JSON.stringify(i || null));
+  }
+  const intents = listed;
   const app = await shellBoot('coach');
   try {
     const out = await app.page.evaluate(async ({ IN_PAGE, intents }) => {
@@ -1245,14 +1258,17 @@ serial('C3: every intent of contract v1 (FPCore intents.json) and the nine build
     for (const x of out.r) {
       assert(x.error !== 'unknown-intent', x.name + ': the page knows it');
       if (x.required.length) assert(x.ok === false && x.error === 'bad-args', x.name + ': missing ' + x.required.join(', ') + ' is bad-args: ' + JSON.stringify(x));
-      else assert(x.error === null || REASONS.indexOf(x.error) >= 0, x.name + ': answers ok or with the page\'s reason: ' + JSON.stringify(x));
+      // contract 4.1: {ok:true, ...} or {ok:false, error}, the error one of 4.5's reasons (a bare {ok:false} or an
+      // answer with no ok is neither)
+      else assert((x.ok === true && x.error === null) || (x.ok === false && REASONS.indexOf(x.error) >= 0),
+        x.name + ': answers {ok:true} or {ok:false} with one of the contract\'s reasons: ' + JSON.stringify(x));
       // a web 61 page on a build 60 binary: no native Coach tab in this document
       if (/^coachHome\./.test(x.name) && !x.required.length) assert(x.ok === false && x.error === 'off', x.name + ': off under build 60\'s shell: ' + JSON.stringify(x));
       if (/^coachHome\./.test(x.name)) assert(!x.changed, x.name + ': changes nothing: ' + JSON.stringify(x));
     }
     assert(INTENTS_61.every((n) => out.r.some((x) => x.name === n.name)), 'the nine intents build 61 adds were called');
     assert(!out.starter, 'no #starterOverlay after the loop');
-    assert(out.r.length === intents.length && listed.length >= 22, 'every intent was called: ' + out.r.length);
+    assert(out.r.length === intents.length && out.r.length >= 31, 'every intent was called: ' + out.r.length);
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
   // no shell (every shell up to 59, the PWA): no flag, no plugin, no bridge, the web chat

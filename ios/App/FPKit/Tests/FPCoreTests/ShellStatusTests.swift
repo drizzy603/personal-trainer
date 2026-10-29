@@ -12,7 +12,7 @@ final class ShellStatusTests: XCTestCase {
 
     private func status(book: BreakerBook = BreakerBook(), policy: Policy = .defaults, deviceOff: Set<String> = [], page: String? = "P1",
                         live: [String] = [], counters: ShellCounters = ShellCounters(), launch: LaunchCounts = LaunchCounts()) -> JSONValue {
-        let gate = ScreenGate.evaluate(binary: ["coach"], deviceOff: deviceOff, policy: policy, book: book, shellBuild: "60", pageBuild: page)
+        let gate = ScreenGate.evaluate(binary: ["coach"], deviceOff: deviceOff, policy: policy, book: book, shellBuild: "60", pageBuild: page, os: 27)
         return ScreenStatus.json(shell: "60", page: page, binary: ["coach"], gate: gate, live: live, book: book, counters: counters, launch: launch)
     }
 
@@ -70,6 +70,118 @@ final class ShellStatusTests: XCTestCase {
         XCTAssertNil(book.screens["coach"], "the breaker record goes too")
         XCTAssertFalse(book.turnBackOn(screen: "coach"), "nothing left: nothing changes")
         XCTAssertEqual(status(book: book)["screens"]?["coach"]?["on"], true)
+    }
+
+    private func ms(_ d: Date) -> JSONValue { .number(d.timeIntervalSince1970 * 1000) }
+
+    private func status61(book: BreakerBook = BreakerBook(), deviceOff: Set<String> = [], tabsRoot: Bool = false, os: Int = 27,
+                          live: [String] = [], root: ScreenStatus.Root = .classic, fellBack: FellBack? = nil,
+                          switches: [String: Bool] = [:], policy: PolicyState? = nil) -> JSONValue {
+        let all = ShellContract.binaryScreens
+        let gate = ScreenGate.evaluate(binary: all, deviceOff: deviceOff, policy: .defaults, book: book, shellBuild: "61", pageBuild: "P1",
+                                       tabsRoot: tabsRoot, os: os)
+        return ScreenStatus.json(shell: "61", page: "P1", binary: all, gate: gate, live: live, book: book, counters: ShellCounters(),
+                                 launch: LaunchCounts(), root: root, fellBack: fellBack, switches: switches, policy: policy)
+    }
+
+    /// Build 61's fields (contract 10.5): the pieces' new offs (`os`, `page`, `needs` with what is needed, `["root"]`
+    /// included), the root built at scene connect (a fallen-back tab root stays "tabs"), the fallback in its fixed
+    /// words, the shell's device switches and the policy file's last fetch.
+    func testBuild61sFields() throws {
+        // a classic root on iOS 27: the chat as 60, the bar needs the root, the Coach tab needs the bar
+        var s = status61(live: ["coach"])
+        XCTAssertEqual(s["root"], "classic")
+        XCTAssertEqual(s["fellBack"], .null)
+        XCTAssertEqual(s["switches"], [:])
+        XCTAssertEqual(s["policy"], .null)
+        XCTAssertEqual(s["screens"]?["coach"], ["on": true, "live": true, "off": nil, "trip": nil, "why": nil, "at": nil, "canReset": false],
+                       "build 60's row, byte for byte: no needs key")
+        XCTAssertEqual(s["screens"]?["tabs"], ["on": false, "live": false, "off": "needs", "needs": ["root"], "trip": nil, "why": nil, "at": nil,
+                                               "canReset": false])
+        XCTAssertEqual(s["screens"]?["coachHome"]?["off"], "needs")
+        XCTAssertEqual(s["screens"]?["coachHome"]?["needs"], ["tabs"])
+        // iOS 18: tabs off os, with nothing to switch or try again; the Coach tab needs it; the chat as 60
+        s = status61(os: 18)
+        XCTAssertEqual(s["screens"]?["tabs"], ["on": false, "live": false, "off": "os", "trip": nil, "why": nil, "at": nil, "canReset": false])
+        XCTAssertEqual(s["screens"]?["coachHome"]?["needs"], ["tabs"])
+        XCTAssertEqual(s["screens"]?["coach"]?["on"], true)
+        // a live tab root, everything on and live
+        let all = ShellContract.binaryScreens
+        s = status61(tabsRoot: true, live: all, root: .tabs, switches: ["tabs": true])
+        for p in all {
+            XCTAssertEqual(s["screens"]?[p]?["on"], true, p)
+            XCTAssertEqual(s["screens"]?[p]?["live"], true, p)
+            XCTAssertEqual(s["screens"]?[p]?["off"], .null, p)
+            XCTAssertNil(s["screens"]?[p]?["needs"], p)
+        }
+        XCTAssertEqual(s["root"], "tabs")
+        XCTAssertEqual(s["switches"], ["tabs": true])
+        // declined by the page build being served, fallen back: off page (Try again clears it), the root still "tabs"
+        var book = BreakerBook()
+        book.decline(piece: "tabs", page: "P1")
+        s = status61(book: book, live: ["coach"], root: .tabs, fellBack: FellBack(why: .page, at: t0))
+        XCTAssertEqual(s["root"], "tabs", "the root built at scene connect: a fallen-back tab root stays tabs")
+        XCTAssertEqual(s["fellBack"], ["why": "page", "at": ms(t0)])
+        XCTAssertEqual(s["screens"]?["tabs"]?["off"], "page")
+        XCTAssertEqual(s["screens"]?["tabs"]?["canReset"], true)
+        XCTAssertNil(s["screens"]?["tabs"]?["needs"], "off for its own reason: no needs")
+        XCTAssertEqual(s["screens"]?["coachHome"]?["needs"], ["tabs"])
+        // the Coach tab declined under a live tab root: the chat needs it (joint)
+        var home = BreakerBook()
+        home.decline(piece: "coachHome", page: "P1")
+        s = status61(book: home, tabsRoot: true, live: ["tabs"], root: .tabs)
+        XCTAssertEqual(s["screens"]?["coachHome"]?["off"], "page")
+        XCTAssertEqual(s["screens"]?["coach"]?["off"], "needs")
+        XCTAssertEqual(s["screens"]?["coach"]?["needs"], ["coachHome"])
+        XCTAssertEqual(s["screens"]?["coach"]?["canReset"], false, "nothing of its own to clear")
+        XCTAssertEqual(s["screens"]?["tabs"]?["on"], true)
+        // the owner's switch: off device, the switch false, the fallback's word
+        s = status61(deviceOff: ["tabs"], root: .tabs, fellBack: FellBack(why: .switch, at: t0 + 2), switches: ["tabs": false])
+        XCTAssertEqual(s["screens"]?["tabs"]?["off"], "device")
+        XCTAssertEqual(s["switches"], ["tabs": false])
+        XCTAssertEqual(s["fellBack"], ["why": "switch", "at": ms(t0 + 2)])
+        // fellBack's why: each of the six words, and nothing else can be written
+        for why in FellBackWhy.allCases {
+            XCTAssertEqual(status61(root: .tabs, fellBack: FellBack(why: why, at: t0))["fellBack"]?["why"]?.string, why.rawValue)
+        }
+        XCTAssertEqual(Set(FellBackWhy.allCases.map(\.rawValue)), ["page", "refused", "no-hello", "failures", "policy", "switch"])
+        // the policy file's last fetch: its time and its result word
+        var p = PolicyState()
+        p.fetchStarted(at: t0)
+        p.record(.notModified, at: t0 + 1)
+        XCTAssertEqual(status61(policy: p)["policy"], ["at": ms(t0 + 1), "result": "unchanged"])
+        XCTAssertEqual(status61(policy: PolicyState())["policy"], ["at": nil, "result": nil], "never fetched")
+        XCTAssertEqual([ScreenStatus.Root.tabs.rawValue, ScreenStatus.Root.classic.rawValue], ["tabs", "classic"])
+    }
+
+    /// The two counters build 61 adds (contract 10.5; leftAny for the Release leave-window count): this launch's and in
+    /// all, kept across launches, read from a build 60 file without them, tolerant of another build's.
+    func testCountersWithAndWithoutStraysAndLeftAny() throws {
+        var c = ShellCounters(since: t0)
+        c.strays.add(at: t0 + 3)
+        c.leftAny.add(at: t0 + 4)
+        c.leftAny.add(at: t0 + 5)
+        let s = status(counters: c, launch: LaunchCounts(strays: 1, leftAny: 2))
+        let counters = try XCTUnwrap(s["counters"])
+        XCTAssertEqual(counters["strays"], ["launch": 1, "total": 1, "last": ms(t0 + 3)])
+        XCTAssertEqual(counters["leftAny"], ["launch": 2, "total": 2, "last": ms(t0 + 5)])
+        XCTAssertEqual(ShellCounters.decoded(c.encoded()), c)
+        // build 60's counters (none of the two) read whole, at zero
+        let sixty = ShellCounters.decoded(Data(#"{"leftWindow":{"total":2,"last":1791500000000},"hidden":{"total":0},"trips":{"total":1},"markers":{"total":0},"since":1791400000000}"#.utf8))
+        XCTAssertEqual(sixty.strays, ShellCounters.Count())
+        XCTAssertEqual(sixty.leftAny, ShellCounters.Count())
+        XCTAssertEqual(sixty.leftWindow.total, 2)
+        XCTAssertEqual(sixty.trips.total, 1)
+        // another build's: each field alone
+        let odd = ShellCounters.decoded(Data(#"{"strays":"x","leftAny":{"total":-3},"trips":{"total":1}}"#.utf8))
+        XCTAssertEqual(odd.strays.total, 0)
+        XCTAssertEqual(odd.leftAny.total, 0)
+        XCTAssertEqual(odd.trips.total, 1)
+        // none yet
+        let none = try XCTUnwrap(status()["counters"])
+        XCTAssertEqual(none["strays"], ["launch": 0, "total": 0, "last": nil])
+        XCTAssertEqual(none["leftAny"], ["launch": 0, "total": 0, "last": nil])
+        XCTAssertEqual(LaunchCounts(), LaunchCounts(leftWindow: 0, hidden: 0, trips: 0, markersFound: [], markers: 0, strays: 0, leftAny: 0))
     }
 
     func testCountersThisLaunchAndInAll() throws {

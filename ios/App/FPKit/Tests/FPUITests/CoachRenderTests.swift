@@ -13,11 +13,24 @@ import FPCore
 /// unscrolled render of the whole conversation, for the contact sheets
 /// (ios/App/FPKit/Tools/chat-contact). Without it the same matrix renders for one size, so a crash
 /// or a blank screen still fails the run.
+///
+/// The chat pushed in the Coach tab (build 61, plan task N12; contract 6.3, 12, D9) sits over the
+/// 83 pt glass tab bar instead of the 34 pt home indicator: `heavyweight-chat`, `intake` and `empty`
+/// render again with that inset, both rooms × light and dark × the three sizes, the composer's
+/// bottom edge at least 8 pt above the bar and the conversation drawn
+/// (`native/<fixture>/<room>-<light|dark>-<size>-bar83.png` under FPUI_SHOTS, beside the 34 pt
+/// renders the contact sheets read). The 34 pt renders are unchanged.
 @MainActor
 final class CoachRenderTests: XCTestCase {
     static let screen = CGSize(width: 390, height: 844)
     static let safeTop: CGFloat = 47
     static let safeBottom: CGFloat = 34
+    /// The glass tab bar's cover on every iPhone the tab root runs on, Face ID or Home button (the H0
+    /// probe: 01-contract-delta.md 14.1). The pushed chat keeps the safe area, so its column ends there.
+    static let glassBar: CGFloat = 83
+    /// The chats drawn over the glass bar (contract 12, "FPKit on iOS"): a conversation, setup, the
+    /// empty chat.
+    static let barFixtures = ["heavyweight-chat", "intake", "empty"]
     static let sizes: [(String, DynamicTypeSize)] = [("large", .large), ("xLarge", .xLarge), ("xxLarge", .xxLarge)]
     static let rooms: [(String, Room)] = [("heavyweight", .heavyweight), ("lime", .lime)]
 
@@ -64,31 +77,41 @@ final class CoachRenderTests: XCTestCase {
     }
 
     /// The chat on a phone screen: the system's safe areas replaced by an iPhone's, so every render
-    /// is the same whatever simulator runs the test.
+    /// is the same whatever simulator runs the test. `safeBottom`: the home indicator's 34 pt, or the
+    /// glass tab bar's 83 under the chat pushed in the Coach tab.
     struct Phone: View {
         let model: CoachModel
         let size: DynamicTypeSize
         var unscrolled = false
         var toast: ToastRequest?
         var confirm: ConfirmRequest?
+        var safeBottom: CGFloat = CoachRenderTests.safeBottom
+        /// Where the chat's header ends, in window coordinates (`CoachHeaderBottomKey`), as it changes.
+        var onHeader: ((CGFloat) -> Void)?
 
         var body: some View {
-            // the safe areas as a phone's (the status bar, the home indicator): what ignores them
-            // (the room's ground, a confirm's dimming) reaches the screen's edges, as on the phone
+            // the safe areas as a phone's (the status bar, the home indicator or the tab bar): what
+            // ignores them (the room's ground, a confirm's dimming) reaches the screen's edges, as on
+            // the phone
             CoachChatView(model: model, host: CoachRenderTests.host, toast: .constant(toast), confirm: .constant(confirm),
                           options: CoachChatOptions(unscrolledWidth: unscrolled ? CoachRenderTests.screen.width : nil))
                 .safeAreaPadding(.top, CoachRenderTests.safeTop)
-                .safeAreaPadding(.bottom, CoachRenderTests.safeBottom)
+                .safeAreaPadding(.bottom, safeBottom)
                 .environment(\.dynamicTypeSize, size)
+                .onPreferenceChange(CoachHeaderBottomKey.self) { y in MainActor.assumeIsolated { onHeader?(y) } }
         }
     }
 
-    /// Draws a view in a window with the phone's light or dark setting, at 2×.
-    static func render<V: View>(_ view: V, size: CGSize?, phone style: UIUserInterfaceStyle) -> UIImage {
+    /// Draws a view in a window with the phone's light or dark setting, at 2×: `size`, or `width`
+    /// (the screen's, when nil) wide and as tall as the view (nil). `prepare` runs on the hosting view
+    /// after each layout pass (a scroll moved to its end, CoachHomeRenderTests). At most `passes`
+    /// layout passes wait for two captures to agree: a chat whose Thinking dots pulse never agrees.
+    static func render<V: View>(_ view: V, size: CGSize?, phone style: UIUserInterfaceStyle, width: CGFloat? = nil,
+                                passes: Int = 20, prepare: ((UIView) -> Void)? = nil) -> UIImage {
         let host = UIHostingController(rootView: view)
         host.safeAreaRegions = []
-        let width = screen.width
         let target = size ?? {
+            let width = width ?? screen.width
             let fit = host.sizeThatFits(in: CGSize(width: width, height: 20000))
             return CGSize(width: width, height: ceil(fit.height))
         }()
@@ -100,6 +123,10 @@ final class CoachRenderTests: XCTestCase {
         window.rootViewController = host
         window.isHidden = false
         host.view.frame = window.bounds
+        if let prepare {
+            host.view.layoutIfNeeded()
+            prepare(host.view)
+        }
         let format = UIGraphicsImageRendererFormat()
         format.scale = 2
         format.opaque = true
@@ -113,9 +140,10 @@ final class CoachRenderTests: XCTestCase {
         // settle: the text view lays a draft out a pass late and images arrive a turn late, so draw
         // until two captures agree
         var image = capture()
-        for _ in 0..<20 {
+        for _ in 0..<passes {
             host.view.setNeedsLayout()
             host.view.layoutIfNeeded()
+            prepare?(host.view)
             RunLoop.main.run(until: Date().addingTimeInterval(0.05))
             let next = capture()
             let same = difference(image, next) == 0
@@ -127,16 +155,18 @@ final class CoachRenderTests: XCTestCase {
         return image
     }
 
+    /// A render's pixels: RGBA, premultiplied, row 0 at the top.
+    static func bytes(_ c: CGImage) -> [UInt8] {
+        var buf = [UInt8](repeating: 0, count: c.width * c.height * 4)
+        let ctx = CGContext(data: &buf, width: c.width, height: c.height, bitsPerComponent: 8, bytesPerRow: c.width * 4,
+                            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        ctx.draw(c, in: CGRect(x: 0, y: 0, width: c.width, height: c.height))
+        return buf
+    }
+
     /// Fraction of pixels that differ between two renders of the same size.
     static func difference(_ a: UIImage, _ b: UIImage) -> Double {
         guard let ca = a.cgImage, let cb = b.cgImage, ca.width == cb.width, ca.height == cb.height else { return 1 }
-        func bytes(_ c: CGImage) -> [UInt8] {
-            var buf = [UInt8](repeating: 0, count: c.width * c.height * 4)
-            let ctx = CGContext(data: &buf, width: c.width, height: c.height, bitsPerComponent: 8, bytesPerRow: c.width * 4,
-                                space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
-            ctx.draw(c, in: CGRect(x: 0, y: 0, width: c.width, height: c.height))
-            return buf
-        }
         let x = bytes(ca), y = bytes(cb)
         var differ = 0
         for i in stride(from: 0, to: x.count, by: 4) where x[i] != y[i] || x[i + 1] != y[i + 1] || x[i + 2] != y[i + 2] {
@@ -159,6 +189,56 @@ final class CoachRenderTests: XCTestCase {
             ink += 1
         }
         return Double(ink) / Double(w * h)
+    }
+
+    /// `inked` over the band of the render between `top` and `bottom` (points from the top), the
+    /// screen's whole width; 0 for an empty band.
+    static func inked(_ image: UIImage, background: RGBA, from top: CGFloat, to bottom: CGFloat) -> Double {
+        guard let c = image.cgImage else { return 0 }
+        let k = CGFloat(c.height) / image.size.height
+        let y0 = max(0, Int((top * k).rounded(.up))), y1 = min(c.height, Int((bottom * k).rounded(.down)))
+        guard y1 - y0 >= 4, let band = c.cropping(to: CGRect(x: 0, y: y0, width: c.width, height: y1 - y0)) else { return 0 }
+        return inked(UIImage(cgImage: band, scale: image.scale, orientation: .up), background: background)
+    }
+
+    /// A pixel of the room's ground: at most 12 (summed over the channels, of 765) from `background`, so a
+    /// sliver of a shape's edge (its antialiasing) is ground and a card or a hairline is not.
+    private static func isGround(_ buf: [UInt8], _ i: Int, _ ground: (Int, Int, Int)) -> Bool {
+        abs(Int(buf[i]) - ground.0) + abs(Int(buf[i + 1]) - ground.1) + abs(Int(buf[i + 2]) - ground.2) <= 12
+    }
+
+    /// Where the drawing ends: the bottom edge, in points from the top, of the lowest row of the render
+    /// that holds anything but the room's ground (nil for a render of the bare ground).
+    static func lowestInk(_ image: UIImage, background: RGBA) -> CGFloat? {
+        guard let c = image.cgImage else { return nil }
+        let buf = bytes(c)
+        let ground = (Int(background.red * 255), Int(background.green * 255), Int(background.blue * 255))
+        for y in stride(from: c.height - 1, through: 0, by: -1) {
+            let row = y * c.width * 4
+            for x in 0..<c.width where !isGround(buf, row + x * 4, ground) {
+                return CGFloat(y + 1) * image.size.height / CGFloat(c.height)
+            }
+        }
+        return nil
+    }
+
+    /// The composer's box, in points from the top: its bottom edge is where the chat's drawing ends (the composer is the
+    /// column's last view, the ground below it), its top the first row of the ground above that edge at `x`, a point
+    /// inside the field away from its placeholder and buttons (the field is the composer's card, never the ground, so
+    /// the box reads as one run up to its top hairline).
+    static func composerEdges(_ image: UIImage, background: RGBA, x: CGFloat) -> (top: CGFloat, bottom: CGFloat)? {
+        guard let c = image.cgImage, let bottom = lowestInk(image, background: background) else { return nil }
+        let k = CGFloat(c.height) / image.size.height
+        let buf = bytes(c)
+        let ground = (Int(background.red * 255), Int(background.green * 255), Int(background.blue * 255))
+        let px = min(c.width - 1, Int(x * k))
+        func groundAt(_ y: Int) -> Bool { isGround(buf, (y * c.width + px) * 4, ground) }
+        var y = Int((bottom * k).rounded()) - 1
+        // the edge's own antialiased sliver may be ground at x: the box's hairline is within 2 pt above it
+        let reach = y - Int(2 * k)
+        while y >= max(0, reach), groundAt(y) { y -= 1 }
+        while y >= 0, !groundAt(y) { y -= 1 }
+        return (CGFloat(y + 1) / k, bottom)
     }
 
     private func write(_ image: UIImage, _ path: String) throws {
@@ -199,6 +279,48 @@ final class CoachRenderTests: XCTestCase {
             }
         }
         XCTAssertGreaterThanOrEqual(count, only == nil ? 20 : 1)
+    }
+
+    /// The chat pushed in the Coach tab, over the glass tab bar (plan task N12; contract 6.3, 12, D9): the tab's
+    /// navigation stack keeps the safe area, so the chat's column ends at the bar's 83 pt with no change to its model and
+    /// its composer sits on its own 8 px above the bar, where the bar's items stay free to press; the conversation still
+    /// draws between the header and the composer. Both rooms, the phone light and dark, the three sizes.
+    func testTheChatOverTheGlassTabBarKeepsItsComposerAboveTheBar() throws {
+        FPFonts.register()
+        let bar = Self.screen.height - Self.glassBar
+        // setup's Thinking dots pulse for good, so `intake` never draws two captures alike: its column is laid out by the
+        // first pass, as every other chat's is (they agree at once), and five passes are enough where 20 cost a minute
+        let passes = 5
+        var count = 0
+        for name in Self.barFixtures {
+            let base = try CoachFixtures.model(name)
+            for (roomName, room) in Self.rooms {
+                let model = CoachFixtures.model(base, in: room)
+                for (sizeName, size) in Self.sizes {
+                    let what = "\(name) \(roomName) \(sizeName) over the bar"
+                    let theme = RoomTheme(model: model, system: size)
+                    var header: CGFloat = 0
+                    let light = Self.render(Phone(model: model, size: size, safeBottom: Self.glassBar, onHeader: { header = $0 }),
+                                            size: Self.screen, phone: .light, passes: passes)
+                    let dark = Self.render(Phone(model: model, size: size, safeBottom: Self.glassBar), size: Self.screen, phone: .dark,
+                                           passes: passes)
+                    XCTAssertEqual(light.size, Self.screen, what)
+                    XCTAssertLessThan(Self.difference(light, dark), 0.001, "\(what): the chat wears its room whatever the phone's setting")
+                    // a point in the field right of its placeholder and left of Send, in either room at every size
+                    let box = try XCTUnwrap(Self.composerEdges(light, background: theme.rgba(.bg), x: Self.screen.width * 0.75), "\(what): drawn")
+                    XCTAssertLessThanOrEqual(box.bottom, bar - 8, "\(what): the composer's bottom edge at least 8 pt above the bar")
+                    XCTAssertEqual(box.bottom, bar - theme.px(8), accuracy: 1, "\(what): the composer on its own 8 px above the bar")
+                    XCTAssertGreaterThan(box.bottom - box.top, theme.px(44), "\(what): the composer's box, \(box)")
+                    XCTAssertGreaterThan(header, Self.safeTop, "\(what): the header's bottom")
+                    XCTAssertGreaterThan(Self.inked(light, background: theme.rgba(.bg), from: header, to: box.top), 0.01,
+                                         "\(what): the conversation draws between the header (\(header)) and the composer (\(box.top))")
+                    try write(light, "\(name)/\(roomName)-light-\(sizeName)-bar83.png")
+                    try write(dark, "\(name)/\(roomName)-dark-\(sizeName)-bar83.png")
+                    count += 1
+                }
+            }
+        }
+        XCTAssertEqual(count, Self.barFixtures.count * Self.rooms.count * Self.sizes.count)
     }
 
     /// The chat at its newest message: the composer at the foot, the end of the conversation above it.

@@ -56,7 +56,12 @@ final class StorageTests: XCTestCase {
         XCTAssertEqual(obj["min"] as? Int, 1)
         XCTAssertEqual(obj["shell"] as? String, "60")
         XCTAssertEqual(obj["screens"] as? [String], [], "no native screen in the store half")
-        XCTAssertEqual(obj["binary"] as? [String], ["coach"], "the binary's screens, on or off (Settings > About keeps their rows)")
+        XCTAssertEqual(obj["binary"] as? [String], ["coach", "coachHome", "tabs"], "the binary's pieces, on or off (Settings > About keeps their rows)")
+        XCTAssertNil(obj["tabs"], "no tabs without a live tab root")
+        let tabsJSON = String(ShellFlagScript.flag(shell: "61", screens: ["tabs"], tabs: TabsFlag(selected: "log", h: 83, safe: 34)).script
+            .dropFirst("window.__FP_SHELL = ".count).dropLast())
+        let tabsObj = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(tabsJSON.utf8)) as? [String: Any])
+        XCTAssertEqual(tabsObj["tabs"] as? NSDictionary, ["selected": "log", "bar": ["h": 83, "safe": 34]] as NSDictionary)
         XCTAssertEqual(obj["dev"] as? [String: String], ["nav": "settings/storage-sheet", "theme": "dark"])
         let plain = ShellFlagScript.flag(shell: "60").script
         XCTAssertFalse(plain.contains("dev"), plain)
@@ -70,6 +75,20 @@ final class StorageTests: XCTestCase {
         XCTAssertTrue(ShellFlagScript.script(shell: "61", arguments: ["App", "-devNav", "log/run"]).contains("log/run"),
                       "a Debug build reads the launch arguments")
         #endif
+    }
+
+    /// `-fpOpenURL <url>` (contract 9, 15.3): the cold link SceneDelegate parks, read by the flag's rule for a value, and
+    /// only a URL with a scheme, as a connection's URLs always have. An option in its place is no URL: before, the
+    /// relative URL "-devNav" was parked for the page and the link the tool meant was silently missing.
+    func testTheColdLinkLaunchArgument() {
+        func url(_ a: [String]) -> String? { ShellFlagScript.Dev.openURL(arguments: ["App"] + a)?.absoluteString }
+        XCTAssertEqual(url(["-fpOpenURL", "trovo://share"]), "trovo://share")
+        XCTAssertEqual(url(["-devNav", "log", "-fpOpenURL", "trovo://start", "-fpOffline"]), "trovo://start")
+        XCTAssertNil(url(["-fpOpenURL", "-devNav", "progress"]), "the next option is not a URL")
+        XCTAssertNil(url(["-fpOpenURL"]), "a missing value")
+        XCTAssertNil(url(["-fpOpenURL", ""]), "an empty one")
+        XCTAssertNil(url(["-fpOpenURL", "share"]), "a URL with no scheme")
+        XCTAssertNil(url(["-devNav", "progress"]), "no -fpOpenURL")
     }
 
     /// With no store open (a test host never opens one), Storage's calls refuse or come back empty, and the status says
