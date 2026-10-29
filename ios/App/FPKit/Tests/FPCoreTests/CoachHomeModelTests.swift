@@ -524,11 +524,14 @@ final class CoachHomeModelTests: XCTestCase {
     }
 
     /// The page sends the chat's tokens with every model, the hub's 16 home* sizes added to the chat's 26 (contract 6.2,
-    /// 6.4), in every page-built file: the chat's whole palette, exactly the colours of the room's page-built chat model
-    /// (Lime's has no satAccent: the page's satellites take Lime's accent, as FPCore's compiled satAccent does), each its
-    /// room's compiled colour, and the whole scale, space, radius and font, each its room's compiled default, so page
-    /// and FPCore are held together as CoachModelTests holds them for the chat. Both rooms are page-built (Heavyweight's
-    /// group head and CTA label 10, Lime's 9: contract delta 14.9).
+    /// 6.4), in every page-built file: the room's whole palette, every ColorToken (THEMES camel-cased and the chat's
+    /// roles; satAccent may be left out only where the accent stands in for it, as on the page's satellites, and that
+    /// accent is FPCore's compiled satAccent: Lime, whose THEMES has no sat-accent), the same colours as the room's
+    /// page-built chat model, each its room's compiled colour, and the whole scale, space, radius and font, each its
+    /// room's compiled default, so page and FPCore are held together as CoachModelTests holds them for the chat. A
+    /// colour the page stopped sending would decode to the compiled one and pass every other check, and it would leave
+    /// the chat model too (one `_coachTokens` call builds both), so the palette is held to ColorToken itself. Both rooms
+    /// are page-built (Heavyweight's group head and CTA label 10, Lime's 9: contract delta 14.9).
     func testPageBuiltTokensAreTheRoomsCompiledOnes() throws {
         var rooms: Set<Room> = []
         for name in pageBuilt() {
@@ -541,7 +544,16 @@ final class CoachHomeModelTests: XCTestCase {
             let color = try XCTUnwrap(tokens?["color"]?.object, name), type = try XCTUnwrap(tokens?["type"]?.object, name)
             let space = try XCTUnwrap(tokens?["space"]?.object, name), radius = try XCTUnwrap(tokens?["radius"]?.object, name)
             let font = try XCTUnwrap(tokens?["font"]?.object, name)
-            XCTAssertGreaterThan(color.count, 30, name)
+            // the whole palette: every ColorToken but satAccent is sent; satAccent is left out only where the page's
+            // satellites read the accent in its place (T['sat-accent']||T.accent) and that is FPCore's compiled one
+            let sat = ColorToken.satAccent.rawValue
+            XCTAssertEqual(Set(ColorToken.allCases.map(\.rawValue)).subtracting(color.keys).subtracting([sat]).sorted(), [],
+                           "\(name): colours of the palette the page leaves out")
+            if color[sat] == nil {
+                let accent = color[ColorToken.accent.rawValue]?.string ?? "absent", want = compiled.color(.satAccent)
+                XCTAssertEqual(RGBA(css: accent), want,
+                               "\(name): no satAccent sent, so the accent standing in for it (\(accent)) must be FPCore's compiled satAccent (\(want.css))")
+            }
             if let file = Self.chatFixture[m.room] {
                 let chat = try XCTUnwrap(FixtureFiles.json(file)["tokens"]?["color"]?.object, file)
                 XCTAssertEqual(Set(chat.keys).subtracting(color.keys).sorted(), [], "\(name): colours \(file) sends that the hub leaves out")
