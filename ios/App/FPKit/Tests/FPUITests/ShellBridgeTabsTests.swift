@@ -80,7 +80,8 @@ private final class Weak {
 /// with the markers and the toast anchor following, the drop and the teardown empty its store, and the key field's text
 /// is in no report. Tests 42-43 (delta 17.13): the probe's hub press is an error under the shell's confirm, and the
 /// probe hears the root's mode change and fallback under no funnel run. Test 44: the hub's ground takes the first
-/// frame's room (contract 6.1). Test 45: the page's one pass from a WEB Coach tab pushes the chat over the hub.
+/// frame's room (contract 6.1). Test 45: the page's one pass from a WEB Coach tab pushes the chat over the hub. A read
+/// that says the page heard nothing waits for the link to go idle first (`linkIdle`).
 @available(iOS 26.0, *)
 @MainActor
 final class ShellBridgeTabsTests: XCTestCase {
@@ -410,6 +411,16 @@ final class ShellBridgeTabsTests: XCTestCase {
         let done = try await until(timeout, ok)
         if !done { XCTFail("never: " + what(), file: file, line: line) }
         return done
+    }
+
+    /// Before a read that says the page heard nothing (more): the link idle (nothing queued for the page and none on its
+    /// way: PageLink sends one intent at a time, so one queued behind a slow one could reach the page after the read) and
+    /// ScreenHost's queue idle. The fixed sleep in front of it stays as a lower bound for what is sent a turn later.
+    private func linkIdle(_ s: TabsScene, file: StaticString = #filePath, line: UInt = #line) async throws {
+        let b = try XCTUnwrap(s.binding, "a binding", file: file, line: line)
+        try await expect("the link idle", within: 10, file: file, line: line) {
+            b.pageLink.pending == 0 && b.screens.describe()["busy"] as? Bool == false
+        }
     }
 
     // MARK: 0. The root decision
@@ -2139,6 +2150,7 @@ final class ShellBridgeTabsTests: XCTestCase {
         _ = try await message(s, "present", ["screen": "coachHome"]).get()
         XCTAssertEqual(root.coachMode, .native)
         try await sleep(0.3)
+        try await linkIdle(s)
         let covered = await calls(s, "shell.covered")
         XCTAssertEqual(covered.map(\.on), [true, true, false, true, false], "Coach not selected: no covered either way")
         XCTAssertEqual(RecordingWebView.nilMovesWhileLive(of: s.webView), 0)
@@ -2239,6 +2251,7 @@ final class ShellBridgeTabsTests: XCTestCase {
         XCTAssertEqual(root.coachMode, .native)
         XCTAssertFalse(root.coachResume)
         try await sleep(0.2)
+        try await linkIdle(s)
         let none = await calls(s, "shell.covered")
         XCTAssertEqual(none.count, 0, "Coach not selected: the present covers nothing")
         tap(s, "coach")
@@ -2386,6 +2399,7 @@ final class ShellBridgeTabsTests: XCTestCase {
         XCTAssertEqual(b.screens.transitions, ["present coach"], "never refused")
         XCTAssertEqual(b.screens.shown, ["coach", "coachHome"])
         try await sleep(0.3)
+        try await linkIdle(s)
         let offs = await calls(s, "screens.off")
         XCTAssertEqual(offs.count, 0, "the page keeps the native chat")
         XCTAssertTrue(b.link.isLive("coach"))
@@ -2422,6 +2436,7 @@ final class ShellBridgeTabsTests: XCTestCase {
         XCTAssertEqual(refused["control"] as? String, "Open Chat")
         XCTAssertEqual(refused["matches"] as? Int, 0, "no element looked for")
         try await sleep(0.3)
+        try await linkIdle(s)
         let sent = await calls(s, "coachHome.openChat")
         XCTAssertEqual(sent.count, 0, "nothing reached the page")
         XCTAssertEqual(b.screens.openConfirm, "c1.b1", "the confirm untouched")
@@ -2502,6 +2517,7 @@ final class ShellBridgeTabsTests: XCTestCase {
         XCTAssertEqual(root.coachMode, .web)
         XCTAssertTrue(root.coachSlot.nav.view.isHidden, "WEB hides the stack")
         try await sleep(0.3)
+        try await linkIdle(s)
         let pass: [(String, [String: Any])] = [
             ("model", ["screen": "coachHome", "rev": 3, "json": try homeJSON(rev: 3)]),
             ("present", ["screen": "coachHome"]),
@@ -2525,6 +2541,7 @@ final class ShellBridgeTabsTests: XCTestCase {
         XCTAssertEqual((b.screens.describe()["screens"] as? [String: Any]).flatMap { ($0["coach"] as? [String: Any])?["presented"] as? Bool },
                        true, "UIKit showed it")
         try await sleep(0.3)
+        try await linkIdle(s)
         let offs = await calls(s, "screens.off")
         XCTAssertEqual(offs.count, 0, "the page keeps the native chat")
     }
