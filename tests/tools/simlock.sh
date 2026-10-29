@@ -93,6 +93,15 @@ _fpl_ancestor() {
   return 1
 }
 
+# _fpl_reused: 0 when the holder read last names a live pid that started after the lock was taken (prints when).
+_fpl_reused() {
+  local started
+  [ -n "$L_PID" ] && [ -n "$L_START" ] || return 1
+  started=$(_fpl_pstart "$L_PID" || true)
+  [ -n "$started" ] && [ "$started" -gt $((L_START + 2)) ] || return 1
+  date -r "$started" '+%F %T'
+}
+
 # _fpl_stale <dir>: prints why and returns 0 when the lock is to be broken (reads its holder first).
 _fpl_stale() {
   local now started
@@ -100,9 +109,8 @@ _fpl_stale() {
   now=$(date +%s)
   if [ -n "$L_PID" ]; then
     if ! ps -p "$L_PID" >/dev/null 2>&1; then echo "its pid is gone"; return 0; fi
-    started=$(_fpl_pstart "$L_PID" || true)
-    if [ -n "$started" ] && [ -n "$L_START" ] && [ "$started" -gt $((L_START + 2)) ]; then
-      echo "its pid is another process now (started $(date -r "$started" '+%F %T'), after the lock was taken)"; return 0
+    if started=$(_fpl_reused); then
+      echo "its pid is another process now (started $started, after the lock was taken)"; return 0
     fi
   fi
   if [ -n "$L_START" ] && [ $((now - L_START)) -gt "$FP_LOCK_MAX_AGE" ]; then
@@ -153,8 +161,8 @@ EOF
   return 0
 }
 
-# fp_held <dir>: 0 when this shell or an ancestor holds it.
-fp_held() { [ -d "$1" ] && _fpl_read "$1" && _fpl_ancestor "$L_PID"; }
+# fp_held <dir>: 0 when this shell or an ancestor holds it (a pid reused since the lock was taken holds nothing).
+fp_held() { [ -d "$1" ] && _fpl_read "$1" && _fpl_ancestor "$L_PID" && ! _fpl_reused >/dev/null; }
 
 # _fpl_wait_note <what> <first wait time>: says once that it waits, then every 10 minutes.
 _fpl_wait_note() {
@@ -173,8 +181,7 @@ fp_lock() {
   while :; do
     if mkdir "$d" 2>/dev/null; then _fpl_own "$d" "$tool"; return 0; fi
     [ -d "$d" ] || continue   # freed between the two: take it now
-    _fpl_read "$d"
-    if _fpl_ancestor "$L_PID"; then
+    if fp_held "$d"; then
       echo "lock: $what is held by this run's own $(_fpl_whose): taken as held" >&2
       return 0
     fi
@@ -196,7 +203,7 @@ fp_slot() {
     for k in $(seq 1 "$n"); do
       d="$base.$k"
       if mkdir "$d" 2>/dev/null; then _fpl_own "$d" "$tool"; FP_SLOT=$k; return 0; fi
-      _fpl_break "$d" "$what.$k" && { mkdir "$d" 2>/dev/null && { _fpl_own "$d" "$tool"; FP_SLOT=$k; return 0; }; }
+      if _fpl_break "$d" "$what.$k" && mkdir "$d" 2>/dev/null; then _fpl_own "$d" "$tool"; FP_SLOT=$k; return 0; fi
     done
     _fpl_read "$base.1"
     _fpl_wait_note "$what (all $n)"
@@ -286,6 +293,17 @@ _fpl_self_test() {
   out=$(bash -c ". '$me'; fp_slot '$root/build.slot' 2 c; echo slot \$FP_SLOT" 2>&1)
   wait "$pid" "$t1" 2>/dev/null
   if printf '%s' "$out" | grep -q "waiting for $root/build.slot (all 2)" && printf '%s' "$out" | grep -qE '^slot [12]$'; then ok "a third build waits for a free slot"; else no "a third build waits for a free slot" "$out"; fi
+
+  # 11. a slot broken and taken by another before this one's mkdir: no set -e exit, the next slot is taken
+  rm -rf "$root"/build.slot.*
+  out=$(bash -c "set -e; . '$me'; mkdir '$root/build.slot.1'; _fpl_break() { rm -rf \"\$1\"; command mkdir \"\$1\"; echo 1 > \"\$1/pid\"; return 0; }; fp_slot '$root/build.slot' 2 race; echo slot \$FP_SLOT" 2>&1)
+  if printf '%s' "$out" | grep -q '^slot 2$'; then ok "a slot lost right after its break: on to the next one (set -e)"; else no "a slot lost right after its break: on to the next one (set -e)" "$out"; fi
+  rm -rf "$root"/build.slot.*
+
+  # 12. this shell's own pid named by a lock taken before it started (a reused pid) is no hold of its own
+  out=$(bash -c ". '$me'; mkdir '$root/sim.lock'; echo \"\$\$ $(( $(date +%s) - 100 )) scratch reused\" > '$root/sim.lock/owner'; simlock t12; echo took" 2>&1)
+  if printf '%s' "$out" | grep -q "another process now" && ! printf '%s' "$out" | grep -q "taken as held" && printf '%s' "$out" | grep -q '^took$'; then
+    ok "a reused pid of its own is broken, not taken as held"; else no "a reused pid of its own is broken, not taken as held" "$out"; fi
 
   if [ "$bad" = 0 ]; then echo "simlock self-test: $n cases, every rule held"; return 0; fi
   echo "simlock self-test: $bad of $n cases wrong"; return 1
