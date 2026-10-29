@@ -21,19 +21,22 @@ the page on the page's own model, and `PageLink` carries the chat's intents back
 `index.html` (C1-C3 and C5's take-over: `coachSend`, message ids and block models, `FPScreens`, the coach
 model, inert without the flag and a TrovoShell plugin). The live chat (C7, see [The live chat](#the-live-chat-coachstore)
 below): `CoachStore` keeps the page's models in order, echoes the owner's message until the page's own takes its place,
-puts back what never reached the page, and keeps the composer across presents and launches; test-native.sh drives it in
-the real app, a coach turn included, on a stand-in for the Messages API. The published policy file has had
-`screens.coach` on since 2026-10-13 (after the owner checked build 60's store on the phone); a phone takes it at its next
-policy fetch (a cold launch or a return to the foreground, at most every 15 minutes) and shows the native chat from the
-next launch.
+puts back what never reached the page, and keeps the composer across presents and launches; test-native.sh drove it in
+build 60's app, a coach turn included, on a stand-in for the Messages API (build 61's code: below). The published
+policy file has had `screens.coach` on since 2026-10-13 (after the owner checked build 60's store on the phone); a phone
+takes it at its next policy fetch (a cold launch or a return to the foreground, at most every 15 minutes) and shows the
+native chat from the next launch.
 
 Build 61 adds the native tab bar and the native Coach tab. So far this package holds the shell's side and the models
 both sides share: FPCore's pieces and the tabs and coach home models (see
-[FPCore](#fpcore-the-contract-the-pieces-and-the-models)), the tab root, the bridge's tabs half, the shell's
-short-section markers and its tab bar switch (see [The screen bridge](#the-screen-bridge-in-the-app)), and the
-SceneDelegate building the root in code (see [In the app](#in-the-app)); and the Coach tab's view and store, which the
-shell does not host yet, so the page shows its web Coach under the native bar. The published policy file keeps
-`screens.coachHome` and `screens.tabs` off until build 61 is checked.
+[FPCore](#fpcore-the-contract-the-pieces-and-the-models)), the tab root (which the App target's SceneDelegate builds
+around the page in code, see [In the app](#in-the-app)), the bridge's tabs half, the shell's short-section markers and
+its tab bar switch (see [The screen bridge](#the-screen-bridge-in-the-app)); and the Coach tab's view and store (see
+[The native Coach tab](#the-native-coach-tab-coachhomeview-and-coachhomestore)), which the shell does not host yet, so
+the page shows its web Coach under the native bar. The published policy file keeps `screens.coachHome` and
+`screens.tabs` off until build 61 is checked. As the tools launch it, a build of this tree cannot pass test-native.sh's
+live chat or tests/native-shell.sh's scenarios: on an iOS 26+ simulator it takes the tab root, where the native chat
+never shows (see [tests/native-shell.sh](#testsnative-shellsh)).
 
 ## Targets
 
@@ -72,15 +75,18 @@ TrovoShellPlugin's `pluginMethods`, the harness's `SHELL_METHODS['61']` and the 
 Build 61 has three native pieces (`ShellContract.binaryScreens`): `coach` (the chat), `coachHome` (the native Coach tab)
 and `tabs` (the native tab bar root), and they depend on each other. `ShellPieces` (`Pieces.swift`) is the one rule for
 the gate at scene connect, every hello, every cascade inside a document and the status Settings > About shows: `tabs` is
-on iff its own checks pass and the scene's root is a live tab root; `coachHome` iff its own checks pass, `tabs` is on and
-`coach`'s own checks pass; `coach` is joint with `coachHome` under a live tab root (the Coach tab's stack is its only host
-there) and alone under a classic root (60's overlay); a piece off only because of another reports what it `needs`. A
-hello under a live tab root that leaves `tabs` out falls the scene back first (`page`, `refused` or `policy`) and is
-negotiated on the classic rule; a page build that leaves out a piece on offer is recorded as declining it (a version
-refusal declines `tabs`). `Fixtures/shell/negotiation.json` holds the rule as a table (resolve, hello, cascade and
-root-change rows), which PiecesTests and LinkStateTests read, and `Fixtures/shell/bar.json` the bar's hidden state per
-selected tab, Coach mode and sheets (RootTabControllerTests); spec 122 holds the page's mock (`tests/lib/harness.js`
-`MOCK_RULES`) to both. A rule change edits the table first, then the Swift side, then the mock.
+on iff its own checks pass and the scene's root is a live tab root; `coachHome` iff its own checks pass, `tabs` is on
+and `coach`'s own checks pass; `coach` is joint with `coachHome` under a live tab root (the Coach tab's stack is its
+only host there) and alone under a classic root (60's overlay); a piece off only because of another reports what it
+`needs`. A hello under a live tab root whose answer leaves `tabs` out falls the scene back first: `page` (the hello left
+`tabs` out) or `policy` (its own checks no longer pass) is then negotiated on the classic rule, so `coach` alone may
+come back at once, and a version refusal (`refused`) is answered as the refusal. The page build declines `tabs` for
+`page` and `refused` (and for `dismiss tabs`), and `coachHome` for a hello that names `tabs` without it while it was on
+offer; `coach` is never declined, and nothing is declined under a classic root or after the fallback.
+`Fixtures/shell/negotiation.json` holds the rule as a table (resolve, hello, cascade and root-change rows), which
+PiecesTests and LinkStateTests read, and `Fixtures/shell/bar.json` the bar's hidden state per selected tab, Coach mode
+and sheets (RootTabControllerTests); spec 122 holds the page's mock (`tests/lib/harness.js` `MOCK_RULES`) to both. A
+rule change edits the table first, then the Swift side, then the mock.
 
 The page builds two more models, decoded as tolerantly as CoachModel (only `v` is required): `TabsModel` (contract 6.1),
 what the bar wears (room, `paper`, the selected and idle colours, each tab's title and accessibility label; the bar's
@@ -89,6 +95,13 @@ the Coach tab's root (the hub or the connect screen, `resume` for the shell's ho
 hub's groups of rows, the room's tokens with the hub's `home*` sizes; never the key). Their fixtures are in
 `Fixtures/tabs` and `Fixtures/coachHome`: the page-built ones from `node tests/golden/dump-coach-home.js`, the hand-made
 ones from `Tools/tabs-fixtures.js` and `Tools/coach-home-fixtures.js` (see `Tests/FPCoreTests/Fixtures/README.md`).
+
+`CoachHomeModelTests` reads both kinds. Each page-built `Fixtures/coachHome` file (P6) is read as the page's whole
+model, contract 6.2's keys in their JSON types (rev, boot, room, paper, dynTypeOn, route and resume as sent; meta, hero,
+connect and groups key by key; the room's whole palette, every token its compiled one), and the eight scenarios against
+the web's rules (route, meta, hero, the connect block, rows, Open Chat's sub, the 65-character preview cut whole,
+`resume` true in `hub-resume` alone). `tests/golden/check.sh` runs it, with CoachModelTests, BlocksTests and
+TabsModelTests, after the page's own checks.
 
 ## FPUI: the native Coach chat
 
@@ -144,7 +157,7 @@ RootTabController SceneDelegate builds around the page, ScreenHost's stack mode 
 
 | File | Holds |
 |---|---|
-| `ShellBridge.swift` | `ShellBridge.shared`: bound to one web view (`install(webView:presenter:pageBuild:launch:)` from `capacitorDidLoad`, which decides the scene's root and answers the screens the page being served may present, for the flag: `ShellInstall`), with its LinkState (FPCore: the 15 s hello deadline in foreground time, negotiation, the 3-failure breaker), PageLink and ScreenHost. A document-start script posts `fpShell` at every main-frame document: the document before it is gone (its pending intents end unsent or unanswered and are never resent, its open confirm closes as stale; a screen it had up stays up). `hello` negotiates with ScreenGate for the hello's page build and names the screens still up from the document before (`up`, FPCore `HelloReply.takingOver`), which the page takes over; the shell then resyncs them (`shell.covered`, `coach.snapshot`). `bootDone` reaches the store breaker (FPHost `StoreAttach.bootDone`, through `environment`). The policy file's screen switches (FPHost `FPPolicy.changed`, through the App) take a screen down at once (`screens.off` "withdrawn"). Also `ShellWebView`, the app's WKWebView: it counts every time it leaves its window while the app is active (never by design), except during a scene's teardown (`ShellWebView.sceneEnding`, which SceneDelegate sets before it lets go of the window and the page and clears at the next connection). Build 61's tabs half (H7, H8): SceneDelegate's `ShellLaunch` lets `install` make the root a tab root iff `tabs` passes its own checks (the OS, the shell's switch, the policy, a crash verdict, the breaker, a decline), so the flag's `tabs` and the root agree, and `adopt(root:)` binds the RootTabController built for that decision (the link on the tab root's rule, ScreenHost's stack attached, the root's hooks to the page through weak captures; its log line names the selected tab, the Coach tab's mode and the root's first room). Hello's reply carries `tabs {selected, seq, bar}`, records the page build's declines and sets the Coach tab's mode (WEB when the reply leaves `coachHome` out; a WAITING tab's 3 s net). `selectTab` and `sheets` drive the root, `setSwitch` sets the shell's switch. `tabs.select` goes for the owner's taps, deep links and strays, never for a page selection, and `tabs.bar` for the shell's own bar changes; both are state, never resent: after a failed one the current selection or bar goes once the link is idle, with a new seq or rev, at most `restateLimit` (3) restates of a kind in a row, counted again from the page's next answer of that kind or the next document. A move into a web tab whose `tabs.select` no document answered is heard by VoiceOver after the next hello's answer has reached the page (`announceAfterHello`, the root's `pendingWebAnnounce`). The fallback, once per scene on the link's `fellBack` (a hello without `tabs`, `dismiss tabs`, no hello, a `tabs` trip, the policy, `setSwitch`): the root's half, ScreenHost out of the Coach tab's stack, `screens.off` for what the tab root's rule had negotiated (the chat's with the native composer's words, which leave it only on `took: true`), `shell.covered {on:false}` when the Coach tab covered the page, and a document-start script deleting the flag's `tabs` for the scene's later documents. `deepLink(_:)` is the one warm `trovo://` entry for both roots: under a live tab root it selects Log (`start`) or Coach (`share`) first; the URL is `_trovoOpen`'s argument, never script source. Until the native Coach tab is wired (H10), `present coachHome` under a live tab root is refused `not-presentable` and coachHome models are dropped unread, so the page shows its web Coach under the native bar |
+| `ShellBridge.swift` | `ShellBridge.shared`: bound to one web view (`install(webView:presenter:pageBuild:launch:)` from `capacitorDidLoad`, which decides the scene's root and answers the screens the page being served may present, for the flag: `ShellInstall`), with its LinkState (FPCore: the 15 s hello deadline in foreground time, negotiation, the 3-failure breaker, per piece from build 61, its held timeouts confirmed by a `ping` that ShellBridge sends: see Switches), PageLink and ScreenHost. A document-start script posts `fpShell` at every main-frame document: the document before it is gone (its pending intents end unsent or unanswered and are never resent, its open confirm closes as stale; a screen it had up stays up). `hello` negotiates with ScreenGate for the hello's page build and names the screens still up from the document before (`up`, FPCore `HelloReply.takingOver`), which the page takes over; the shell then resyncs them (`shell.covered`, `coach.snapshot`). `bootDone` reaches the store breaker (FPHost `StoreAttach.bootDone`, through `environment`). The policy file's screen switches (FPHost `FPPolicy.changed`, through the App) take a screen down at once (`screens.off` "withdrawn"). Also `ShellWebView`, the app's WKWebView: it counts every time it leaves its window while the app is active (never by design), except during a scene's teardown (`ShellWebView.sceneEnding`, which SceneDelegate sets before it lets go of the window and the page and clears at the next connection). Build 61's tabs half (H7, H8): SceneDelegate's `ShellLaunch` lets `install` make the root a tab root iff `tabs` passes its own checks (the OS, the shell's switch, the policy, a crash verdict, the breaker, a decline), so the flag's `tabs` and the root agree, and `adopt(root:)` binds the RootTabController built for that decision (the link on the tab root's rule, ScreenHost's stack attached, the root's hooks to the page through weak captures; its log line names the selected tab, the Coach tab's mode and the root's first room). Hello's reply carries `tabs {selected, seq, bar}`, records the page build's declines and sets the Coach tab's mode (WEB when the reply leaves `coachHome` out; a WAITING tab's 3 s net). `selectTab` and `sheets` drive the root, `setSwitch` sets the shell's switch. `tabs.select` goes for the owner's taps, deep links and strays, never for a page selection, and `tabs.bar` for the shell's own bar changes; both are state, never resent: after a failed one the current selection or bar goes once the link is idle, with a new seq or rev, at most `restateLimit` (3) restates of a kind in a row, counted again from the page's next answer of that kind or the next document. A move into a web tab whose `tabs.select` no document answered is heard by VoiceOver after the next hello's answer has reached the page (`announceAfterHello`, the root's `pendingWebAnnounce`). The fallback, once per scene on the link's `fellBack` (a hello without `tabs`, `dismiss tabs`, no hello, a `tabs` trip, the policy, `setSwitch`): the root's half, ScreenHost out of the Coach tab's stack, `screens.off` for what the tab root's rule had negotiated (the chat's with the native composer's words, which leave it only on `took: true`), `shell.covered {on:false}` when the Coach tab covered the page, and a document-start script deleting the flag's `tabs` for the scene's later documents. `deepLink(_:)` is the one warm `trovo://` entry for both roots: under a live tab root it selects Log (`start`) or Coach (`share`) first; the URL is `_trovoOpen`'s argument, never script source. Until the native Coach tab is wired (H10), `present coachHome` under a live tab root is refused `not-presentable` and coachHome models are dropped unread, so the page shows its web Coach under the native bar |
 | `PageLink.swift` | Swift to page: `window.FPScreens.call(name, args)` through `callAsyncJavaScript` in the page world, one intent at a time, first in first out, 2 s (5 s for a snapshot); every intent carries its document's boot, and a document that goes takes its intents with it (`documentGone`, never sent again). An error answer a page whose process just died also gives waits 0.8 s to show its document went before it counts |
 | `ScreenHost.swift` | Native screens over the page: `.overFullScreen` only (the web view never leaves its window: no `visibilitychange`, no leave and return path), one transition at a time (a dismissal right behind a present not yet started cancels both), the owner's Back and edge pan latched (the page hears `coach.back`; if it stays on the chat the screen goes up again), focus (the page's field blurred through `shell.covered` and editing ended before covering; the descriptor's `hasInitialFocus` is false), VoiceOver (the web view hidden while covered, the screen modal), `overrideUserInterfaceStyle` from the model's `paper` on every hosting controller and the toast window, the crash marker. The toast window (`ShellOverlay`): forwarded toasts 8 px under the chat's header (or the status bar), its strip only as tall as the toast; confirms over everything, the window key while one is open. The chat's `CoachStore` lives here, one per binding (C7): models go to it (`update`), the chat draws on it, its intents and their outcomes go through `Hooks.ask`, a document that goes reaches it (`forgetModels`). A presentation UIKit refuses without a word (another controller's delayed presentation: no completion and no presenting controller after 2 s) is not up: the page shows its own and the queue goes on. A toast still showing when the chat goes moves under the status bar. VoiceOver's escape on a screen goes back (Cancel during setup). The toast window follows a live change of the phone's text size. A hardware keyboard's Cmd+Return sends from the chat: the controller's own key command, ahead of the text view's Return (`CoachComposerDraft.sendAsked`, which the chat answers as its Send; the simulator's software keyboard drops modified keys, so a real key is a device check). Build 61's stack mode (H5): under a live tab root ShellBridge attaches the Coach tab's navigation stack (`attachStack`, the root's answers as a `StackState`), and the chat is pushed there, never presented: only while the Coach tab is NATIVE (`present coach` is refused `not-native` otherwise), never changing the selection, the bar left over it, animated only while Coach is selected, the tab not held and nothing presented over it; one push or pop at a time against UIKit's late and repeated `didShow` (out of the window an op is done once UIKit has taken it, after `settle`, a layout pass, ends a transition a tab switch cut); iOS 26's content pop off while attached, so the edge pan is the one interactive pop; at most one Coach-tab marker, for the screen on top while the app is active, Coach selected and the tab NATIVE. The overlay stays for a classic root and after the fallback (`detachStack`) |
 | `SlideTransition.swift` | `ScreenSlideTransition` (SwiftUI has a `SlideTransition` of its own): the push-like slide in from the trailing edge with the page dimmed under it, out the same way, interactive from the leading edge; a cross-fade with Reduce Motion |
@@ -154,8 +167,6 @@ RootTabController SceneDelegate builds around the page, ScreenHost's stack mode 
 | `Tabs/TabBarLook.swift` | What the bar wears (contract 6.1, D16): TabsModel's tint, idle colour, titles and accessibility labels (exactly `a11y`; before the first model the compiled defaults of the room read at launch) on UIKit's bar, with the shell's glyphs and order; the room's style (`paper`: light, else dark) on the bar, the Coach tab's navigation controller and the bar's container, never on the window, the root or a slot, so the web view's traits, its keyboards and the page's `prefers-color-scheme` stay the phone's. The glass differs by runtime: iOS 27 draws its content in the container's style, so the bar wears the room whatever lies under it; iOS 26.x takes the style of what is drawn under the bar (right over the room's own page, flipped over content unlike it). On iOS 27.0 the glass bar draws unselected items in its own colour whatever `idle` says |
 | `ShellMarkers.swift` | `SectionMarker` (build 61, H6; contract 10.2): the short-section crash markers, one file per kind in `Application Support/FPShell` beside build 60's `presenting.<screen>.marker`: `section.tabs.marker` (`tabs@<page> shell <n>`: the tab root's construction, each funnel run, each bar hide or show, the fallback) and `model.<screen>.marker` (`model <screen>@<page> shell <n>`: every model's decode and apply). A state byte, `1` inside a section and `0` outside, flipped by one `pwrite` each way on a descriptor kept open, as the store's marker is; nested sections hold it until the last one ends; written whatever the app's state. Build 60 never reads these files |
 | `ShellSwitches.swift` | The shell's own device switches (build 61, H6; contract 3.5): `tabs` alone, the native tab bar's, set by TrovoShell `setSwitch` (Settings > About > Native tab bar). `Application Support/FPShell/switches.json` (`{"tabs": false}`), written atomically and read first, with a copy in UserDefaults `fp.shell.switches` read only when the file does not: the copy is written first, and a file that could not be written while protected data is available is removed, so the next launch reads the copy. Off acts at once (the scene falls back, `switch`) and at every launch after; on from the next launch. The Native Coach chat's switch stays the page's `kt_native_off` |
-| `Coach/CoachHomeView.swift` | The native Coach tab's root as the web draws its Coach tab (build 61, N7; contract 6.2, 8.3): FPCore's CoachHomeModel as the hub (its groups of rows) or the connect screen (the key field, CONNECT, the starter link), in the model's room at the chat's clamped text size, every string the page's. It sends `CoachHomeAction`s to a `CoachHomeHost`, never intents. The key lives only in the connect block's `@State` and leaves the view only inside `.connect(secret:)`, whose printed forms show it as ••• |
-| `Coach/CoachHomeStore.swift` | The Coach tab's store and root (build 61, N8; contract 15.2): `CoachHomeStore` holds the page's newest model (CoachStore's rev rule; a document that goes takes the model with it unless the tab is NATIVE) and sends the presses as `coachHome.*` intents through its hooks (CONNECT's `coachHome.setKey {secret}` once, nothing more until the page answers; the key in no property, event, outcome, toast, `describe()` or log line); `CoachHomeRoot` draws the first frame's ground until a model, then the hub, fading in (0.2 s, at once under Reduce Motion). Neither is hosted yet: ScreenHost makes no CoachHomeStore and nothing installs the home (`RootTabController.setHome(_:)`), so the Coach tab never turns NATIVE until H10 wires them |
 
 **The breaker book and crash markers.** The screens' BreakerBook (the native breaker per screen and page build, and the
 screens' crash verdicts) lives in the link, and every change goes through it (`editBook` for the markers found at launch
@@ -177,12 +188,18 @@ leaves the older file in place.
 
 **Switches.** The page's own (`FP_NATIVE`, Settings > About's `kt_native_off`), the policy file's `screens.coach`, a
 crash verdict, the native breaker (no hello within 15 s of foreground time, or 3 failed intents or undecodable models in
-a row). The shell keeps no device switch of its own in build 60. Build 61 adds the tab bar's own (`ShellSwitches`,
-`FPShell/switches.json`: TrovoShell `setSwitch {screen: 'tabs', on}` from Settings > About > Native tab bar; any other
-piece is refused `no-switch`), the policy file's `screens.coachHome` and `screens.tabs` (a `tabs` off falls the scene
-back at once, a `coachHome` off turns the Coach tab WEB), the iOS 26 floor of `tabs` (`os`), a page build's decline
-(`page`), the short sections' verdicts and the page's `FP_TABS`; a piece whose own checks pass may still be off for
-another's (`needs`, FPCore's `ShellPieces`).
+a row). From build 61 an intent counts against its own piece (`coach.*`, `coachHome.*`, `tabs.*`: FPCore
+`Intent.screen`) and the shell's own (`ping`, `shell.covered`, `confirm`, `toast.undo`, `screens.off`) against every
+live piece, as a model counts against its screen. A timeout of `tabs.select`, `tabs.bar` or `shell.covered`
+(`LinkState.heldOnTimeout`) is held: the link asks for a `ping` once it is idle (`pingWhenIdle`, which ShellBridge sends
+at the end of the queue); any answer drops the holds uncounted (a busy page, not a broken one), the ping's failure
+counts them and then itself, a ping that ends with no answer at all (`pingLost`) lets the next hold ask again, and a
+document start drops them (D41). The shell keeps no device switch of its own in build 60. Build 61 adds the tab bar's
+own (`ShellSwitches`, `FPShell/switches.json`: TrovoShell `setSwitch {screen: 'tabs', on}` from Settings > About >
+Native tab bar; any other piece is refused `no-switch`), the policy file's `screens.coachHome` and `screens.tabs` (a
+`tabs` off falls the scene back at once, a `coachHome` off turns the Coach tab WEB), the iOS 26 floor of `tabs` (`os`),
+a page build's decline (`page`), the short sections' verdicts and the page's `FP_TABS`; a piece whose own checks pass
+may still be off for another's (`needs`, FPCore's `ShellPieces`).
 
 **Settings > About says why** (decision.md section 6; section 11.9's counters). The flag names every screen the binary
 has (`binary`), so the page keeps the Native Coach chat row whether the chat is on or off; TrovoShell `status` (FPCore
@@ -210,12 +227,17 @@ build only: `-fpOpenURL <url>`, one more connection URL for the process's first 
 read as a cold `trovo://start` or `trovo://share` from the system is (`ShellFlagScript.Dev.openURL(arguments:)`: none
 when the value is missing, empty or the next option, or has no scheme; a replayed connection gets none);
 `-devTheme <room>` for the first frame's room when it names one of the page's rooms (`heavyweight`, `dark`; any other
-value counts as none); and `-devNav <route>`'s head for the first frame's tab (`ShellTabs.firstTab`: Progress, Coach or
-Settings, else Log). The policy starts at the connection, before the gate decides the root, and reads `-fpPolicyFile`
-at once whenever a fetch is due (every launch with `-fpPolicyEvery 0`), so a tool can pin the classic root. FPHost's
-StoreProbe step `sceneCycle` replays a reconnect through the App's `StoreProbe.sceneReplay` (SceneDelegate's own
-teardown, then its connection on the same window scene: a new window, page and deep-link observer), its event naming
-the new root, `tabs` or `classic`.
+value counts as none); and `-devNav <route>`'s head for the first frame's tab (`ShellTabs.firstTab`: Coach for a cold
+`trovo://share`, `-fpOpenURL`'s included, else the route's head when it is Progress, Coach or Settings, else Log). The
+policy starts at the process's first connection, before the gate decides the root (`FPPolicy.shared.start()` acts once
+per process, so a replayed connection reads nothing new), and reads `-fpPolicyFile <path>` there whenever a fetch is due
+(every launch with `-fpPolicyEvery 0`; a relative path is read from the app's home, its data container, and the file
+wins over `-fpOffline` for the policy). A launch with a file naming `screens.tabs` off
+(`{"v":1,"screens":{"tabs":"off"}}`) and `-fpPolicyEvery 0` gets the classic root; `-fpOffline` alone gives the compiled
+defaults, every piece on, so the tab root on iOS 26+ unless the phone's own data turns `tabs` off (the shell's switch, a
+verdict, a trip or a decline for the page build). FPHost's StoreProbe step `sceneCycle` replays a reconnect through the
+App's `StoreProbe.sceneReplay` (SceneDelegate's own teardown, then its connection on the same window scene: a new
+window, page and deep-link observer), its event naming the new root, `tabs` or `classic`.
 
 Tests: `PageLinkTests` (a real WKWebView and a stand-in `FPScreens`: order, one at a time, the answers as the breaker
 counts them, timeouts, a late answer dropped, nothing sent unlinked, a document that goes, a new document, an outcome
@@ -224,45 +246,56 @@ never finishes in a test host without a window scene: `.overFullScreen`, the que
 activity, the confirm, the toast strip; the edge pan and the toast window need a window scene and are skipped without
 one; from build 61 the `testStack...` cases, on a real UINavigationController as a tab of a UITabBarController in the
 window with a stand-in StackState, each waiting on the queue going idle, never on a fixed time) and `ShellBridgeTests`
-(markers to verdicts once, hello and `up`, the resync, the policy's off, another web view's message refused). Build
-61's: `RootTabControllerTests` (a real RootTabController on a real window, a RecordingWebView standing for the page:
-the funnel never takes the web view out of the window, one funnel and its strays, focus, the bar against
-`Fixtures/shell/bar.json`, the room on the bar and its container, the fallback, VoiceOver, the status bar, the
-hold, the modes per scene and `describe()`), `ShellBridgeTabsTests` (ShellBridge with a live tab root built as
-SceneDelegate builds it, over a stand-in page whose `FPScreens.call` answers as each case sets and keeps unanswered
-promises reachable, since WebKit fails a call whose promise the page's garbage collector took: the root decision,
-`selectTab` and its funnel, taps, re-taps and strays, `sheets`, `tabs.select` and `tabs.bar` as state, the interim
-`coachHome` drop, deep links, covered, the teardown that frees the root and the web view, VoiceOver after the page's
-answer, a busy page against a dead one; then hello with `tabs` and the declines, the fallback and each of its triggers,
-the Coach tab's modes, the switch, the status, the composer's words handed over, `status {refresh}`) and
-`ShellMarkersTests` (the section markers' state byte across a process that dies inside a section, the switch file read
-before its UserDefaults copy). The Coach tab's insides have their own: `CoachHomeViewTests` (every coachHome fixture laid
-out in both rooms, VoiceOver's order and traits, the key field secure, autocorrecting nothing and taking no focus by
-itself, one action per press, a typed canary leaving no trace), `CoachHomeStoreTests` (models in rev order, a document
-going, the presses as intents, the key sent once, `describe()`, CoachHomeRoot in a window and as a Coach stack's root)
-and `CoachHomeRenderTests`, which draws every `Fixtures/coachHome` file and the `built-connect` variant in both rooms,
-light and dark, at `.large`, `.xLarge` and `.xxLarge`, on 390 × 844 and 320 × 568 over the 83 pt bar, and holds Larger
-Text's growth and cap, the column's exact end, and every string the model shows read back off the render by Vision
-(`DrawnText`; the avatar by its tile); with `TEST_RUNNER_FPUI_SHOTS` it writes `native/home/<fixture>/...` for the
-contact sheets. In the real app, `tests/native-shell.sh`.
+(markers to verdicts once, hello and `up`, the resync, the policy's off, another web view's message refused; from build
+61 the refusals' codes, the new messages with no tab root, the iOS 26 floor, held timeouts and their ping answered,
+failed or lost, a section left open giving one verdict at the next launch, a model marker turning off its piece for its
+pair only, `-fpIgnoreMarker` reporting the short sections and recording nothing, the last launch's section read before
+this launch writes its own, the `tabs` section holding its marker while it runs, models and the resync's snapshot read
+inside their markers, the switch file in the gate, and a scene teardown that counts no fault). Build 61's:
+`RootTabControllerTests` (a real RootTabController on a real window, a RecordingWebView standing for the page: the
+funnel never takes the web view out of the window, one funnel and its strays, focus, the bar against
+`Fixtures/shell/bar.json`, the room on the bar and its container, the fallback, VoiceOver, the status bar, the hold, the
+modes per scene and `describe()`), `ShellBridgeTabsTests` (ShellBridge with a live tab root built as SceneDelegate
+builds it, over a stand-in page whose `FPScreens.call` answers as each case sets and keeps unanswered promises
+reachable, since WebKit fails a call whose promise the page's garbage collector took: the root decision, `selectTab` and
+its funnel, taps, re-taps and strays, `sheets`, `tabs.select` and `tabs.bar` as state, the interim `coachHome` drop,
+deep links, covered, the teardown that frees the root and the web view, VoiceOver after the page's answer, a busy page
+against a dead one; then hello with `tabs` and the declines, the fallback and each of its triggers, the Coach tab's
+modes, the switch, the status, the composer's words handed over, `status {refresh}`) and `ShellMarkersTests` (the
+section markers' state byte across a process that dies inside a section, the switch file read before its UserDefaults
+copy). The Coach tab's own are under [The native Coach tab](#the-native-coach-tab-coachhomeview-and-coachhomestore). In
+the real app, `tests/native-shell.sh`.
 
 ### tests/native-shell.sh
 
-The screen bridge in the real app on the real page, on the first paired iPhone + Watch of a runtime (iOS 26.x by default;
-`--os 27`), scenario by scenario through `ShellProbe` and `tests/tools/native-shell.py`: `smoke` (`-fpSmoke` logs
-`fp: ping ok v1`; v1 negotiated with the coach), `chat` (the chat presented `.overFullScreen` on the page's model, a
-message sent and answered, the model switch, a forwarded confirm and an Undo toast round-tripping, Back, no
+The screen bridge in the real app on the real page, on the first paired iPhone + Watch of a runtime (iOS 26.x by
+default; `--os 27`), scenario by scenario through `ShellProbe` and `tests/tools/native-shell.py`: `smoke` (`-fpSmoke`
+logs `fp: ping ok v1`; v1 negotiated with the coach), `chat` (the chat presented `.overFullScreen` on the page's model,
+a message sent and answered, the model switch, a forwarded confirm and an Undo toast round-tripping, Back, no
 `visibilitychange`, Heavyweight light and Lime dark), `focus` (a tap into the page and a focused field low enough that
 WebKit scrolls to it, then present and dismiss by the page, by Back and by the edge pan: no keyboard comes back and the
-document is not scrolled; an edge pan let go early leaves the chat up; the simulator's software keyboard is turned on for
-the scenario, since it counts a hardware keyboard as attached), `wckill` (WebContent killed with the chat up and a send in
-flight: the new document takes the chat over, the shell resyncs on its boot, nothing is resent, the words go back in the
-composer, the open confirm closes as stale), `marker` (a planted crash marker brings back the web chat, once; Settings >
-About keeps the row and says why, its sheet lists the counters, and the owner's "Try the native chat again" brings the
-native chat back at the next launch), `policy` (`screens.coach` "off" takes the chat down at once, and About says so),
-`breaker` (three timeouts turn it off for the page build; About says it is paused; Try again brings it back) and
-`counters` (the web view taken out of its window with the chat up: the leave-window and hidden-page counts go up, and
-About's sheet lists them). Shots in `screenshots/out/native-shell/`.
+document is not scrolled; an edge pan let go early leaves the chat up; the simulator's software keyboard is turned on
+for the scenario, since it counts a hardware keyboard as attached), `wckill` (WebContent killed with the chat up and a
+send in flight: the new document takes the chat over, the shell resyncs on its boot, nothing is resent, the words go
+back in the composer, the open confirm closes as stale), `marker` (a planted crash marker brings back the web chat,
+once; Settings > About keeps the row and says why, its sheet lists the counters, and the owner's "Try the native chat
+again" brings the native chat back at the next launch), `policy` (`screens.coach` "off" takes the chat down at once, and
+About says so), `breaker` (three timeouts turn it off for the page build; About says it is paused; Try again brings it
+back), `counters` (the web view taken out of its window with the chat up: the leave-window and hidden-page counts go up,
+and About's sheet lists them) and `inactive` (the app sent to the background right after launch, so the page presents
+the chat while it is not active: no crash marker is written while it is away, so a kill there gives no verdict at the
+next launch). Shots in `screenshots/out/native-shell/`.
+
+**On this branch these are build 60's scenarios, and a build of this tree has build 61's three pieces.** `smoke` reads
+build 60's flag (`binary` `["coach"]`) and `chat` wants no marker file left after Back, where build 61 keeps its section
+and model markers at rest (state 0): both fail on either root. Every scenario that puts the chat up also needs the
+classic root, and the tool does not ask for it: its launches pass `-fpOffline` (only `policy` passes a policy file,
+`{"v":1}`: the defaults), so on an iOS 26+ phone whose app data turns nothing off the scene takes the tab root, where
+`present coachHome` is refused (the native Coach tab is not wired yet), the Coach tab turns web and the chat, joint with
+it there, never shows. A phone gives the classic root with the Native tab bar switch off (`{"tabs": false}` in the app
+container's `Library/Application Support/FPShell/switches.json`) or with a decline of `tabs` for the bundled page's
+build: build 60's page (91708ae's `index.html` and `build.txt`, bundled by hand and run with `--no-build`) declines it
+at its first hello, so every later launch of that build is classic.
 
 ## The live chat: CoachStore
 
@@ -342,6 +375,34 @@ text size; the phone's settings put back), `textoff` (the app's Larger Text off 
 composer as tall as at Large) and `restore` (only the values that changed put back, the page reloaded, the
 chat, programme, weights, key and room compared). Every launch takes `-fpIgnoreMarker`. Shots in
 `screenshots/out/native/` (`coach-chat-*`, `keys-*`, `live-*`).
+
+On this branch `native-chat.py` still expects build 60's overlay chat (`negotiated` `["coach"]`, the chat presented
+`.overFullScreen`), which a build of this tree does not show under the tab root it takes on an iOS 26+ simulator (see
+[tests/native-shell.sh](#testsnative-shellsh)): test-native.sh's routes, store check and watch still run, under the
+native bar, and the run exits 1 on the chat.
+
+## The native Coach tab: CoachHomeView and CoachHomeStore
+
+Build 61's Coach tab root (plan tasks N7, N8 and N12), in FPUI beside the chat: FPCore's `CoachHomeModel` drawn as the
+web draws its Coach tab, the owner's presses sent as `coachHome.*` intents. Neither is hosted yet: ScreenHost makes no
+CoachHomeStore and nothing installs the home (`RootTabController.setHome(_:)`), so the Coach tab never turns NATIVE
+until H10 wires them; meanwhile ShellBridge refuses `present coachHome` under a live tab root and drops coachHome models
+unread, and the page shows its web Coach under the native bar.
+
+| File | Holds |
+|---|---|
+| `Coach/CoachHomeView.swift` | The native Coach tab's root as the web draws its Coach tab (build 61, N7; contract 6.2, 8.3): FPCore's CoachHomeModel as the hub (its groups of rows) or the connect screen (the key field, CONNECT, the starter link), in the model's room at the chat's clamped text size, every string the page's. It sends `CoachHomeAction`s to a `CoachHomeHost`, never intents. The key lives only in the connect block's `@State` and leaves the view only inside `.connect(secret:)`, whose printed forms show it as ••• |
+| `Coach/CoachHomeStore.swift` | The Coach tab's store and root (build 61, N8; contract 15.2): `CoachHomeStore` holds the page's newest model (CoachStore's rev rule; a document that goes takes the model with it unless the tab is NATIVE) and sends the presses as `coachHome.*` intents through its hooks (CONNECT's `coachHome.setKey {secret}` once, nothing more until the page answers; the key in no property, event, outcome, toast, `describe()` or log line); `CoachHomeRoot` draws the first frame's ground until a model, then the hub, fading in (0.2 s, at once under Reduce Motion) |
+
+Tests (FPUITests): `CoachHomeViewTests` (every coachHome fixture laid out in both rooms, VoiceOver's order and traits,
+the key field secure, autocorrecting nothing and taking no focus by itself, one action per press, a typed canary leaving
+no trace), `CoachHomeStoreTests` (models in rev order, a document going, the presses as intents, the key sent once,
+`describe()`, CoachHomeRoot in a window and as a Coach stack's root) and `CoachHomeRenderTests`, which draws every
+`Fixtures/coachHome` file and the `built-connect` variant in both rooms, light and dark, at `.large`, `.xLarge` and
+`.xxLarge`, on 390 × 844 and 320 × 568 over the 83 pt bar, and holds Larger Text's growth and cap, the column's exact
+end, and every string the model shows read back off the render by Vision (`DrawnText`; the avatar by its tile). With
+`TEST_RUNNER_FPUI_SHOTS` it writes `native/home/<fixture>/...`, from which no contact sheet is made yet
+(`Tools/chat-contact/run.sh` runs CoachRenderTests alone).
 
 ## FPStore: the native store
 
@@ -464,18 +525,17 @@ screenshots/shoot.py drive the page's dev-nav hook with them instead of writing 
 `-fpApiBase <origin>` (`dev.api`: the coach's stand-in for the Messages API on the loopback, see
 [The coach's API base](#the-coachs-api-base-in-a-test-launch)).
 `-fpOffline` keeps the page's own update check off and, without `-fpPolicyFile`, fetches no policy file either:
-the compiled defaults are in force for the launch, so the tools test the app as built. From build 61 the policy starts
-when the scene connects, before the root is decided (`-fpPolicyFile` is read then whenever a fetch is due: every launch
-with `-fpPolicyEvery 0`), `-devTheme` and `-devNav` also give the first frame's room and tab, and SceneDelegate reads
-`-fpOpenURL <url>` (see the screen bridge's Debug launch arguments above).
+the compiled defaults are in force for the launch (every piece on, whatever the phone's last good copy says), so from
+build 61 an iOS 26+ phone takes the tab root unless its own data turns `tabs` off. From build 61 `-fpPolicyFile`,
+`-devTheme` and `-devNav` also act at the scene's connection, before the root is decided, beside SceneDelegate's own
+`-fpOpenURL`: see the screen bridge's Debug launch arguments above.
 
-**A background launch can boot the page.** A watch message or a Health delivery can launch the phone app with no
-one looking. The hub answers the watch from its cache either way, and the web view may never load; but UIKit can
-also connect the scene in the background, and then the page boots and says hello (seen on the iOS 26.5 simulator
-after a watch wake with the app killed: the store attached, in step, the breaker disarmed at bootDone, the marker
-idle). Both cases happen. The device checklist should cover a watch wake and a Health delivery with the app killed,
-then Storage for breaker trips and crash markers. (CLAUDE.md's "no scene, so the plugin and the web view never load"
-needs the same correction at the merge.)
+**A background launch can boot the page.** A watch message or a Health delivery can launch the phone app with no one
+looking. The hub answers the watch from its cache either way, and the web view may never load; but UIKit can also
+connect the scene in the background, and then the page boots and says hello (seen on the iOS 26.5 simulator after a
+watch wake with the app killed: the store attached, in step, the breaker disarmed at bootDone, the marker idle). Both
+cases happen (CLAUDE.md's watch bullet says so too). The device checklist should cover a watch wake and a Health
+delivery with the app killed, then Storage for breaker trips and crash markers.
 
 ### tests/native-store.sh
 
@@ -491,28 +551,30 @@ decides. See the header of `tests/native-store.sh` for its options.
 
 ## In the app
 
-`App.xcodeproj` references this folder as a local package (an `XCLocalSwiftPackageReference` beside
-CapApp-SPM's), and the App target depends on FPCore, FPStore, FPHost and FPUI, linked statically into the
-app like CapApp-SPM. Only the App target's two configurations moved to iOS 17.0. The project level stays at
-15.0 because `cap sync` writes CapApp-SPM's `.iOS(.v15)` from the first `IPHONEOS_DEPLOYMENT_TARGET` in
-`project.pbxproj`; the widget (16.2), the share extension (15.0) and the watch targets keep theirs.
-`AppDelegate.swift` imports FPHost and FPUI (objectVersion 60 means no new App-target files):
+`App.xcodeproj` references this folder as a local package (an `XCLocalSwiftPackageReference` beside CapApp-SPM's), and
+the App target depends on FPCore, FPStore, FPHost and FPUI, linked statically into the app like CapApp-SPM. Only the App
+target's two configurations moved to iOS 17.0. The project level stays at 15.0 because `cap sync` writes CapApp-SPM's
+`.iOS(.v15)` from the first `IPHONEOS_DEPLOYMENT_TARGET` in `project.pbxproj`; the widget (16.2), the share extension
+(15.0) and the watch targets keep theirs. `AppDelegate.swift` imports FPCore, FPHost and FPUI and holds the App target's
+whole side (objectVersion 60 means hand-edited file references, so no new App-target source files):
 `instanceDescriptor()` sets `hasInitialFocus = false` (the shell owns focus), `webView(with:configuration:)` returns
 `ShellWebView`, and `capacitorDidLoad` binds `ShellBridge` (the root decision and the flag's `screens` and `tabs` from
 it), installs StoreAttach, registers TrovoShell and TrovoStore through their host adapters and forwards
-`FPPolicy.changed` to the native screens; the SceneDelegate starts the policy fetch and lets the store and the screens go
-when a scene disconnects.
+`FPPolicy.changed` to the native screens; the SceneDelegate starts the policy fetch and lets the store and the screens
+go when a scene disconnects.
 
-From build 61 `Info.plist` has no storyboard keys (`Main.storyboard` is still compiled, and nothing references it) and
-the SceneDelegate builds the window and its root in code at each connection (CLAUDE.md, "Scene lifecycle"): it starts
-the policy and rebinds the store, parks the connection's URLs for the page's boot read, makes the one
-SuperoViewController with its `ShellLaunch` (the first frame's tab, `ShellTabs.firstTab`, and the bar's guess,
+From build 61 `Info.plist` names no main or scene storyboard (`UIMainStoryboardFile` and `UISceneStoryboardFile` are
+gone; `UILaunchStoryboardName` stays; `Main.storyboard` is still compiled, and nothing references it; never put either
+key back, or UIKit makes Main.storyboard's SuperoViewController too) and the SceneDelegate builds the window and its
+root in code at each connection (CLAUDE.md, "Scene lifecycle"): it starts the policy (once per process: a replayed
+connection's start does nothing) and rebinds the store, parks the connection's URLs for the page's boot read, makes the
+one SuperoViewController with its `ShellLaunch` (the first frame's tab, `ShellTabs.firstTab`, and the bar's guess,
 `RootTabController.predicted(screen:)`) and loads its view, so `ShellBridge.install(..., launch:)` decides the root
 before the page loads; it reads the first frame's room (a Debug `-devTheme`, else `StoreAttach.firstFrameRoom()`, else
 Heavyweight), builds the tab root inside the `tabs` short section and hands it to `ShellBridge.adopt(root:)` (or keeps
-build 60's classic root, the SuperoViewController itself), sets the root once and only then calls
-`makeKeyAndVisible()`. Its one `.trovoDeepLink` observer hands warm links to `ShellBridge.deepLink`; the teardown
-removes it, lets the store and ShellBridge go, sets `ShellWebView.sceneEnding` and lets go of the window and the page.
+build 60's classic root, the SuperoViewController itself), sets the root once and only then calls `makeKeyAndVisible()`.
+Its one `.trovoDeepLink` observer hands warm links to `ShellBridge.deepLink`; the teardown removes it, lets the store
+and ShellBridge go, sets `ShellWebView.sceneEnding` and lets go of the window and the page.
 
 Adding the package changed `originHash` in
 `App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved`, and Xcode then re-resolved every
@@ -568,13 +630,6 @@ coachHome fixtures):
 xcodebuild -scheme FPKit-Package -destination 'platform=iOS Simulator,id=<udid>' \
   -parallel-testing-enabled NO test
 ```
-
-`CoachHomeModelTests` also reads the page-built `Fixtures/coachHome` files (`node tests/golden/dump-coach-home.js`, P6):
-each as the page's whole model, contract 6.2's keys in their JSON types (rev, boot, room, paper, dynTypeOn, route and
-resume as sent; meta, hero, connect and groups key by key; the room's whole palette, every token its compiled one), and
-the eight scenarios against the web's rules (route, meta, hero, the connect block, rows, Open Chat's sub, the
-65-character preview cut whole, `resume` true in `hub-resume` alone). `tests/golden/check.sh` runs it, with
-CoachModelTests, BlocksTests and TabsModelTests, after the page's own checks.
 
 CI (`.github/workflows/ios-build.yml`) runs `swift test` on macOS (job `fpkit-mac`) and both commands above
 on the newest iOS runtime's first iPhone (job `fpkit-ios`), beside the app build.
