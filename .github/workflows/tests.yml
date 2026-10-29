@@ -15,8 +15,7 @@ name: Web regression tests
 
 # Pushes to main and next, and pull requests, on the same paths: the page and its service worker, the tests, the
 # storage facade the shell injects, FPCore's test folder (the specs read intents.json, the shared fixtures and
-# page-grammar.json there) and TrovoShellPlugin.swift (for spec 122's drift case, which P13 adds: it will read the
-# plugin's method names).
+# page-grammar.json there) and TrovoShellPlugin.swift (spec 122's drift case reads the plugin's method names).
 on:
   push:
     branches: [main, next]
