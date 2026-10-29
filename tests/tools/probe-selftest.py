@@ -23,7 +23,8 @@ Launches, in this order (`--only` picks among them; prepare and restore always r
                  the native chat's device switch on. The tab root must come up: a page build the shell remembers as
                  declining tabs (or a crash verdict or breaker trip) is turned back on through TrovoShell reset, About's
                  Try again, and launched once more. The shell's folder (Application Support/FPShell) is copied first
-  tapTab         taps on two bar items (a selection, and the selected one again), a tab that is not a tab (an error)
+  tapTab         taps on two bar items (each one tap run, its screen change under its own run, the page hearing it),
+                 a tab that is not a tab (an error, no run); the first frame's run logged once at the root's adoption
   retapTab       the selected tab again: one run, `again`
   stray          `selectedIndex` set behind the funnel: counted and redirected (a stray run); a tab that is not a tab
   waitTab        met for the selected tab, not met (in its time) for another
@@ -53,7 +54,8 @@ Launches, in this order (`--only` picks among them; prepare and restore always r
                  on again and the tab root back at the next launch
   typeKey        the connect screen (the key set aside inside the page, never read out): `type` before the field holds
                  the keys (an error event, nothing typed), `nativeFocus`, the canary typed, the field's spoken label,
-                 CONNECT pressed (the page refuses the canary: no key saved), the key put back
+                 CONNECT pressed (the page refuses the canary: no key saved); with the programme set aside the same way,
+                 the starter link pressed (coachHome.openStarter: the starter over Log, announced); both put back
   restore        every localStorage value put back (and the key as it was), the native composer empty; then the shell's
                  folder as it was found
 
@@ -84,6 +86,7 @@ GROUP = 'group.app.kt.trainer'
 TABS = ('log', 'progress', 'coach', 'settings')
 PROBE_KEY = 'sk-ant-probe-not-a-key'    # the tools' stand-in key (native-shell.py's API_KEY): no real key is ever read
 KEY_LABEL = 'Anthropic API Key'         # the connect screen's field, as VoiceOver reads it (contract 6.2: connect.label)
+STARTER_LABEL = 'No key? Build a starter plan instead \u2192'   # the connect screen's starter link (connect.starter.label)
 RUNS = [0]
 
 
@@ -442,6 +445,9 @@ class Ctx:
             except ValueError:
                 bad.append('line %d is not JSON: %s' % (i + 1, l[:100]))
                 continue
+            if type(e) is not dict:
+                bad.append('line %d is not a JSON object: %s' % (i + 1, l[:100]))
+                continue
             for p in event_problems(e):
                 shapes.append('%s (line %d, t %s): %s' % (e.get('ev'), i + 1, e.get('t'), p))
         why = bad[:3] or (['timed out; last events: %s' % [e.get('ev') for e in ev][-8:]] if ev.timedOut else '')
@@ -575,6 +581,25 @@ localStorage.removeItem('kt_apikey');
 render();
 return { had: window.__fpProbeKey !== null };
 """
+# The connect screen's starter link shows only with no programme: the programme set aside the same way (page memory),
+# then put back as it was, the starter overlay closed.
+NO_PROGRAMME_JS = r"""
+window.__fpProbeRoutine = localStorage.getItem('kt_routine');
+lsDel('kt_routine');
+render();
+return { had: window.__fpProbeRoutine !== null, now: !!getCustomRoutine() };
+"""
+STARTER_JS = r"""
+return { overlay: !!document.getElementById('starterOverlay'), tab: (typeof currentTab !== 'undefined') ? currentTab : null };
+"""
+PROGRAMME_BACK_JS = r"""
+if (typeof closeStarterIntake === 'function') closeStarterIntake();
+// the stored text as it was; the page's read cache forgets the key as lsDel does
+if (window.__fpProbeRoutine) { localStorage.setItem('kt_routine', window.__fpProbeRoutine); delete _lsCache['kt_routine']; _todayActMemo = null; }
+window.__fpProbeRoutine = null;
+render();
+return { back: !!getCustomRoutine(), overlay: !!document.getElementById('starterOverlay') };
+"""
 KEY_BACK_JS = r"""
 var k = args.keyKind === 'other' ? window.__fpProbeKey : args.probeKey;
 if (k) localStorage.setItem('kt_apikey', k);
@@ -644,7 +669,7 @@ def scen_tapTab(c):
             moved and {e.get('seq') for e in sc} == set(moved) and all(e.get('why') == 'run' and e.get('target') == 'web' for e in sc),
             [short(e, ('seq', 'why', 'target', 'selected')) for e in ev.all('screenChanged')])
     sel = intents(ev, 'tabs.select')
-    c.check(s, 'the page hears each run once (tabs.select, done)', len(sel) >= len(good) and all(r.get('outcome') == 'done' for r in sel),
+    c.check(s, 'the page hears each run once (one tabs.select a tap, done)', len(sel) == len(good) and all(r.get('outcome') == 'done' for r in sel),
             [short(r, ('seq', 'outcome', 'ms')) for r in sel])
     adopt = [e for e in ev.all('funnel') if e.get('atAdopt')]
     c.check(s, 'the runs made before the root was adopted are logged once, marked atAdopt (the first frame\'s initial run)',
@@ -1023,7 +1048,10 @@ def scen_typeKey(c):
                                   step('type', text=can), wait(300), state('untyped'), step('nativeFocus'), wait(900),
                                   step('type', text=can), wait(500), state('typed', a11y=True), step('resign'), wait(500),
                                   step('press', label='CONNECT', where='hub'), step('waitCoach', label='toast', until='toast', ms=5000), wait(500),
-                                  state('refused'), js('back', KEY_BACK_JS, keyKind=c.key_kind, probeKey=PROBE_KEY), wait(2000),
+                                  state('refused'), js('no programme', NO_PROGRAMME_JS), wait(1500), state('starter link'),
+                                  step('press', label=STARTER_LABEL, where='hub'), wait(1500), js('starter', STARTER_JS), state('starter'),
+                                  js('programme back', PROGRAMME_BACK_JS), wait(800),
+                                  js('back', KEY_BACK_JS, keyKind=c.key_kind, probeKey=PROBE_KEY), wait(2000),
                                   state('hub again'), DONE]], args=['-devNav', 'coach'])
     cn = ev.state('connect')
     inp = (cn or {}).get('input') or {}
@@ -1049,9 +1077,26 @@ def scen_typeKey(c):
     c.check(s, 'CONNECT pressed through its element; the page refuses the canary (coachHome.setKey: invalid), no key saved',
             pk.get('pressed') is True and pk.get('via') == 'accessibility' and len(sk) == 1 and 'invalid' in str(sk[0].get('outcome'))
             and stack(ev.state('refused')).get('homeRoute') == 'connect', {'press': pk, 'setKey': sk})
+    sl = ev.state('starter link')
+    c.check(s, 'with no programme the connect screen draws its starter link', (first(ev, 'js', label='no programme').get('result') or {}).get('now') is False
+            and stack(sl).get('homeRoute') == 'connect' and scr(sl).get('home', {}).get('starter') is True,
+            {'route': stack(sl).get('homeRoute'), 'home': short(scr(sl).get('home'), ('route', 'connect', 'starter'))})
+    pst = first(ev, 'press', control=STARTER_LABEL)
+    op = intents(ev, 'coachHome.openStarter')
+    st = first(ev, 'js', label='starter').get('result') or {}
+    after = [e for e in ev.all('page') if e.get('t', -1) >= pst.get('t', 9e9)]
+    c.check(s, 'press {where: hub} on the starter link: through its element, one match; the page took coachHome.openStarter',
+            pst.get('pressed') is True and pst.get('via') == 'accessibility' and pst.get('matches') == 1 and len(op) == 1
+            and op[0].get('outcome') == 'done', {'press': pst, 'openStarter': op})
+    c.check(s, 'the starter opened over Log: a selectTab page event (log) and a sheets {open: true} event after the press, the overlay up',
+            any(e.get('method') == 'selectTab' and e.get('tab') == 'log' for e in after) and any(e.get('method') == 'sheets' and e.get('open') is True for e in after)
+            and st.get('overlay') is True and st.get('tab') == 'log' and root(ev.state('starter')).get('selected') == 'log',
+            {'page events': [short(e, ('method', 'tab', 'open')) for e in after][:6], 'page': st, 'root': root(ev.state('starter')).get('selected')})
+    pb = first(ev, 'js', label='programme back').get('result') or {}
     back = first(ev, 'js', label='back').get('result') or {}
-    c.check(s, 'the key put back inside the page; the hub again', back.get('back') is True and stack(ev.state('hub again')).get('homeRoute') == 'hub',
-            {'back': back, 'route': stack(ev.state('hub again')).get('homeRoute')})
+    c.check(s, 'the programme and the key put back inside the page, the starter closed; the hub again', pb.get('back') is True
+            and pb.get('overlay') is False and back.get('back') is True and stack(ev.state('hub again')).get('homeRoute') == 'hub',
+            {'programme': pb, 'key': back, 'route': stack(ev.state('hub again')).get('homeRoute')})
 
 
 def scen_restore(c):
