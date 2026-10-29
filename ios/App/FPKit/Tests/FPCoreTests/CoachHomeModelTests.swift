@@ -393,8 +393,11 @@ final class CoachHomeModelTests: XCTestCase {
 
     /// Every page-built file, whatever its state, is the page's whole model: decoded from bytes and from text alike,
     /// v 1, the rev and boot the page sent (a push's rev is above 0, `++_fp.rev`, and the boot is `_fpBoot`, never
-    /// empty: a renamed or retyped one decodes to the compiled 0 or "" and fails), nothing skipped or rejected, and
-    /// no U+FFFD in any string.
+    /// empty: a renamed or retyped one decodes to the compiled 0 or "" and fails), the room, paper, dynTypeOn and route
+    /// the page sent, each of its JSON type (contract 6.2; the decoder's fallbacks, the room Heavyweight, paper from the
+    /// room, dynTypeOn true and the route from the connect block, read these files alike, so a key renamed, retyped or
+    /// left out would pass every other case), paper the room's own, the route one of the two this page has, nothing
+    /// skipped or rejected, and no U+FFFD in any string.
     func testEveryPageBuiltFixtureIsAWholeModel() throws {
         let names = pageBuilt()
         XCTAssertGreaterThanOrEqual(names.count, Self.scenarios.count, "the eight at least")
@@ -408,6 +411,13 @@ final class CoachHomeModelTests: XCTestCase {
             XCTAssertGreaterThan(m.rev, 0, "\(name): a push's rev, never the compiled 0")
             XCTAssertEqual(raw["boot"]?.string, m.boot, "\(name): boot is the page's, a string")
             XCTAssertFalse(m.boot.isEmpty, "\(name): the page's boot, never the compiled empty one")
+            func sent(_ key: String) -> String { raw[key]?.jsonText ?? "absent" }
+            XCTAssertEqual(raw["room"]?.string.map(Room.init(id:)), m.room, "\(name): room is the page's, a string (\(sent("room")))")
+            XCTAssertEqual(raw["paper"]?.bool, m.paper, "\(name): paper is the page's, a boolean (\(sent("paper")))")
+            XCTAssertEqual(m.paper, m.room.isPaper, "\(name): paper is the room's own (THEMES[room].paper)")
+            XCTAssertEqual(raw["dynTypeOn"]?.bool, m.dynTypeOn, "\(name): dynTypeOn is the page's, a boolean (\(sent("dynTypeOn")))")
+            XCTAssertTrue(["hub", "connect"].contains(raw["route"]?.string ?? ""),
+                          "\(name): route is the page's, hub or connect (renderCoach's two roots), a string (\(sent("route")))")
             XCTAssertEqual(m.skipped, 0, name)
             XCTAssertEqual(m.tokens.rejected, [], name)
             for t in texts(m) {
