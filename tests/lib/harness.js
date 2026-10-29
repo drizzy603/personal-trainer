@@ -401,9 +401,12 @@ function MOCK_RULES() {
   }
   // The fallback's messages (10.3), in order: screens.off for a live chat (with the composer's draft) and a live Coach
   // tab (why 'needs'), then screens.off tabs with the fallback's why unless the page asked (dismiss tabs), then
-  // shell.covered off when it was on. s {why, live: [pieces live under the tab root], pageAsked, covered, draft}.
+  // shell.covered off when it was on. s {why, live: [pieces live under the tab root], pageAsked, covered, draft,
+  // linked}: a document that has not said hello (linked false) hears none of them, only the rule changes (FPCore's
+  // LinkState.fallBack; its hello's reply tells it, negotiated on the classic rule).
   function fallBack(s) {
     var out = [];
+    if (s.linked === false) return out;
     if (has(s.live, 'coach')) {
       out.push(['screens.off', typeof s.draft === 'string' && s.draft ? { screen: 'coach', why: 'needs', draft: s.draft } : { screen: 'coach', why: 'needs' }]);
     }
@@ -522,7 +525,7 @@ function shellMock(arg) {
     o = o || {};
     const livePieces = (doc.negotiated || []).filter((p) => (p === 'coach' || p === 'coachHome') && doc.off.indexOf(p) < 0);
     const msgs = R.fallBack({ why, live: livePieces, pageAsked: !!o.pageAsked, covered: doc.covered,
-      draft: window.__fpShell.composer });
+      draft: window.__fpShell.composer, linked: doc.negotiated !== null });
     scene.fellBack = { why, at: Date.now() };
     scene.coach = 'web'; scene.pushed = false;
     (doc.negotiated || []).forEach((p) => { if (p === 'tabs' || p === 'coach' || p === 'coachHome') doc.off.push(p); });
@@ -623,18 +626,22 @@ function shellMock(arg) {
     const offNow = Array.isArray(knob('__fpShellOff')) ? knob('__fpShellOff') : [];
     const baseOn = (s) => (flag.screens || []).indexOf(s) >= 0 && offNow.indexOf(s) < 0;
     const ios = knob('__fpShellIOS');
+    // Each piece's own reason first; a piece whose own checks pass is off only for another, with what it needs, as
+    // FPCore's Pieces.resolve has it (negotiation.json's resolve rows): tabs needs the root under any root that is not
+    // a live tab root (a classic one, or a tab root that fell back); coachHome needs tabs on and coach's own checks
+    // passing, naming each it lacks; coach under a live tab root needs coachHome on.
     const why = {};
     if (typeof ios === 'number' && ios < 26) why.tabs = { off: 'os' };
     else if (!scene.switches.tabs) why.tabs = { off: 'device' };
     else if (scene.declined.tabs !== undefined) why.tabs = { off: 'page' };
     else if (!baseOn('tabs')) why.tabs = { off: 'policy' };
-    else if (scene.root !== 'tabs') why.tabs = { off: 'needs', needs: ['root'] };
-    const tabsOn = !why.tabs && live();
+    else if (!live()) why.tabs = { off: 'needs', needs: ['root'] };
+    const own = (s) => (scene.declined[s] !== undefined ? 'page' : !baseOn(s) ? 'policy' : null);
     ['coachHome', 'coach'].forEach((s) => {
-      if (scene.declined[s] !== undefined) why[s] = { off: 'page' };
-      else if (!baseOn(s)) why[s] = { off: 'policy' };
-      else if (s === 'coachHome' && !tabsOn) why[s] = { off: 'needs', needs: ['tabs'] };
-      else if (s === 'coach' && live() && why.coachHome) why[s] = { off: 'needs', needs: ['coachHome'] };
+      if (own(s)) why[s] = { off: own(s) };
+      else if (s === 'coachHome' && (why.tabs || own('coach'))) {
+        why[s] = { off: 'needs', needs: [why.tabs && 'tabs', own('coach') && 'coach'].filter(Boolean) };
+      } else if (s === 'coach' && live() && why.coachHome) why[s] = { off: 'needs', needs: ['coachHome'] };
     });
     Object.keys(st.screens).forEach((s) => {
       const w = why[s] || null;
