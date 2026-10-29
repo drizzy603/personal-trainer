@@ -137,6 +137,7 @@ build() {
     say "fp-build: this run holds the paired simulators, so the build counts under that hold (no build slot)"
   else
     fp_slot "$FP_LOCKS_ROOT/build.slot" 2 "fp-build $tool" "a build slot ($FP_LOCKS_ROOT/build.slot)"
+    say "fp-build: building in build slot $FP_SLOT ($FP_LOCKS_ROOT/build.slot.$FP_SLOT)"
   fi
   proj=$(grep -m1 'CURRENT_PROJECT_VERSION = ' ios/App/App.xcodeproj/project.pbxproj | sed 's/[^0-9]//g')
   n=$(( proj >= 61 ? proj : 61 ))

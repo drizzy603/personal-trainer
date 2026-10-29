@@ -211,8 +211,14 @@ fp_slot() {
   done
 }
 
-# simlock <tool>: the paired iPhone + Watch simulators, one runner at a time.
-simlock() { fp_lock "$SIMLOCK" "${1:-tool}" "the paired simulators ($SIMLOCK)"; }
+# simlock <tool>: the paired iPhone + Watch simulators, one runner at a time (says so when it takes them).
+simlock() {
+  fp_lock "$SIMLOCK" "${1:-tool}" "the paired simulators ($SIMLOCK)"
+  if [ "$(cat "$SIMLOCK/pid" 2>/dev/null || true)" = "$$" ]; then
+    echo "lock: holding the paired simulators ($SIMLOCK) for ${1:-tool}, pid $$" >&2
+  fi
+  return 0
+}
 
 # fp_simlock_held: 0 when this run holds the paired simulators (its own simlock or an ancestor's fplock sim.lock).
 fp_simlock_held() { fp_held "$SIMLOCK"; }
@@ -234,7 +240,8 @@ _fpl_self_test() {
 
   # 1. taken, recorded, freed at exit
   out=$(bash -c ". '$me'; simlock t1; cat '$root/sim.lock/owner'; cat '$root/sim.lock/pid'" 2>&1)
-  if [ ! -d "$root/sim.lock" ] && printf '%s' "$out" | head -1 | grep -qE '^[0-9]+ [0-9]+ [^ ]+ t1$'; then ok "taken with its owner line, freed at exit"; else no "taken with its owner line, freed at exit" "$out"; fi
+  if [ ! -d "$root/sim.lock" ] && printf '%s' "$out" | grep -qE '^[0-9]+ [0-9]+ [^ ]+ t1$' \
+     && printf '%s' "$out" | grep -q "^lock: holding the paired simulators .* for t1, pid "; then ok "taken (and said) with its owner line, freed at exit"; else no "taken (and said) with its owner line, freed at exit" "$out"; fi
 
   # 2. a dead holder (the acceptance's line: pid gone, 2.5 h old) is broken, and said
   mkdir "$root/sim.lock"; echo "$dead $(( $(date +%s) - 9000 )) scratch test" > "$root/sim.lock/owner"
@@ -262,7 +269,7 @@ _fpl_self_test() {
   if printf '%s' "$out" | grep -q "pid $dead (T99 abc1234)" && printf '%s' "$out" | grep -q '^took$'; then ok "an fplock holder's files are read"; else no "an fplock holder's files are read" "$out"; fi
 
   # 6. a live holder makes the next one wait until it frees the lock; the waiter says whose
-  bash -c ". '$me'; simlock holder; sleep 3" & pid=$!
+  bash -c ". '$me'; simlock holder; sleep 3" 2>/dev/null & pid=$!
   sleep 1
   t0=$(date +%s); out=$(bash -c ". '$me'; simlock t6; echo took" 2>&1); t1=$(date +%s)
   wait "$pid" 2>/dev/null
