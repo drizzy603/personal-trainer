@@ -17,8 +17,12 @@
 #      $(PRODUCT_MODULE_NAME).SceneDelegate in the source (an unresolved variable in a built app fails);
 #   2. its UISceneConfigurationName is "Default Configuration" (what AppDelegate's configurationForConnecting returns);
 #   3. UIApplicationSupportsMultipleScenes is false (absent reads as false, iOS's default);
-#   4. neither UIMainStoryboardFile nor UISceneStoryboardFile (nor a ~device form of either) appears anywhere: exact
-#      key names, never "Storyboard" (UILaunchStoryboardName stays).
+#   4. neither UIMainStoryboardFile nor UISceneStoryboardFile, nor a platform- or device-qualified form of either
+#      (Apple's <key>-<platform>~<device>: UIMainStoryboardFile~ipad, UIMainStoryboardFile-iphoneos), appears
+#      anywhere: exact key names, never "Storyboard" (UILaunchStoryboardName stays, qualified or not);
+#   5. no scene manifest key appears in a qualified form (UIApplicationSceneManifest~iphone, ...SupportsMultipleScenes~ipad):
+#      iOS reads the qualified key in place of the plain one on that device, so rules 1-3, which read the plain keys,
+#      would pass a manifest the phone never uses.
 # Exit 0 when the plist keeps the rule, 1 when it breaks it (each reason on its own FAIL line), 2 on bad arguments or a
 # file plutil cannot read.
 set -u
@@ -27,6 +31,7 @@ DELEGATE_BUILT='App.SceneDelegate'
 DELEGATE_SOURCE='$(PRODUCT_MODULE_NAME).SceneDelegate'
 CONFIG='Default Configuration'
 FIRST='UIApplicationSceneManifest.UISceneConfigurations.UIWindowSceneSessionRoleApplication.0'
+SCENE_KEYS='UIApplicationSceneManifest|UISceneConfigurations|UIWindowSceneSessionRoleApplication|UISceneDelegateClassName|UISceneConfigurationName|UIApplicationSupportsMultipleScenes'
 
 usage() {
   echo "usage: $0 [--source] <Info.plist> | --self-test" >&2
@@ -35,7 +40,7 @@ usage() {
 
 # check <mode: built|source> <plist>
 check() {
-  local mode="$1" plist="$2" want val n key xml problems=0 parts=()
+  local mode="$1" plist="$2" want val key found xml problems=0 parts=()
   if [ ! -f "$plist" ]; then echo "scene-plist: no file at $plist" >&2; return 2; fi
   if ! xml=$(plutil -convert xml1 -o - "$plist" 2>/dev/null); then
     echo "scene-plist: plutil cannot read $plist" >&2; return 2
@@ -75,14 +80,20 @@ check() {
     parts+=("UIApplicationSupportsMultipleScenes absent (false)")
   fi
 
-  # 4. no storyboard key anywhere (XML keys are plain text: a value can never read as <key>...</key>)
+  # 4. no storyboard key anywhere, plain or qualified (XML keys are plain text: a value can never read as <key>...</key>)
   for key in UIMainStoryboardFile UISceneStoryboardFile; do
-    n=$(printf '%s\n' "$xml" | grep -cE "<key>$key(~[^<]*)?</key>")
-    if [ "$n" -gt 0 ]; then
-      fail "$key appears $n time(s): a storyboard root, as build 60 and earlier had (from build 61 SceneDelegate builds the root in code, so a storyboard adds a second root and page)"
+    found=$(printf '%s\n' "$xml" | grep -oE "<key>$key([-~][^<]*)?</key>" | sed 's/<[/]*key>//g' || true)
+    if [ -n "$found" ]; then
+      fail "$key appears $(printf '%s\n' "$found" | wc -l | tr -d ' ') time(s) ($(printf '%s\n' "$found" | sort -u | tr '\n' ' ' | sed 's/ $//')): a storyboard root, as build 60 and earlier had (from build 61 SceneDelegate builds the root in code, so a storyboard adds a second root and page)"
     fi
   done
-  [ "$problems" = 0 ] && parts+=("no UIMainStoryboardFile or UISceneStoryboardFile")
+
+  # 5. no qualified form of a scene manifest key, anywhere
+  found=$(printf '%s\n' "$xml" | grep -oE "<key>($SCENE_KEYS)[-~][^<]*</key>" | sed 's/<[/]*key>//g' | sort -u || true)
+  if [ -n "$found" ]; then
+    fail "a platform- or device-qualified scene key appears ($(printf '%s' "$found" | tr '\n' ' ')): iOS reads it in place of the plain key on that device, so the plain manifest checked above would not be the one used"
+  fi
+  [ "$problems" = 0 ] && parts+=("no UIMainStoryboardFile or UISceneStoryboardFile" "no qualified scene key")
 
   if [ "$problems" = 0 ]; then
     local line="" p
@@ -95,11 +106,15 @@ check() {
 }
 
 # The self-test: a good plist written once, every other case made from it with plutil, each verdict and reason checked.
+# The cases run this script by its absolute path from the scratch folder, so the test holds from any folder and for
+# any spelling of the script's path (`bash scene-plist.sh --self-test` from tests/tools included).
 self_test() {
-  local dir good n=0 bad=0 out rc
+  local me dir good n=0 bad=0 out rc
+  me="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
   dir=$(mktemp -d "${TMPDIR:-/tmp}/scene-plist.XXXXXX") || exit 2
   SELF_TEST_DIR=$dir
   trap 'rm -rf "$SELF_TEST_DIR"' EXIT
+  cd "$dir" || exit 2
   good="$dir/good.plist"
   cat > "$good" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -137,8 +152,8 @@ PLIST
   expect() {
     local want="$1" mode="$2" name="$3" text="$4"
     n=$((n + 1))
-    if [ "$mode" = source ]; then out=$("$0" --source "$dir/$name.plist" 2>&1); rc=$?
-    else out=$("$0" "$dir/$name.plist" 2>&1); rc=$?; fi
+    if [ "$mode" = source ]; then out=$("$me" --source "$dir/$name.plist" 2>&1); rc=$?
+    else out=$("$me" "$dir/$name.plist" 2>&1); rc=$?; fi
     if [ "$rc" = "$want" ] && printf '%s' "$out" | grep -qF -- "$text"; then
       echo "  ok   $name ($mode): exit $rc"
     else
@@ -161,6 +176,13 @@ PLIST
   variant other-config -replace "$FIRST.UISceneConfigurationName" -string 'Other Configuration'
   variant no-manifest -remove UIApplicationSceneManifest
   variant wrong-module -replace "$FIRST.UISceneDelegateClassName" -string 'Supero.SceneDelegate'
+  # Apple's qualified keys (<key>-<platform>~<device>): iOS reads them in place of the plain key on that device
+  variant platform-storyboard -insert UIMainStoryboardFile-iphoneos -string Main
+  variant qualified-scene-storyboard -insert "$FIRST.UISceneStoryboardFile-iphoneos~iphone" -string Main
+  variant iphone-manifest -insert 'UIApplicationSceneManifest~iphone' -xml '<dict><key>UIApplicationSupportsMultipleScenes</key><false/></dict>'
+  variant ipad-multiple -insert 'UIApplicationSceneManifest.UIApplicationSupportsMultipleScenes~ipad' -bool YES
+  variant platform-delegate -insert "$FIRST.UISceneDelegateClassName-iphoneos" -string 'Other.SceneDelegate'
+  variant qualified-launch -insert 'UILaunchStoryboardName~iphone' -string LaunchScreen
   cp "$dir/scene-storyboard.plist" "$dir/binary-storyboard.plist" && plutil -convert binary1 "$dir/binary-storyboard.plist" || exit 1
   cp "$dir/unresolved.plist" "$dir/source-good.plist"
   printf 'not a plist' > "$dir/garbage.plist"
@@ -168,6 +190,7 @@ PLIST
   echo "scene-plist self-test (plutil: $(command -v plutil))"
   # the good plist keeps UILaunchStoryboardName: it passes, so no "Storyboard" substring is ever matched
   expect 0 built good-xml 'UISceneDelegateClassName App.SceneDelegate'
+  expect 0 built good-xml 'no qualified scene key'
   expect 0 built good-binary 'no UIMainStoryboardFile or UISceneStoryboardFile'
   expect 1 built no-delegate 'names no UISceneDelegateClassName'
   expect 1 built main-storyboard 'UIMainStoryboardFile appears 1 time(s)'
@@ -181,6 +204,12 @@ PLIST
   expect 1 built other-config 'UISceneConfigurationName is "Other Configuration"'
   expect 1 built no-manifest 'no UIApplicationSceneManifest'
   expect 1 built wrong-module 'UISceneDelegateClassName is "Supero.SceneDelegate", want App.SceneDelegate'
+  expect 1 built platform-storyboard 'UIMainStoryboardFile appears 1 time(s) (UIMainStoryboardFile-iphoneos)'
+  expect 1 built qualified-scene-storyboard 'UISceneStoryboardFile appears 1 time(s) (UISceneStoryboardFile-iphoneos~iphone)'
+  expect 1 built iphone-manifest 'qualified scene key appears (UIApplicationSceneManifest~iphone)'
+  expect 1 built ipad-multiple 'qualified scene key appears (UIApplicationSupportsMultipleScenes~ipad)'
+  expect 1 built platform-delegate 'qualified scene key appears (UISceneDelegateClassName-iphoneos)'
+  expect 0 built qualified-launch 'no UIMainStoryboardFile or UISceneStoryboardFile'
   expect 0 source source-good 'UISceneDelegateClassName $(PRODUCT_MODULE_NAME).SceneDelegate'
   expect 1 source good-xml 'UISceneDelegateClassName is "App.SceneDelegate", want $(PRODUCT_MODULE_NAME).SceneDelegate'
   expect 2 built garbage 'plutil cannot read'
