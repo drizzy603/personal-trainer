@@ -34,7 +34,9 @@
 //   are SHELL_METHODS['60']; every intent intents.json lists has a page handler;
 //   and every row of the shared tables Fixtures/shell/negotiation.json and bar.json runs through MOCK_RULES in Node
 //   and through the page's mock on a fresh scene, as the Swift tests run them through FPCore and the tab root: a hello
-//   turns nothing off, every decline is P1's, a fallen-back scene never falls back again, each act answers ok. Every
+//   turns nothing off, a decline is recorded for P1 (the one the mock makes before the document's hello carries no
+//   build, since it learns the build at the hello: that row is named on every run), a fallen-back scene never falls
+//   back again, dismiss tabs and the device switch answer ok under every root. Every
 //   cascade's stay-on set and fallback are held in Node; on the page, the cascades the mock's one door brings (the tab
 //   root's fallback: an event that takes no piece but tabs). The mock has no door for an event that takes coach or
 //   coachHome on its own (their trip or withdrawal, three failed shell intents while they are live): those rows go
