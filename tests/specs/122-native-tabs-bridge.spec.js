@@ -39,7 +39,9 @@
 //   root's fallback: an event that takes no piece but tabs). The mock has no door for an event that takes coach or
 //   coachHome on its own (their trip or withdrawal, three failed shell intents while they are live): those rows go
 //   through MOCK_RULES in Node only, are named on every run and pinned, so a new one fails until the mock has a door
-//   for it.
+//   for it; index.html itself hears each one's screens.off in the table's order over the native Coach tab and its
+//   pushed chat (60's overlay chat under a classic root) and ends with every piece down, nothing shown, only its own
+//   joint dismiss of the Coach tab sent back, tabs mode kept unless tabs went off.
 // Every native boot names its shell (the mark above): FP_SHELL_INERT runs skip this spec.
 const { boot, assert, run, SHELLS, SHELL_METHODS, MOCK_RULES, BASE_PAGE, shellFlag } = require('../lib/harness');
 
@@ -1485,7 +1487,7 @@ serial('P13: Fixtures/shell/negotiation.json, every row through MOCK_RULES in No
       n.cascade++;
     }
     n.noDoor = noDoor.length;
-    noDoor.forEach((r) => notes.push('cascade "' + r.case + '": not through the page\'s mock, which has no door for an event that takes coach or coachHome on its own (held in Node)'));
+    noDoor.forEach((r) => notes.push('cascade "' + r.case + '": not through the page\'s mock, which has no door for an event that takes coach or coachHome on its own (held in Node, and on index.html by the next case)'));
     want('the cascade rows the mock has no door for (NO_DOOR)', noDoor.map(shape).sort(), NO_DOOR.slice().sort());
     // rootChange: the host's fallback (the policy, the device switch, the page's dismiss tabs), linked or not
     for (const r of NEGOTIATION.rootChange) {
@@ -1524,6 +1526,59 @@ serial('P13: Fixtures/shell/negotiation.json, every row through MOCK_RULES in No
   assert(bad.length === 0, bad.length + ' row(s) differ from negotiation.json:\n    ' + bad.join('\n    '));
   assert(n.resolve === NEGOTIATION.resolve.length && n.hello === NEGOTIATION.hello.length && n.rootChange === NEGOTIATION.rootChange.length
     && n.cascade + n.noDoor === NEGOTIATION.cascade.length && n.resolve && n.hello && n.cascade && n.rootChange, 'every row ran: ' + J(n));
+});
+
+// The cascades the mock has no door for (NO_DOOR), on the page itself: each row's screens.off reach index.html as the
+// shell sends them (one at a time, in the table's order, through FPScreens.call as PageLink does) with the row's pieces
+// negotiated and up (under a tab root the native Coach tab on screen with its chat pushed, under a classic root 60's
+// overlay chat), and the page ends as contract 4.2 has it: each piece the row turns off is down for the rest of the
+// document with the row's word (the Coach tab's is 'tabs' once tabs goes too: _fpTabsLeave gives it to the web for the
+// document), nothing native is shown, tabs mode stays unless tabs went off (then the page's own bar), the Coach tab
+// shows the web Coach, and the page sends back no present, selectTab or dismiss but one: under a tab root its own
+// dismiss of the Coach tab right after the chat goes off (the chat and the Coach tab go together, D3 and I12), before
+// the shell's coachHome off arrives. Whether the page is covered also takes the shell's own word (shell.covered,
+// contract 8.4), which the table does not carry.
+serial('P13: the cascades the mock has no door for, on the page: each row\'s screens.off in the table\'s order over the native Coach tab and its pushed chat (60\'s overlay chat under a classic root) leave every piece the row names down with its word and nothing shown, the page sending back only its joint dismiss of the Coach tab, tabs mode kept unless tabs went off, the web Coach', async () => {
+  const rows = NEGOTIATION.cascade.filter((r) => NO_DOOR.indexOf(shape(r)) >= 0);
+  assert(rows.length === NO_DOOR.length, 'every NO_DOOR row is in negotiation.json: ' + rows.length);
+  const bad = [];
+  for (const root of ['tabs', 'classic']) {
+    const app = await pageBoot(root === 'tabs' ? TABS({ bar: BAR, selected: 'coach' }) : 'coach61', { seed: { kt_apikey: 'sk-ant-test', kt_coach_msgs: '[]' } });
+    try {
+      for (const r of rows.filter((x) => x.root === root)) {
+        const tag = 'cascade "' + r.case + '" on the page';
+        await freshScene(app);
+        await helloIn(app);
+        const p = await ev(app, async (offs) => {
+          const w = (ms) => new Promise((res) => setTimeout(res, ms));
+          const shown = () => Object.keys(_fp.shown).filter((k) => _fp.shown[k]).sort();
+          if (_fp.tabs.mode) {   // the page hands the Coach tab over after hello, then its chat goes on the tab's stack
+            for (let i = 0; i < 150 && !_fp.shown.coachHome; i++) await w(20);
+            await FPScreens.call('coachHome.openChat', {});
+          } else { switchTab('coach'); openCoachChat(); }
+          for (let i = 0; i < 150 && !_fp.shown.coach; i++) await w(20);
+          await w(40);
+          const up = { screens: _fp.hello.screens.slice().sort(), shown: shown(), tabs: _fp.tabs.mode, tab: currentTab };
+          const n = __fpShell.calls.length, answers = [];
+          for (const o of offs) answers.push(await FPScreens.call('screens.off', { screen: o.screen, why: o.why }));
+          await w(80);
+          return { up, answers, off: offs.map((o) => _fp.off[o.screen]), shown: shown(), tabs: _fp.tabs.mode,
+            cls: document.documentElement.classList.contains('fp-tabs'), mode: _fpCoachMode(), tab: currentTab,
+            ph: !!document.querySelector('#screen .kt-fp-ph'), web: !!document.querySelector('#screen .coach-chat-stick, #screen .kt-hero'),
+            sent: __fpShell.calls.slice(n).map((c) => c[0] + (c[1] && c[1].screen ? ' ' + c[1].screen : '')).filter((x) => /^(present|dismiss|selectTab)\b/.test(x)) };
+        }, offsWant(r.want.off));
+        const tabsOff = r.want.off.some((o) => o.screen === 'tabs'), tabsMode = root === 'tabs' && !tabsOff;
+        const upWant = { screens: r.live.slice().sort(), shown: root === 'tabs' ? ['coach', 'coachHome'] : ['coach'], tabs: root === 'tabs', tab: 'coach' };
+        if (J(p.up) !== J(upWant)) { bad.push(tag + ': the row\'s pieces not up: want ' + J(upWant) + ', got ' + J(p.up)); continue; }
+        const got = { answers: p.answers, off: p.off, shown: p.shown, sent: p.sent, tabs: p.tabs, cls: p.cls, mode: p.mode, tab: p.tab, ph: p.ph, web: p.web };
+        const exp = { answers: r.want.off.map(() => ({ ok: true })), off: r.want.off.map((o) => (o.screen === 'coachHome' && tabsOff ? 'tabs' : o.why)),
+          shown: [], sent: root === 'tabs' ? ['dismiss coachHome'] : [], tabs: tabsMode, cls: tabsMode, mode: tabsMode ? 'web' : null, tab: 'coach',
+          ph: false, web: true };
+        if (J(canon(got)) !== J(canon(exp))) bad.push(tag + ': want ' + J(exp) + ', got ' + J(got));
+      }
+    } finally { await app.close(); }
+  }
+  assert(bad.length === 0, bad.length + ' row(s) end otherwise on the page:\n    ' + bad.join('\n    '));
 });
 
 serial('P13: Fixtures/shell/bar.json, every row through MOCK_RULES in Node and through the page\'s mock on a fresh scene: on a live tab root the bar is hidden (h 0, safe kept) exactly when a sheet is open over a web tab or a web Coach tab; after the fallback it is hidden for good (sheets refused off) and the Coach tab is web', async () => {
