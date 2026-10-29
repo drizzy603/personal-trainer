@@ -171,9 +171,9 @@ screen; a new page or shell build is clean) and removes the file, so a marker ac
 construction (inside SceneDelegate's build, to the end of its first layout pass) and its own sections, and
 `model.<screen>.marker` around every model's decode and apply. A death inside one gives, at the next launch, the classic
 root (`tabs`) or that piece off (`model`) for the (shell build, page build) pair; `-fpIgnoreMarker` covers these too. The
-book also keeps each piece a page build declined (`declined`: a hello that left `tabs` out, a version refusal, `dismiss
-tabs`, or `coachHome` left out beside `tabs`), and `breakers.json` keeps build 60's write rule: a failed write leaves the
-older file in place.
+book also keeps each piece a page build declined (`declined`: a hello that left `tabs` out, a version refusal,
+`dismiss tabs`, or `coachHome` left out beside `tabs`), and `breakers.json` keeps build 60's write rule: a failed write
+leaves the older file in place.
 
 **Switches.** The page's own (`FP_NATIVE`, Settings > About's `kt_native_off`), the policy file's `screens.coach`, a
 crash verdict, the native breaker (no hello within 15 s of foreground time, or 3 failed intents or undecodable models in
@@ -208,24 +208,26 @@ Debug launch arguments (besides FPHost's): `-fpSmoke` (after each hello a ping t
 `simctl terminate`, which can land with the chat up and leave a marker). From build 61 SceneDelegate reads, in a Debug
 build only: `-fpOpenURL <url>`, one more connection URL for the process's first connection, parked for the page's boot
 read as a cold `trovo://start` or `trovo://share` from the system is (`ShellFlagScript.Dev.openURL(arguments:)`: none
-when the value is missing, empty or the next option, or has no scheme; a replayed connection gets none); `-devTheme
-<room>` for the first frame's room when it names one of the page's rooms (`heavyweight`, `dark`; any other value counts
-as none); and `-devNav <route>`'s head for the first frame's tab (`ShellTabs.firstTab`: Progress, Coach or Settings, else
-Log). The policy starts at the connection, before the gate decides the root, and reads `-fpPolicyFile` at once whenever
-a fetch is due (every launch with `-fpPolicyEvery 0`), so a tool can pin the classic root. FPHost's StoreProbe step
-`sceneCycle` replays a reconnect through the App's `StoreProbe.sceneReplay` (SceneDelegate's own teardown, then its
-connection on the same window scene: a new window, page and deep-link observer), its event naming the new root, `tabs`
-or `classic`.
+when the value is missing, empty or the next option, or has no scheme; a replayed connection gets none);
+`-devTheme <room>` for the first frame's room when it names one of the page's rooms (`heavyweight`, `dark`; any other
+value counts as none); and `-devNav <route>`'s head for the first frame's tab (`ShellTabs.firstTab`: Progress, Coach or
+Settings, else Log). The policy starts at the connection, before the gate decides the root, and reads `-fpPolicyFile`
+at once whenever a fetch is due (every launch with `-fpPolicyEvery 0`), so a tool can pin the classic root. FPHost's
+StoreProbe step `sceneCycle` replays a reconnect through the App's `StoreProbe.sceneReplay` (SceneDelegate's own
+teardown, then its connection on the same window scene: a new window, page and deep-link observer), its event naming
+the new root, `tabs` or `classic`.
 
 Tests: `PageLinkTests` (a real WKWebView and a stand-in `FPScreens`: order, one at a time, the answers as the breaker
 counts them, timeouts, a late answer dropped, nothing sent unlinked, a document that goes, a new document, an outcome
 that asks again), `ScreenHostTests` (over a stand-in page in a window, with a stand-in for UIKit's presentation, which
 never finishes in a test host without a window scene: `.overFullScreen`, the queue, the latch, the marker and the app's
 activity, the confirm, the toast strip; the edge pan and the toast window need a window scene and are skipped without
-one) and `ShellBridgeTests` (markers to verdicts once, hello and `up`, the resync, the policy's off, another web view's
-message refused). Build 61's: `RootTabControllerTests` (a real RootTabController on a real window, a RecordingWebView
-standing for the page: the funnel never takes the web view out of the window, one funnel and its strays, focus, the bar
-against `Fixtures/shell/bar.json`, the room on the bar and its container, the fallback, VoiceOver, the status bar, the
+one; from build 61 the `testStack...` cases, on a real UINavigationController as a tab of a UITabBarController in the
+window with a stand-in StackState, each waiting on the queue going idle, never on a fixed time) and `ShellBridgeTests`
+(markers to verdicts once, hello and `up`, the resync, the policy's off, another web view's message refused). Build
+61's: `RootTabControllerTests` (a real RootTabController on a real window, a RecordingWebView standing for the page:
+the funnel never takes the web view out of the window, one funnel and its strays, focus, the bar against
+`Fixtures/shell/bar.json`, the room on the bar and its container, the fallback, VoiceOver, the status bar, the
 hold, the modes per scene and `describe()`), `ShellBridgeTabsTests` (ShellBridge with a live tab root built as
 SceneDelegate builds it, over a stand-in page whose `FPScreens.call` answers as each case sets and keeps unanswered
 promises reachable, since WebKit fails a call whose promise the page's garbage collector took: the root decision,
