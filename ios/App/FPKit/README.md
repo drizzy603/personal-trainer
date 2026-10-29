@@ -78,11 +78,11 @@ the gate at scene connect, every hello, every cascade inside a document and the 
 on iff its own checks pass and the scene's root is a live tab root; `coachHome` iff its own checks pass, `tabs` is on
 and `coach`'s own checks pass; `coach` is joint with `coachHome` under a live tab root (the Coach tab's stack is its
 only host there) and alone under a classic root (60's overlay); a piece off only because of another reports what it
-`needs`. A hello under a live tab root whose answer leaves `tabs` out falls the scene back first: `page` (the hello left
-`tabs` out) or `policy` (its own checks no longer pass) is then negotiated on the classic rule, so `coach` alone may
-come back at once, and a version refusal (`refused`) is answered as the refusal. The page build declines `tabs` for
-`page` and `refused` (and for `dismiss tabs`), and `coachHome` for a hello that names `tabs` without it while it was on
-offer; `coach` is never declined, and nothing is declined under a classic root or after the fallback.
+`needs`. A hello under a live tab root whose answer leaves `tabs` out falls the scene back first; for `page` (the hello
+left `tabs` out) and `policy` (its own checks no longer pass) the hello is then negotiated on the classic rule, so
+`coach` alone may come back at once, and a version refusal (`refused`) is answered as the refusal. The page build
+declines `tabs` for `page` and `refused` (and for `dismiss tabs`), and `coachHome` for a hello that names `tabs` without
+it while it was on offer; `coach` is never declined, and nothing is declined under a classic root or after the fallback.
 `Fixtures/shell/negotiation.json` holds the rule as a table (resolve, hello, cascade and root-change rows), which
 PiecesTests and LinkStateTests read, and `Fixtures/shell/bar.json` the bar's hidden state per selected tab, Coach mode
 and sheets (RootTabControllerTests); spec 122 holds the page's mock (`tests/lib/harness.js` `MOCK_RULES`) to both. A
