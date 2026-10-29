@@ -555,8 +555,8 @@ decides. See the header of `tests/native-store.sh` for its options.
 the App target depends on FPCore, FPStore, FPHost and FPUI, linked statically into the app like CapApp-SPM. Only the App
 target's two configurations moved to iOS 17.0. The project level stays at 15.0 because `cap sync` writes CapApp-SPM's
 `.iOS(.v15)` from the first `IPHONEOS_DEPLOYMENT_TARGET` in `project.pbxproj`; the widget (16.2), the share extension
-(15.0) and the watch targets keep theirs. `AppDelegate.swift` imports FPCore, FPHost and FPUI and holds the App target's
-whole side (objectVersion 60 means hand-edited file references, so no new App-target source files):
+(15.0) and the watch targets keep theirs. `AppDelegate.swift` imports FPCore, FPHost and FPUI and holds all of the App
+target's side of FPKit (objectVersion 60 means hand-edited file references, so no new App-target source files):
 `instanceDescriptor()` sets `hasInitialFocus = false` (the shell owns focus), `webView(with:configuration:)` returns
 `ShellWebView`, and `capacitorDidLoad` binds `ShellBridge` (the root decision and the flag's `screens` and `tabs` from
 it), installs StoreAttach, registers TrovoShell and TrovoStore through their host adapters and forwards
@@ -565,16 +565,17 @@ go when a scene disconnects.
 
 From build 61 `Info.plist` names no main or scene storyboard (`UIMainStoryboardFile` and `UISceneStoryboardFile` are
 gone; `UILaunchStoryboardName` stays; `Main.storyboard` is still compiled, and nothing references it; never put either
-key back, or UIKit makes Main.storyboard's SuperoViewController too) and the SceneDelegate builds the window and its
-root in code at each connection (CLAUDE.md, "Scene lifecycle"): it starts the policy (once per process: a replayed
-connection's start does nothing) and rebinds the store, parks the connection's URLs for the page's boot read, makes the
-one SuperoViewController with its `ShellLaunch` (the first frame's tab, `ShellTabs.firstTab`, and the bar's guess,
-`RootTabController.predicted(screen:)`) and loads its view, so `ShellBridge.install(..., launch:)` decides the root
-before the page loads; it reads the first frame's room (a Debug `-devTheme`, else `StoreAttach.firstFrameRoom()`, else
-Heavyweight), builds the tab root inside the `tabs` short section and hands it to `ShellBridge.adopt(root:)` (or keeps
-build 60's classic root, the SuperoViewController itself), sets the root once and only then calls `makeKeyAndVisible()`.
-Its one `.trovoDeepLink` observer hands warm links to `ShellBridge.deepLink`; the teardown removes it, lets the store
-and ShellBridge go, sets `ShellWebView.sceneEnding` and lets go of the window and the page.
+key back: with a scene storyboard UIKit builds its own window around Main.storyboard's SuperoViewController before the
+connection runs) and the SceneDelegate builds the window and its root in code at each connection (CLAUDE.md, "Scene
+lifecycle"): it starts the policy (once per process: a replayed connection's start does nothing) and rebinds the store,
+parks the connection's URLs for the page's boot read, makes the one SuperoViewController with its `ShellLaunch` (the
+first frame's tab, `ShellTabs.firstTab`, and the bar's guess, `RootTabController.predicted(screen:)`) and loads its
+view, so `ShellBridge.install(..., launch:)` decides the root before the page loads; it reads the first frame's room (a
+Debug `-devTheme`, else `StoreAttach.firstFrameRoom()`, else Heavyweight), builds the tab root inside the `tabs` short
+section and hands it to `ShellBridge.adopt(root:)` (or keeps build 60's classic root, the SuperoViewController itself),
+sets the root once and only then calls `makeKeyAndVisible()`. Its one `.trovoDeepLink` observer hands warm links to
+`ShellBridge.deepLink`; the teardown removes it, lets the store and ShellBridge go, sets `ShellWebView.sceneEnding` and
+lets go of the window and the page.
 
 Adding the package changed `originHash` in
 `App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved`, and Xcode then re-resolved every
