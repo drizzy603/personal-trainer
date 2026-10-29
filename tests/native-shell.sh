@@ -3,10 +3,11 @@
 # real index.html in the real Capacitor shell) on an iOS simulator. The app's Debug build runs each scenario's steps from
 # launch arguments (FPUI ShellProbe), and tests/tools/native-shell.py reads what it reports and decides.
 #
-#   ./tests/native-shell.sh                  # build as build 60, run every scenario on iOS 26.x
+#   ./tests/native-shell.sh                  # build as build 61 at least, run every scenario on iOS 26.x
 #   ./tests/native-shell.sh --os 27          # another runtime (26 or 27; "26 27" for both)
 #   ./tests/native-shell.sh --phone <udid>   # one simulator
-#   ./tests/native-shell.sh --no-build       # reuse the last build
+#   ./tests/native-shell.sh --no-build       # reuse this tree's last build (another tree's is refused)
+#   ./tests/native-shell.sh --no-build=any   # reuse the last build whatever tree it came from (its identity first)
 #   ./tests/native-shell.sh --only chat,wckill
 #
 # Scenarios: smoke (-fpSmoke logs "fp: ping ok v1"), chat (the native chat presented .overFullScreen on the page's
@@ -20,44 +21,34 @@
 # The simulator is named by UDID (never "booted"); the default is the phone of the first paired iPhone + Watch on the
 # runtime, as test-native.sh picks it. The app is installed over what the phone holds (its data stays; the scenarios
 # write their own key and conversation).
+#
+# One runner uses the paired simulators at a time: the run takes ~/Library/Caches/FPKit/sim.lock first
+# (tests/tools/simlock.sh: it waits, says whose lock it waits for, and breaks one whose holder is gone or that is over
+# 2 hours old), and builds inside that hold. The build is tests/tools/fp-build.sh's: ~/Library/Caches/FPKit/<checkout>/
+# dd-shell, build-id.txt beside the app, the scene rule (tests/tools/scene-plist.sh) checked on the app every run.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-BUILD=/tmp/supero-shell-build
 OUT=screenshots/out/native-shell
-OSES="26"; PHONE=""; DO_BUILD=1; ONLY=""
+OSES="26"; PHONE=""; NOBUILD=""; ONLY=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --os) OSES="$2"; shift 2 ;;
     --phone) PHONE="$2"; shift 2 ;;
-    --no-build) DO_BUILD=0; shift ;;
+    --no-build|--no-build=any) NOBUILD="$1"; shift ;;
     --only) ONLY="$2"; shift 2 ;;
     *) echo "unknown option $1"; exit 2 ;;
   esac
 done
 mkdir -p "$OUT"
 
-# Build 60 at least (FPStore gives a new store minReader 60, so a lower build refuses its own native copy).
-PROJ=$(grep -m1 'CURRENT_PROJECT_VERSION = ' ios/App/App.xcodeproj/project.pbxproj | sed 's/[^0-9]//g')
-SHELL_BUILD=$(( PROJ >= 60 ? PROJ : 60 ))
-APP="$BUILD/Build/Products/Debug-iphonesimulator/App.app"
-
-if [ "$DO_BUILD" = 1 ]; then
-  echo "── Refreshing www/ and building the App scheme as build $SHELL_BUILD (Debug, simulator)"
-  npm run --silent build:web
-  npx cap copy ios >/dev/null
-  mkdir -p "$BUILD"
-  if ( cd ios/App && xcodebuild -project App.xcodeproj -scheme App -configuration Debug \
-        -destination 'generic/platform=iOS Simulator' -derivedDataPath "$BUILD" build CODE_SIGNING_ALLOWED=NO \
-        CURRENT_PROJECT_VERSION="$SHELL_BUILD" ) >"$BUILD/build.log" 2>&1 && grep -q '\*\* BUILD SUCCEEDED \*\*' "$BUILD/build.log"; then
-    echo "   build succeeded ($BUILD/build.log)"
-  else
-    grep -E 'error:|BUILD FAILED' "$BUILD/build.log" | head -20
-    echo "FAIL: the build failed (whole log: $BUILD/build.log)"; exit 1
-  fi
-fi
-[ -d "$APP" ] || { echo "FAIL: $APP missing (run without --no-build)"; exit 1; }
-plutil -p "$APP/Info.plist" | grep -q 'UISceneDelegateClassName' || { echo "FAIL: the built app has no UISceneDelegateClassName"; exit 1; }
+. tests/tools/simlock.sh
+simlock native-shell
+# Build 61 at least (FPStore gives a new store minReader 60, and the verdicts and breaker records a container kept from
+# build 60's runs must not apply); --no-build refuses another tree's build.
+DD=$(tests/tools/fp-build.sh shell $NOBUILD)
+APP="$DD/Build/Products/Debug-iphonesimulator/App.app"
+SHELL_BUILD=$(plutil -extract CFBundleVersion raw -o - "$APP/Info.plist")
 
 phone_for(){  # phone_for <26|27>: the first active paired iPhone + Watch on that runtime, else its first iPhone
   python3 - "$1" <<'PY'
@@ -96,5 +87,6 @@ else
     run_on "$P"
   done
 fi
-[ "$RC" = 0 ] && echo "native-shell: all scenarios passed" || echo "native-shell: FAILED (see FAIL lines above)"
+ANY=""; [ "$NOBUILD" = --no-build=any ] && ANY=" (--no-build=any: the build's identity is at the top)"
+[ "$RC" = 0 ] && echo "native-shell: all scenarios passed$ANY" || echo "native-shell: FAILED (see FAIL lines above)$ANY"
 exit $RC

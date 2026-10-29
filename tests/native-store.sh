@@ -4,10 +4,11 @@
 # to the App target: the app's Debug build runs each scenario's steps from launch arguments (FPHost StoreProbe), and
 # tests/tools/native-store.py reads WebKit's and the store's SQLite files and decides.
 #
-#   ./tests/native-store.sh                  # build as build 60, run every scenario on iOS 26.x and on 27.0
+#   ./tests/native-store.sh                  # build as build 61 at least, run every scenario on iOS 26.x and on 27.0
 #   ./tests/native-store.sh --os 27          # one runtime (26 or 27)
 #   ./tests/native-store.sh --phone <udid>   # one simulator
-#   ./tests/native-store.sh --no-build       # reuse the last build
+#   ./tests/native-store.sh --no-build       # reuse this tree's last build (another tree's is refused)
+#   ./tests/native-store.sh --no-build=any   # reuse the last build whatever tree it came from (its identity first)
 #   ./tests/native-store.sh --downgrade      # also build build 59 at its own commit and run the 59 <-> 60 drill
 #   ./tests/native-store.sh --only race,wiped --sweep 30 --burst-chars 4000
 #
@@ -27,20 +28,22 @@
 #
 # The simulators are named by UDID (never "booted"); the default for each runtime is the phone of its first paired
 # iPhone + Watch, as test-native.sh picks it. Each run reinstalls the app on that phone (its data container is
-# replaced; the app is left installed with the scenario seed). Only one agent uses the simulators at a time.
+# replaced; the app is left installed with the scenario seed). Only one runner uses the simulators at a time: the run
+# takes ~/Library/Caches/FPKit/sim.lock first (tests/tools/simlock.sh) and builds inside that hold. The build is
+# tests/tools/fp-build.sh's: ~/Library/Caches/FPKit/<checkout>/dd-store, build-id.txt beside the app, the scene rule
+# (tests/tools/scene-plist.sh) checked on the app every run.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 REPO=$PWD
 
-BUILD=/tmp/supero-store-build
 BUILD59=/tmp/supero-build59
 OUT=screenshots/out/native-store
-OSES="26 27"; PHONE=""; DO_BUILD=1; DOWNGRADE=0; ONLY=""; SWEEP=24; BURST=4000
+OSES="26 27"; PHONE=""; NOBUILD=""; DOWNGRADE=0; ONLY=""; SWEEP=24; BURST=4000
 while [ $# -gt 0 ]; do
   case "$1" in
     --os) OSES="$2"; shift 2 ;;
     --phone) PHONE="$2"; shift 2 ;;
-    --no-build) DO_BUILD=0; shift ;;
+    --no-build|--no-build=any) NOBUILD="$1"; shift ;;
     --downgrade) DOWNGRADE=1; shift ;;
     --only) ONLY="$2"; shift 2 ;;
     --sweep) SWEEP="$2"; shift 2 ;;
@@ -50,11 +53,6 @@ while [ $# -gt 0 ]; do
 done
 mkdir -p "$OUT"
 
-# The shell under test is build 60 (FPStore writes minReader 60 into a new store, so a lower build number refuses its
-# own store on the next launch): the project's number when it is 60 or more, else 60 for this build only.
-PROJ=$(grep -m1 'CURRENT_PROJECT_VERSION = ' ios/App/App.xcodeproj/project.pbxproj | sed 's/[^0-9]//g')
-SHELL_BUILD=$(( PROJ >= 60 ? PROJ : 60 ))
-APP="$BUILD/Build/Products/Debug-iphonesimulator/App.app"
 APP59="$BUILD59/Build/Products/Debug-iphonesimulator/App.app"
 
 xbuild(){  # xbuild <ios/App dir> <derived data> [settings...]: fails loudly, keeps the whole log beside the products
@@ -70,14 +68,15 @@ xbuild(){  # xbuild <ios/App dir> <derived data> [settings...]: fails loudly, ke
   fi
 }
 
-if [ "$DO_BUILD" = 1 ]; then
-  echo "── Refreshing www/ and building the App scheme as build $SHELL_BUILD (Debug, simulator)"
-  npm run --silent build:web
-  npx cap copy ios >/dev/null
-  xbuild ios/App "$BUILD" CURRENT_PROJECT_VERSION="$SHELL_BUILD"
-fi
-[ -d "$APP" ] || { echo "FAIL: $APP missing (run without --no-build)"; exit 1; }
-plutil -p "$APP/Info.plist" | grep -q 'UISceneDelegateClassName' || { echo "FAIL: the built app has no UISceneDelegateClassName"; exit 1; }
+. tests/tools/simlock.sh
+simlock native-store
+# The shell under test is build 61 at least (FPStore writes minReader 60 into a new store, so a lower build number
+# refuses its own store on the next launch, and the verdicts and breaker records a container kept from build 60's runs
+# must not apply): the project's number when it is 61 or more, else 61 for this build only. --no-build refuses another
+# tree's build.
+DD=$(tests/tools/fp-build.sh store $NOBUILD)
+APP="$DD/Build/Products/Debug-iphonesimulator/App.app"
+SHELL_BUILD=$(plutil -extract CFBundleVersion raw -o - "$APP/Info.plist")
 
 if [ "$DOWNGRADE" = 1 ]; then
   # Build 59 at the commit that set CURRENT_PROJECT_VERSION to 59, with one Debug-only hook added to its
@@ -192,5 +191,6 @@ else
     run_on "$P"
   done
 fi
-[ "$RC" = 0 ] && echo "native-store: all scenarios passed" || echo "native-store: FAILED (see FAIL lines above)"
+ANY=""; [ "$NOBUILD" = --no-build=any ] && ANY=" (--no-build=any: the build's identity is at the top)"
+[ "$RC" = 0 ] && echo "native-store: all scenarios passed$ANY" || echo "native-store: FAILED (see FAIL lines above)$ANY"
 exit $RC
