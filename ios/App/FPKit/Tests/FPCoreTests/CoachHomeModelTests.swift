@@ -391,13 +391,27 @@ final class CoachHomeModelTests: XCTestCase {
                        "page-built files missing: node tests/golden/dump-coach-home.js writes them")
     }
 
+    /// The keys of `keys` that `part` does not send as JSON strings; "not an object" when `part` is none (or absent).
+    private func notStrings(_ part: JSONValue?, _ keys: [String]) -> [String] {
+        guard let o = part?.object else { return ["not an object"] }
+        return keys.filter { o[$0]?.string == nil }
+    }
+
     /// Every page-built file, whatever its state, is the page's whole model: decoded from bytes and from text alike,
     /// v 1, the rev and boot the page sent (a push's rev is above 0, `++_fp.rev`, and the boot is `_fpBoot`, never
     /// empty: a renamed or retyped one decodes to the compiled 0 or "" and fails), the room, paper, dynTypeOn and route
     /// the page sent, each of its JSON type (contract 6.2; the decoder's fallbacks, the room Heavyweight, paper from the
     /// room, dynTypeOn true and the route from the connect block, read these files alike, so a key renamed, retyped or
     /// left out would pass every other case), paper the room's own, the route one of the two this page has, nothing
-    /// skipped or rejected, and no U+FFFD in any string.
+    /// skipped or rejected, and no U+FFFD in any string. meta, hero, connect and groups are read key by key in their
+    /// JSON types, as contract 6.2 has them and `_coachHomeScreen` builds them: meta and hero objects of strings;
+    /// connect null on the hub and, on the connect screen, an object whose label, placeholder and help are strings, its
+    /// cta an object of two strings and its starter null or an object with a string label; groups an array, empty on
+    /// the connect screen, of objects with a string head and an array of rows, each row's do, title and icon strings
+    /// and its sub a string or null. The decoder reads a part that is not an object, or a key of another type, as its
+    /// compiled default (an empty string or part, the web's own words in the connect block, none for a sub, a starter
+    /// or the hub's connect), so a hub that sent connect false, a connect screen that sent groups {}, or a ninth file
+    /// with meta sent as a string would pass every other case.
     func testEveryPageBuiltFixtureIsAWholeModel() throws {
         let names = pageBuilt()
         XCTAssertGreaterThanOrEqual(names.count, Self.scenarios.count, "the eight at least")
@@ -418,6 +432,32 @@ final class CoachHomeModelTests: XCTestCase {
             XCTAssertEqual(raw["dynTypeOn"]?.bool, m.dynTypeOn, "\(name): dynTypeOn is the page's, a boolean (\(sent("dynTypeOn")))")
             XCTAssertTrue(["hub", "connect"].contains(raw["route"]?.string ?? ""),
                           "\(name): route is the page's, hub or connect (renderCoach's two roots), a string (\(sent("route")))")
+            XCTAssertEqual(notStrings(raw["meta"], ["label", "avatar"]), [], "\(name): meta's strings (\(sent("meta")))")
+            XCTAssertEqual(notStrings(raw["hero"], ["greet", "title", "accent", "body"]), [], "\(name): hero's strings (\(sent("hero")))")
+            switch raw["route"]?.string {
+            case "hub"?:
+                XCTAssertEqual(raw["connect"], JSONValue.null, "\(name): the hub's connect is null (\(sent("connect")))")
+            case "connect"?:
+                let c = raw["connect"], starter = c?["starter"]
+                XCTAssertEqual(notStrings(c, ["label", "placeholder", "help"]) + notStrings(c?["cta"], ["label", "title"]).map { "cta: " + $0 },
+                               [], "\(name): connect's strings (\(sent("connect")))")
+                XCTAssertTrue(starter == JSONValue.null || notStrings(starter, ["label"]).isEmpty,
+                              "\(name): connect.starter is null or an object with a string label (\(starter?.jsonText ?? "absent"))")
+                XCTAssertEqual(raw["groups"], JSONValue.array([]), "\(name): the connect screen's groups are [] (\(sent("groups")))")
+            default:
+                break
+            }
+            let groups = raw["groups"]?.array
+            XCTAssertNotNil(groups, "\(name): groups is an array (\(sent("groups")))")
+            for (i, g) in (groups ?? []).enumerated() {
+                XCTAssertNotNil(g["head"]?.string, "\(name): groups[\(i)].head is a string (\(g.jsonText))")
+                XCTAssertNotNil(g["rows"]?.array, "\(name): groups[\(i)].rows is an array (\(g.jsonText))")
+                for (j, r) in (g["rows"]?.array ?? []).enumerated() {
+                    XCTAssertEqual(notStrings(r, ["do", "title", "icon"]), [], "\(name): groups[\(i)].rows[\(j)]'s strings (\(r.jsonText))")
+                    XCTAssertTrue(r["sub"] == JSONValue.null || r["sub"]?.string != nil,
+                                  "\(name): groups[\(i)].rows[\(j)].sub is a string or null (\(r["sub"]?.jsonText ?? "absent"))")
+                }
+            }
             XCTAssertEqual(m.skipped, 0, name)
             XCTAssertEqual(m.tokens.rejected, [], name)
             for t in texts(m) {
