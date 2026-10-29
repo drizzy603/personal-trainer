@@ -25,8 +25,12 @@
 #   the bundled public/index.html>  ·  build <CFBundleVersion>  ·  app <hash of every file in App.app>  ·  tool,
 #   worktree, built (when).
 # Untracked symlinks (the worktrees' node_modules links) are not part of the tree's state; untracked files are.
-# --no-build compares head, tree and page with the tree it runs in, checks the app is still the one stamped (app), and
-# runs the scene rule again; =any reports the same and goes on.
+# --no-build compares head, tree and page with the tree it runs in, checks the app is still the one stamped (app) and
+# that the page this checkout staged last (ios/App/App/public/index.html, what cap copy put there) is the page the app
+# bundled (staged), and runs the scene rule again; =any reports the same and goes on. The staged check catches a page
+# staged by hand for a build made elsewhere (20-order 4.3's SHELL-60i staged 91708ae's page, whose stamp a lane branch
+# shares, and built into /tmp/supero-shell-build): --no-build runs only the app in dd-<tool>, so such a run would
+# silently test this tree's page instead.
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 . "$HERE/simlock.sh"
@@ -67,6 +71,15 @@ app_print() {
   ( cd "$1" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256 ) | shasum -a 256 | cut -c1-16
 }
 
+# staged_diff <dd>: a difference line when the page this checkout staged last is not the page the app in <dd> bundled.
+staged_diff() {
+  local dd="$1" app="$1/$APP_REL" staged=ios/App/App/public/index.html
+  [ -f "$staged" ] && [ -f "$app/public/index.html" ] || return 0
+  cmp -s "$staged" "$app/public/index.html" && return 0
+  echo "
+  staged: this checkout's $staged (page $(page_stamp "$staged"), sha256 $(shasum -a 256 "$staged" | cut -c1-12)) is not the page this build bundled (page $(page_stamp "$app/public/index.html"), sha256 $(shasum -a 256 "$app/public/index.html" | cut -c1-12)): a page was staged here since it was built, and --no-build runs only the app in $dd, never a build made in another folder (such as /tmp/supero-shell-build)"
+}
+
 # field <file> <name>: the value of one line of build-id.txt.
 field() { sed -n "/^$2 /{s/^$2 //p;q;}" "$1" 2>/dev/null || true; }
 
@@ -93,11 +106,13 @@ id_line() {
 
 # check <dd> <check|any>: the build in <dd> against the tree in the current folder.
 check() {
-  local dd="$1" mode="$2" app="$1/$APP_REL" f="$1/build-id.txt" now diffs="" h1 h2
+  local dd="$1" mode="$2" app="$1/$APP_REL" f="$1/build-id.txt" now diffs="" h1 h2 st
   [ -d "$app" ] || die "no app in $dd: nothing built there for this checkout yet (run without --no-build)"
+  st=$(staged_diff "$dd")
   if [ ! -f "$f" ]; then
     [ "$mode" = any ] || die "$dd has no build-id.txt: a build no fp-build finished, from a tree unknown (run without --no-build, or --no-build=any)"
     say "fp-build: --no-build=any: $app has no build-id.txt, so its tree is unknown; running it as it is"
+    [ -z "$st" ] || say "fp-build: --no-build=any: and this checkout staged another page than it bundled:$st"
   else
     now=$(tree_id)
     h1=$(field "$f" head); h2=$(printf '%s\n' "$now" | sed -n 's/^head //p')
@@ -113,12 +128,21 @@ check() {
     [ "$h1" = "$h2" ] || diffs="$diffs
   app: the app in $dd is not the one stamped (stamped $h1, now $h2: built again by something else)"
     if [ -n "$diffs" ]; then
+      diffs="$diffs$st"
       if [ "$mode" = any ]; then
         say "fp-build: --no-build=any: running another tree's build: $(id_line "$f")"
         say "fp-build: it differs from this tree:$diffs"
       else
         die "the build in $dd is not this tree's ($(id_line "$f")):$diffs
   Run without --no-build to build this tree, or pass --no-build=any to run that build anyway."
+      fi
+    elif [ -n "$st" ]; then
+      if [ "$mode" = any ]; then
+        say "fp-build: --no-build=any: this tree's build ($(id_line "$f")), although this checkout staged another page since:$st"
+      else
+        die "the build in $dd is this tree's ($(id_line "$f")), but this checkout staged another page since:$st
+  Run without --no-build to build this tree; to run another page, build it into $dd (cap copy, then xcodebuild
+  -derivedDataPath $dd) and pass --no-build=any; or pass --no-build=any to run this build anyway."
       fi
     else
       say "fp-build: --no-build: this tree's build: $(id_line "$f")"
@@ -183,9 +207,11 @@ self_test() {
   git init -q . && git config user.email t@t && git config user.name t
   printf '<html><head><meta name="build" content="20990101-1"/></head></html>\n' > index.html
   printf 'one\n' > other.txt
-  git add index.html other.txt && git commit -q -m one
+  printf 'ios/App/App/public\n' > .gitignore   # as ios/.gitignore has it: the staged page is no part of the tree's state
+  git add index.html other.txt .gitignore && git commit -q -m one
   ln -s /tmp node_modules   # a worktree's link: never part of the tree's state
   cp index.html "$app/public/index.html"
+  mkdir -p ios/App/App/public && cp index.html ios/App/App/public/index.html   # cap copy's staged page
   cat > "$app/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -242,6 +268,16 @@ PLIST
   printf 'rebuilt\n' > "$app/App"
   run 1 check "an app changed since its stamp is refused, naming app" "app: the app in"
   stamp
+  # a page staged since the build, with the same stamp (the hazard: 91708ae's page and a lane branch's share 20261012-2)
+  printf '<html><head><meta name="build" content="20990101-1"/></head><body>another page</body></html>\n' > ios/App/App/public/index.html
+  run 1 check "a page staged since the build is refused, naming staged" "this checkout staged another page since" \
+    "staged: this checkout's ios/App/App/public/index.html (page 20990101-1, sha256" "never a build made in another folder"
+  run 0 any "--no-build=any runs this tree's build, saying the staged page differs" "although this checkout staged another page since"
+  sed -i '' 's/^head .*/head 0000000/' "$dd/build-id.txt"
+  run 1 check "another HEAD and a staged page: both named" "head: built from 0000000" "staged: this checkout's"
+  stamp
+  cp index.html ios/App/App/public/index.html
+  run 0 check "the staged page back: taken" "this tree's build"
   # the scene rule on --no-build
   plutil -insert UIMainStoryboardFile -string Main "$app/Info.plist"
   stamp
