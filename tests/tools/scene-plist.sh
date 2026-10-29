@@ -1,7 +1,7 @@
 #!/bin/bash
 # The scene rule (contract 12, "Root, built app"; plan T14): the one check of an Info.plist's scene manifest, run by
 # verify.sh on the source, by every native tool on the app it built (tests/tools/fp-build.sh), by CI on its build and
-# by the release on the archive.
+# by the release on the archive (T28's gate G1).
 #
 #   tests/tools/scene-plist.sh <App.app/Info.plist>        # a built app (binary or XML plist)
 #   tests/tools/scene-plist.sh --source <Info.plist>       # the source plist (ios/App/App/Info.plist)
@@ -131,8 +131,8 @@ self_test() {
 </plist>
 PLIST
   plutil -lint -s "$good" || { echo "self-test: plutil rejects the good plist"; exit 1; }
-  # make <name> <plutil args...>: a copy of the good plist changed by one plutil command
-  make() { local f="$dir/$1.plist"; shift; cp "$good" "$f" && plutil "$@" "$f" || { echo "self-test: plutil $* failed"; exit 1; }; }
+  # variant <name> <plutil args...>: a copy of the good plist changed by one plutil command
+  variant() { local f="$dir/$1.plist"; shift; cp "$good" "$f" && plutil "$@" "$f" || { echo "self-test: plutil $* failed"; exit 1; }; }
   # expect <0|1> <mode> <name> <text the output must hold>
   expect() {
     local want="$1" mode="$2" name="$3" text="$4"
@@ -148,19 +148,19 @@ PLIST
     fi
   }
   cp "$good" "$dir/good-xml.plist"
-  make good-binary -convert binary1
-  make no-delegate -remove "$FIRST.UISceneDelegateClassName"
-  make main-storyboard -insert UIMainStoryboardFile -string Main
-  make scene-storyboard -insert "$FIRST.UISceneStoryboardFile" -string Main
-  make unresolved -replace "$FIRST.UISceneDelegateClassName" -string '$(PRODUCT_MODULE_NAME).SceneDelegate'
-  make ipad-storyboard -insert 'UIMainStoryboardFile~ipad' -string Main
-  make deep-storyboard -insert UIApplicationSceneManifest.UISceneConfigurations.UIWindowSceneSessionRoleApplication.1 -xml \
+  variant good-binary -convert binary1
+  variant no-delegate -remove "$FIRST.UISceneDelegateClassName"
+  variant main-storyboard -insert UIMainStoryboardFile -string Main
+  variant scene-storyboard -insert "$FIRST.UISceneStoryboardFile" -string Main
+  variant unresolved -replace "$FIRST.UISceneDelegateClassName" -string '$(PRODUCT_MODULE_NAME).SceneDelegate'
+  variant ipad-storyboard -insert 'UIMainStoryboardFile~ipad' -string Main
+  variant deep-storyboard -insert UIApplicationSceneManifest.UISceneConfigurations.UIWindowSceneSessionRoleApplication.1 -xml \
     '<dict><key>UISceneConfigurationName</key><string>Other</string><key>UISceneStoryboardFile</key><string>Main</string></dict>'
-  make multiple -replace UIApplicationSceneManifest.UIApplicationSupportsMultipleScenes -bool YES
-  make no-multiple-key -remove UIApplicationSceneManifest.UIApplicationSupportsMultipleScenes
-  make other-config -replace "$FIRST.UISceneConfigurationName" -string 'Other Configuration'
-  make no-manifest -remove UIApplicationSceneManifest
-  make wrong-module -replace "$FIRST.UISceneDelegateClassName" -string 'Supero.SceneDelegate'
+  variant multiple -replace UIApplicationSceneManifest.UIApplicationSupportsMultipleScenes -bool YES
+  variant no-multiple-key -remove UIApplicationSceneManifest.UIApplicationSupportsMultipleScenes
+  variant other-config -replace "$FIRST.UISceneConfigurationName" -string 'Other Configuration'
+  variant no-manifest -remove UIApplicationSceneManifest
+  variant wrong-module -replace "$FIRST.UISceneDelegateClassName" -string 'Supero.SceneDelegate'
   cp "$dir/scene-storyboard.plist" "$dir/binary-storyboard.plist" && plutil -convert binary1 "$dir/binary-storyboard.plist" || exit 1
   cp "$dir/unresolved.plist" "$dir/source-good.plist"
   printf 'not a plist' > "$dir/garbage.plist"

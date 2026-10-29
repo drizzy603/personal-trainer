@@ -16,8 +16,9 @@
 #
 # A build: one build of this checkout at a time (its www/ and ios/App/App/public are shared:
 # ~/Library/Caches/FPKit/<checkout>/build.lock); a build slot (build.slot.1-2, tests/tools/simlock.sh) unless this run
-# holds the paired simulators, where the build counts under that hold (20-order.md 1.5: nothing waits for a slot while
-# holding sim.lock); build:web, cap copy, xcodebuild; Package.resolved put back when the build rewrote it from a clean
+# holds the paired simulators, where the build counts under that hold (20-order.md 1.5: a simulator tool's own build
+# takes no slot, and a standalone build never waits for sim.lock while it holds one, so the two cannot deadlock);
+# build:web, cap copy, xcodebuild; Package.resolved put back when the build rewrote it from a clean
 # copy (its originHash follows the checkout's path); the tree must not have changed meanwhile; the scene rule
 # (tests/tools/scene-plist.sh) on the built app; then build-id.txt beside it:
 #   head <HEAD>  ·  tree clean | tree dirty <hash of the diff from HEAD and the untracked files>  ·  page <the stamp of
