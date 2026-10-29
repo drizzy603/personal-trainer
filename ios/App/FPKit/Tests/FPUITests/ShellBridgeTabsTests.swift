@@ -1,4 +1,5 @@
 #if os(iOS)
+import Combine
 import Foundation
 import UIKit
 import WebKit
@@ -80,8 +81,9 @@ private final class Weak {
 /// with the markers and the toast anchor following, the drop and the teardown empty its store, and the key field's text
 /// is in no report. Tests 42-43 (delta 17.13): the probe's hub press is an error under the shell's confirm, and the
 /// probe hears the root's mode change and fallback under no funnel run. Test 44: the hub's ground takes the first
-/// frame's room (contract 6.1). Test 45: the page's one pass from a WEB Coach tab pushes the chat over the hub. A read
-/// that says the page heard nothing waits for the link to go idle first (`linkIdle`).
+/// frame's room (contract 6.1). Test 45: the page's one pass from a WEB Coach tab pushes the chat over the hub. Test
+/// 46 (H10's review): a hub model and the resync's snapshot are applied inside `model coachHome@`. A read that says the
+/// page heard nothing waits for the link to go idle first (`linkIdle`).
 @available(iOS 26.0, *)
 @MainActor
 final class ShellBridgeTabsTests: XCTestCase {
@@ -368,6 +370,11 @@ final class ShellBridgeTabsTests: XCTestCase {
         let json = try homeJSON(rev: rev, resume: resume, connect: connect)
         _ = try await message(s, "model", ["screen": "coachHome", "rev": rev, "json": json]).get()
         _ = try await message(s, "present", ["screen": "coachHome"]).get()
+    }
+
+    /// A marker file's state byte now (`SectionMarker.inside` or `.outside`; nil without the file), by its name.
+    private func markerByte(_ s: TabsScene, _ name: String) -> UInt8? {
+        (try? Data(contentsOf: s.bridge.folder.appendingPathComponent(name)))?.last
     }
 
     /// The screens' crash markers on disk now (`presenting.*.marker`), as lines.
@@ -2111,7 +2118,7 @@ final class ShellBridgeTabsTests: XCTestCase {
         _ = try await message(s, "model", ["screen": "coachHome", "rev": 2, "json": try homeJSON(rev: 2)]).get()
         XCTAssertEqual(b.screens.home.model?.rev, 2, "the store holds the page's model")
         XCTAssertEqual(String(decoding: try Data(contentsOf: s.bridge.folder.appendingPathComponent("model.coachHome.marker")), as: UTF8.self),
-                       "model coachHome@P1 shell 61\n0", "decoded and applied inside its marker, which ended")
+                       "model coachHome@P1 shell 61\n0", "its section's line names the page build and the shell, and it ended (test 46: inside it)")
         XCTAssertEqual(root.coachMode, .waiting, "a model alone declares nothing")
         s.posts = []
         _ = try await message(s, "present", ["screen": "coachHome"]).get()
@@ -2195,8 +2202,9 @@ final class ShellBridgeTabsTests: XCTestCase {
         XCTAssertEqual(root.coachMode, .native)
     }
 
-    /// H10 (contract 3.7, 4.4, 8.3, 10.1, 10.2, I12): three hub models in a row that do not decode (each inside its marker)
-    /// trip `coachHome` for the page build, and `coach` goes with it (`needs`): the Coach tab turns WEB at once, the pushed
+    /// H10 (contract 3.7, 4.4, 8.3, 10.1, 10.2, I12): three hub models in a row that do not decode (each read in its own
+    /// `model coachHome@` section, which ends; test 46 shows a model applied inside it) trip `coachHome` for the page
+    /// build, and `coach` goes with it (`needs`): the Coach tab turns WEB at once, the pushed
     /// chat comes off (never as the owner's Back), the page hears `screens.off` for both and covered off (Coach was
     /// selected); the bar stays, and a later `present coachHome` is build 60's "not on".
     func test36ThreeUndecodableHubModelsTripCoachHomeAndTheChatGoesWithIt() async throws {
@@ -2212,7 +2220,7 @@ final class ShellBridgeTabsTests: XCTestCase {
         let marker = s.bridge.folder.appendingPathComponent("model.coachHome.marker")
         for rev in 4..<7 {
             _ = try await message(s, "model", ["screen": "coachHome", "rev": rev, "json": "not a model"]).get()
-            XCTAssertEqual((try? Data(contentsOf: marker))?.last, SectionMarker.outside, "decoded inside its marker, which ended")
+            XCTAssertEqual((try? Data(contentsOf: marker))?.last, SectionMarker.outside, "its section ended, the model counted (test 46: inside it)")
             if rev < 6 { XCTAssertTrue(b.link.isLive("coachHome"), "not yet at rev \(rev)") }
         }
         let trip = try XCTUnwrap(b.link.book.trip(screen: "coachHome", pageBuild: "P1"))
@@ -2545,6 +2553,34 @@ final class ShellBridgeTabsTests: XCTestCase {
         let offs = await calls(s, "screens.off")
         XCTAssertEqual(offs.count, 0, "the page keeps the native chat")
     }
+
+    /// H10 (contract 3.7, 10.2; 11-shell.md H10): every hub model is decoded by N's decoder and applied to the home's store
+    /// while `model coachHome@` holds 1, a pushed one and the resync's `coachHome.snapshot` alike (H6's chat cases,
+    /// ShellBridgeTests, check the chat's the same way): a crash there leaves the file at 1, a verdict for `coachHome`
+    /// alone at the next launch, where a decode or apply run outside the section would leave none and crash every launch.
+    func test46TheHubsModelAndItsSnapshotAreAppliedInsideTheirSection() async throws {
+        let s = try await scene(first: "coach")
+        let b = try XCTUnwrap(s.binding)
+        let marker = "model.coachHome.marker"
+        var during: [UInt8?] = []
+        let watch = b.screens.home.$model.dropFirst().sink { m in
+            if m != nil { during.append(self.markerByte(s, marker)) }
+        }
+        defer { watch.cancel() }
+        try await presentHome(s, rev: 7)
+        XCTAssertEqual(b.screens.home.model?.rev, 7)
+        XCTAssertEqual(during, [SectionMarker.inside], "the pushed model applied inside its section")
+        XCTAssertEqual(markerByte(s, marker), SectionMarker.outside, "which ended")
+        during = []
+        try await load(s)   // a reload under the NATIVE tab: the model stays drawn, published again only by the snapshot
+        let snapshot = try homeJSON(boot: "b2", rev: 1, connect: true)
+        _ = await js(s, "window.__json['coachHome.snapshot'] = \(Self.jsString(snapshot)); 0")
+        try await hello(s, Self.all, boot: "b2")
+        try await expect("the snapshot applied") { b.screens.home.model?.boot == "b2" }
+        XCTAssertEqual(during, [SectionMarker.inside], "the resync's snapshot applied inside its section")
+        XCTAssertEqual(markerByte(s, marker), SectionMarker.outside, "which ended")
+    }
+
 }
 
 /// The stand-in page never came up: the case fails there, saying so.
