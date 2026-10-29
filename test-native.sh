@@ -8,8 +8,9 @@
 #   ROOMS="heavyweight" ./test-native.sh   # one pass instead of two ("default": the stored room)
 #
 # One runner uses the paired simulators at a time: the run takes ~/Library/Caches/FPKit/sim.lock
-# first (tests/tools/simlock.sh: it waits, says whose lock it waits for, and breaks one whose holder
-# is gone or that is over 2 hours old), and builds inside that hold.
+# first (tests/tools/simlock.sh: it waits as long as a live holder holds, says whose lock it waits
+# for, and breaks one whose holder is gone, or one naming no holder once it is 2 hours old), and
+# builds inside that hold.
 #
 # What it does (the verified recipe from 2026-08-02):
 #   1. Refresh www/ from repo-root sources (cap copy alone ships a STALE www).

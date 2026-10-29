@@ -23,9 +23,10 @@
 # write their own key and conversation).
 #
 # One runner uses the paired simulators at a time: the run takes ~/Library/Caches/FPKit/sim.lock first
-# (tests/tools/simlock.sh: it waits, says whose lock it waits for, and breaks one whose holder is gone or that is over
-# 2 hours old), and builds inside that hold. The build is tests/tools/fp-build.sh's: ~/Library/Caches/FPKit/<checkout>/
-# dd-shell, build-id.txt beside the app, the scene rule (tests/tools/scene-plist.sh) checked on the app every run.
+# (tests/tools/simlock.sh: it waits as long as a live holder holds, says whose lock it waits for, and breaks one whose
+# holder is gone, or one naming no holder once it is 2 hours old), and builds inside that hold. The build is
+# tests/tools/fp-build.sh's: ~/Library/Caches/FPKit/<checkout>/dd-shell, build-id.txt beside the app, the scene rule
+# (tests/tools/scene-plist.sh) checked on the app every run.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
