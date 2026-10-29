@@ -29,7 +29,9 @@
 // - Build 61 (plan task P8): the intents sweep also calls the nine intents contract 4.1 adds and allows
 //   contract 4.5's reasons; under build 60's shell every coachHome.* answers off and changes nothing,
 //   and tabs.* without arguments are bad-args. Since H1 intents.json lists all 31 (P13): the sweep
-//   reads it alone, asks it for at least 31, and finds the nine there with contract 4.1's arguments.
+//   reads it alone, asks it for at least 31, and finds the nine there with contract 4.1's arguments
+//   (compared as objects, whatever their key order, as FPCore's IntentTests read them); every answer is
+//   {ok:true} or {ok:false} with bad-args or one of contract 4.5's reasons, never ok missing or a bare refusal.
 const fs = require('fs');
 const path = require('path');
 const { boot, assert, run } = require('../lib/harness');
@@ -1215,6 +1217,10 @@ const INTENTS_61 = [
 // The reasons a page may answer (contract 4.5): v1's own, then build 61's off, nokey, invalid and has-programme.
 const REASONS = ['busy', 'stale', 'gone', 'idle', 'just-sent', 'intake', 'not-intake', 'unknown-model', 'empty', 'off', 'nokey', 'invalid',
   'has-programme'];
+// A JSON object's keys have no order (FPCore's IntentTests compare intents.json's args as a dictionary): compare with
+// every object's keys sorted, arrays as they are.
+const canon = (x) => (Array.isArray(x) ? x.map(canon) : x && typeof x === 'object'
+  ? Object.keys(x).sort().reduce((o, k) => { o[k] = canon(x[k]); return o; }, {}) : x);
 
 serial('C3: every intent of FPCore intents.json (contract v1\'s and the nine build 61 adds, at least 31) is known, refuses missing arguments and answers only the contract\'s reasons; under build 60\'s shell every coachHome.* answers off and changes nothing; no shell, no bridge', async () => {
   const listed = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'ios', 'App', 'FPKit', 'Tests', 'FPCoreTests', 'intents.json'), 'utf8')).intents;
@@ -1222,7 +1228,7 @@ serial('C3: every intent of FPCore intents.json (contract v1\'s and the nine bui
   assert(listed.length >= 31, 'intents.json lists at least 31 intents: ' + listed.length);
   for (const n of INTENTS_61) {
     const i = listed.find((x) => x.name === n.name);
-    assert(i && JSON.stringify(i.args) === JSON.stringify(n.args), n.name + ': in intents.json with contract 4.1\'s arguments: ' + JSON.stringify(i || null));
+    assert(i && JSON.stringify(canon(i.args)) === JSON.stringify(canon(n.args)), n.name + ': in intents.json with contract 4.1\'s arguments: ' + JSON.stringify(i || null));
   }
   const intents = listed;
   const app = await shellBoot('coach');
@@ -1252,7 +1258,10 @@ serial('C3: every intent of FPCore intents.json (contract v1\'s and the nine bui
     for (const x of out.r) {
       assert(x.error !== 'unknown-intent', x.name + ': the page knows it');
       if (x.required.length) assert(x.ok === false && x.error === 'bad-args', x.name + ': missing ' + x.required.join(', ') + ' is bad-args: ' + JSON.stringify(x));
-      else assert(x.error === null || REASONS.indexOf(x.error) >= 0, x.name + ': answers ok or with the page\'s reason: ' + JSON.stringify(x));
+      // contract 4.1: {ok:true, ...} or {ok:false, error}, the error one of 4.5's reasons (a bare {ok:false} or an
+      // answer with no ok is neither)
+      else assert((x.ok === true && x.error === null) || (x.ok === false && REASONS.indexOf(x.error) >= 0),
+        x.name + ': answers {ok:true} or {ok:false} with one of the contract\'s reasons: ' + JSON.stringify(x));
       // a web 61 page on a build 60 binary: no native Coach tab in this document
       if (/^coachHome\./.test(x.name) && !x.required.length) assert(x.ok === false && x.error === 'off', x.name + ': off under build 60\'s shell: ' + JSON.stringify(x));
       if (/^coachHome\./.test(x.name)) assert(!x.changed, x.name + ': changes nothing: ' + JSON.stringify(x));
