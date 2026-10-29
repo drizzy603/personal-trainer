@@ -2135,12 +2135,21 @@ final class ShellBridgeTabsTests: XCTestCase {
         var coach = try XCTUnwrap((s.bridge.describe()["root"] as? [String: Any])?["coach"] as? [String: Any])
         XCTAssertEqual(coach["root"] as? String, "hub")
         XCTAssertEqual(coach["mode"] as? String, "native")
+        // contract 15.3: ScreenHost's report gives each screen up its host, coachHome's too
+        let entry = try XCTUnwrap((b.screens.describe()["screens"] as? [String: Any])?["coachHome"] as? [String: Any])
+        XCTAssertEqual(entry["host"] as? String, "stack")
+        XCTAssertEqual(entry["presented"] as? Bool, true)
+        XCTAssertEqual(entry["inWindow"] as? Bool, true)
+        XCTAssertEqual(entry["route"] as? String, "hub")
+        XCTAssertEqual(entry["rev"] as? Int, 2)
+        XCTAssertEqual(entry["boot"] as? String, "b1")
         try await expect("covered on again, from the root") { await self.calls(s, "shell.covered").map(\.on) == [true, true] }
         _ = try await message(s, "dismiss", ["screen": "coachHome"]).get()
         XCTAssertEqual(root.coachMode, .web)
         XCTAssertFalse(s.webView.isHidden)
         XCTAssertFalse(s.webView.accessibilityElementsHidden)
         XCTAssertEqual(b.screens.shown, [])
+        XCTAssertNil((b.screens.describe()["screens"] as? [String: Any])?["coachHome"], "not up: no entry")
         coach = try XCTUnwrap((s.bridge.describe()["root"] as? [String: Any])?["coach"] as? [String: Any])
         XCTAssertEqual(coach["mode"] as? String, "web")
         try await expect("covered off") { await self.calls(s, "shell.covered").map(\.on) == [true, true, false] }

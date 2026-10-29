@@ -88,8 +88,9 @@ public struct StackState {
 ///   and a model: ScreenHost's own controller of N's `CoachHomeRoot` (made once, reused; the first frame's room for its
 ///   ground) goes at the stack's bottom and the tab turns NATIVE (the root covers the page). `dismiss("coachHome")` turns
 ///   the tab WEB, then pops a pushed chat (without animation: the stack is hidden by then). `coachHome` is up while that
-///   home is the bottom of a NATIVE stack (hello's `up` names it then, I13), and a document going keeps its model only
-///   then. N's views never see the root, the bridge or the web view; ScreenHost draws no hub string.
+///   home is the bottom of a NATIVE stack (hello's `up` names it then, I13; `describe()`'s `screens` gives its host), and
+///   a document going keeps its model only then. N's views never see the root, the bridge or the web view; ScreenHost
+///   draws no hub string.
 /// - **One transition at a time**: present and dismiss requests (pushes and pops in the stack) queue and run in order,
 ///   each after the one before has finished (UIKit refuses a presentation while another is under way); a dismissal
 ///   queued right behind a present that has not started cancels both. In the stack the next one runs a turn after the
@@ -1435,9 +1436,18 @@ public final class ScreenHost: NSObject {
                 "fromEnd": Double(max(0, s.contentSize.height - visible - top)), "dragging": s.isDragging || s.isDecelerating]
     }
 
-    /// What a state check reports: each screen's `host` (`stack` or `overlay`, contract 15.3), and the stack's state.
+    /// What a state check reports: each screen up with its `host` (`stack` or `overlay`, contract 15.3), `coachHome` too
+    /// while it is up (the home at the bottom of a NATIVE stack: its route and rev, never the key field's text; the rest
+    /// of the home's state is the stack's and the store's), and the stack's state.
     public func describe() -> [String: Any] {
         var screens: [String: Any] = [:]
+        if homeUp, let h = homeHost {
+            screens["coachHome"] = [
+                "host": "stack", "presented": true, "inWindow": h.viewIfLoaded?.window != nil,
+                "route": home.model.map { CoachHomeStore.word($0.route) } ?? "ground",
+                "rev": home.model?.rev ?? NSNull(), "boot": home.model?.boot ?? NSNull(),
+            ] as [String: Any]
+        }
         for (name, u) in up {
             guard let m = name == "coach" ? coach.display : nil else { continue }
             let traits = u.host.view.traitCollection

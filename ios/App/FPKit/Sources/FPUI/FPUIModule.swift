@@ -63,7 +63,8 @@ import FPCore
 ///   puts it there through the root's `setHome` (StackState's `setHome`, `setWeb`, `setResume` and the first frame's
 ///   room; the queue waits a turn after that still change), `dismiss("coachHome")` turns the tab WEB before the chat's
 ///   still pop, and the marker and the toast anchor (`HubHeaderBottomKey`) follow the stack's top; `describe()`'s stack
-///   adds the home's route, rev, `connecting`, the key field's flag (never its text) and `homeGround`. ShellBridge
+///   adds the home's route, rev, `connecting`, the key field's flag (never its text) and `homeGround`, and its `screens`
+///   gives `coachHome`'s host (`stack`) while it is up. ShellBridge
 ///   decodes every `coachHome` model inside `model coachHome@`, asks a NATIVE tab's `coachHome.snapshot` at the resync,
 ///   and gives the root the home's route for its `describe()`. ShellProbe's `press {where: hub}` is an error under the
 ///   shell's confirm (delta 17.13).
