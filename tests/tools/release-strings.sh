@@ -1,7 +1,8 @@
 #!/bin/bash
-# RELEASE-STRINGS (plan 20-order 4.1; contract delta 16.6): no Debug-only code in a Release binary, on every slice.
+# RELEASE-STRINGS (plan 20-order 4.1; contract delta 16.6, 17.3): no Debug-only code in a Release binary, on every slice.
 #
 #   tests/tools/release-strings.sh <Release App.app> <Debug App.app>
+#   tests/tools/release-strings.sh --archive <App.xcarchive | its Products/Applications/App.app> <Debug App.app>
 #
 # The gate's first form grepped the Release binary for the Debug launch arguments and probe names (-fpShellProbe,
 # -fpOpenURL, -devNav, tapTab, sceneReplay). Swift keeps a literal of 15 UTF-8 bytes or fewer as an immediate (a small
@@ -18,11 +19,22 @@
 # where a Debug build keeps the app's code, or the app's binary when there is none). A name or literal renamed in the code
 # fails that Debug half: update the lists below with the code. Exit 0 when every slice is clean and every check could
 # see; 1 otherwise; 2 on bad arguments.
+#
+# --archive (T28's archive check, delta 17.3): an archive's binary is stripped (the Release configuration strips the
+# installed product), so layer 3 cannot read it there and would fail on VISIBLE; --archive runs layers 1, 2 and 4 alone,
+# which read the binary's strings, and says the symbol layer was left out. Give it the .xcarchive (its
+# Products/Applications/App.app is read) or that App.app, and a Debug build of the same commit: a simulator build will
+# do, since slices are matched by architecture name (the archive's arm64 against the simulator build's arm64) and Swift's
+# type names and C-string literals do not differ between the two platforms. Run the full form on a Release `build` too,
+# where the symbol layer can see.
 set -u
+ARCHIVE=0
+if [ "${1:-}" = --archive ]; then ARCHIVE=1; shift; fi
 REL=${1:-}
 DBG=${2:-}
-if [ -z "$REL" ] || [ -z "$DBG" ] || [ ! -d "$REL" ] || [ ! -d "$DBG" ]; then
-  echo "usage: $0 <Release App.app> <Debug App.app>" >&2
+case "$REL" in *.xcarchive|*.xcarchive/) REL="${REL%/}/Products/Applications/App.app" ;; esac
+if [ $# -ne 2 ] || [ ! -d "$REL" ] || [ ! -d "$DBG" ]; then
+  echo "usage: $0 [--archive] <Release App.app | with --archive, an .xcarchive> <Debug App.app>" >&2
   exit 2
 fi
 RBIN="$REL/App"
@@ -79,16 +91,21 @@ for arch in $(lipo -archs "$RBIN"); do
     r=$(grep -cF -- "$n" "$rs"); d=$(grep -cF -- "$n" "$ds")
     if [ "$r" = 0 ] && [ "$d" != 0 ]; then row ok "$arch" "$r" "$d" "$n"; else row FAIL "$arch" "$r" "$d" "$n"; fail=1; fi
   done
-  for n in "${VISIBLE[@]}"; do
-    r=$(grep -cF -- "$n" "$ry")
-    if [ "$r" != 0 ]; then row ok "$arch" "$r" - "symbols readable: $n"; else row FAIL "$arch" "$r" - "symbols readable: $n (stripped?)"; fail=1; fi
-  done
-  for n in "${SYMS[@]}"; do
-    r=$(grep -cF -- "$n" "$ry"); d=$(grep -cF -- "$n" "$dy")
-    if [ "$r" = 0 ] && [ "$d" != 0 ]; then row ok "$arch" "$r" "$d" "symbol $n"; else row FAIL "$arch" "$r" "$d" "symbol $n"; fail=1; fi
-  done
+  if [ "$ARCHIVE" = 1 ]; then
+    v=0; for n in "${VISIBLE[@]}"; do [ "$(grep -cF -- "$n" "$ry")" != 0 ] && v=$((v + 1)); done
+    row skip "$arch" - - "the symbol layer (${#SYMS[@]} members): --archive reads strings only$([ "$v" = 0 ] && echo ' (the binary is stripped)' || echo "; this binary's symbols are readable ($v of ${#VISIBLE[@]} Release members found): run the full form on it too")"
+  else
+    for n in "${VISIBLE[@]}"; do
+      r=$(grep -cF -- "$n" "$ry")
+      if [ "$r" != 0 ]; then row ok "$arch" "$r" - "symbols readable: $n"; else row FAIL "$arch" "$r" - "symbols readable: $n (stripped? an archive's binary is: pass --archive)"; fail=1; fi
+    done
+    for n in "${SYMS[@]}"; do
+      r=$(grep -cF -- "$n" "$ry"); d=$(grep -cF -- "$n" "$dy")
+      if [ "$r" = 0 ] && [ "$d" != 0 ]; then row ok "$arch" "$r" "$d" "symbol $n"; else row FAIL "$arch" "$r" "$d" "symbol $n"; fail=1; fi
+    done
+  fi
   t=$(grep -cE -- "$TOKENS" "$rs")
   if [ "$t" = 0 ]; then row ok "$arch" "$t" - "the first gate's tokens (a supplement)"; else row FAIL "$arch" "$t" - "the first gate's tokens"; fail=1; fi
 done
-echo "RELEASE-STRINGS: $([ $fail = 0 ] && echo clean || echo FAILED) ($(lipo -archs "$RBIN"))"
+echo "RELEASE-STRINGS: $([ $fail = 0 ] && echo clean || echo FAILED) ($(lipo -archs "$RBIN")$([ "$ARCHIVE" = 1 ] && echo '; --archive: types, literals and tokens, no symbols'))"
 exit $fail
