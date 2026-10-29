@@ -29,8 +29,9 @@
 //   dismiss tabs, the class never back, its own bar on the boot tab), hello names coach alone, so the chat stays on and
 //   presents once on the classic rule, the share read waits for no hello, and a late reply naming tabs changes nothing.
 // - Conformance once H1 has merged (P13; contract 12's Drift row, 15.4 step 4, D42), read from the files the Swift
-//   tests read: FPCore's intents.json `messages` are the plugin's CAPPluginMethod list, each with its @objc func, and
-//   SHELL_METHODS['61'], whose first 11 are SHELL_METHODS['60']; every intent intents.json lists has a page handler;
+//   tests read: FPCore's intents.json `messages` are the plugin's CAPPluginMethod list (its comments out, as Swift
+//   reads it), each with its @objc func forwarding its own name to the host, and SHELL_METHODS['61'], whose first 11
+//   are SHELL_METHODS['60']; every intent intents.json lists has a page handler;
 //   and every row of the shared tables Fixtures/shell/negotiation.json and bar.json runs through MOCK_RULES in Node
 //   and through the page's mock on a fresh scene, as the Swift tests run them through FPCore and the tab root (a
 //   cascade the mock has no door for, a breaker trip or one piece withdrawn, is counted and named, never skipped
@@ -1241,24 +1242,57 @@ serial('P2 follow-up: the head failsafe\'s way out came before the main script r
 const FPCORE_TESTS = path.join(__dirname, '..', '..', 'ios', 'App', 'FPKit', 'Tests', 'FPCoreTests');
 const fpcore = (...p) => JSON.parse(fs.readFileSync(path.join(FPCORE_TESTS, ...p), 'utf8'));
 const PLUGIN_SWIFT = path.join(__dirname, '..', '..', 'ios', 'App', 'CapApp-SPM', 'Sources', 'CapApp-SPM', 'TrovoShellPlugin.swift');
-const noLineComments = (s) => s.replace(/\/\/.*$/gm, '');
+// Swift source as the compiler reads it: every comment out (// to the line's end; /* */ nested, as Swift nests them;
+// their line breaks kept), string literals kept whole ("…" with its escapes, """…"""), so a method or func that is
+// commented out is not read as the plugin's.
+const swiftCode = (s) => {
+  let out = '', i = 0, depth = 0;
+  while (i < s.length) {
+    if (depth > 0) {
+      if (s.startsWith('/*', i)) { depth++; i += 2; } else if (s.startsWith('*/', i)) { depth--; i += 2; out += ' '; } else { if (s[i] === '\n') out += '\n'; i++; }
+    } else if (s.startsWith('/*', i)) { depth = 1; i += 2; } else if (s.startsWith('//', i)) { while (i < s.length && s[i] !== '\n') i++; } else if (s[i] === '"') {
+      const q = s.startsWith('"""', i) ? '"""' : '"';
+      let j = i + q.length;
+      while (j < s.length && !s.startsWith(q, j)) j += s[j] === '\\' ? 2 : 1;
+      out += s.slice(i, j + q.length); i = j + q.length;
+    } else { out += s[i]; i++; }
+  }
+  return out;
+};
+// The body of a Swift block whose `{` is at code[i], to its matching `}` (string literals skipped), or null.
+const swiftBlock = (code, i) => {
+  let depth = 0;
+  for (let j = i; j < code.length; j++) {
+    const c = code[j];
+    if (c === '"') { const q = code.startsWith('"""', j) ? '"""' : '"'; j += q.length; while (j < code.length && !code.startsWith(q, j)) j += code[j] === '\\' ? 2 : 1; j += q.length - 1; } else if (c === '{') depth++; else if (c === '}' && --depth === 0) return code.slice(i + 1, j);
+  }
+  return null;
+};
 
-serial('P13: drift: intents.json\'s messages are the plugin\'s CAPPluginMethod list in order, each with its @objc func, and SHELL_METHODS[61], whose first 11 are SHELL_METHODS[60]; every intent intents.json lists has a page handler', async () => {
+serial('P13: drift: intents.json\'s messages are the plugin\'s CAPPluginMethod list in order, each with its @objc func forwarding its own name, and SHELL_METHODS[61], whose first 11 are SHELL_METHODS[60]; every intent intents.json lists has a page handler', async () => {
   const contract = fpcore('intents.json');
   const messages = contract.messages.map((m) => m.name);
-  // the plugin's pluginMethods array and only it, its commented-out lines left out, in order
-  const src = fs.readFileSync(PLUGIN_SWIFT, 'utf8');
-  const list = /pluginMethods\s*:\s*\[CAPPluginMethod\]\s*=\s*\[([\s\S]*?)\n\s*\]/.exec(src);
+  // the plugin's pluginMethods array and only it, its commented-out entries left out, in order
+  const code = swiftCode(fs.readFileSync(PLUGIN_SWIFT, 'utf8'));
+  const list = /pluginMethods\s*:\s*\[CAPPluginMethod\]\s*=\s*\[([\s\S]*?)\n\s*\]/.exec(code);
   assert(list, 'TrovoShellPlugin.swift declares pluginMethods: [CAPPluginMethod] = [ ... ]');
-  const plugin = [...noLineComments(list[1]).matchAll(/CAPPluginMethod\(\s*name:\s*"([^"]*)"/g)].map((m) => m[1]);
-  // what Capacitor calls for each name: the plugin's @objc func <name>(_ call: CAPPluginCall)
-  const funcs = [...noLineComments(src).matchAll(/@objc\s+(?:public\s+)?func\s+(\w+)\s*\(\s*_\s+\w+\s*:\s*CAPPluginCall\s*\)/g)].map((m) => m[1]);
+  const plugin = [...list[1].matchAll(/CAPPluginMethod\(\s*name:\s*"([^"]*)"/g)].map((m) => m[1]);
+  // what Capacitor calls for each name, the plugin's @objc func <name>(_ call: CAPPluginCall), and the name its body
+  // hands the host, forward("<name>", call): the method FPUI's ShellBridge dispatches on (contract 3.1)
+  const funcs = {};
+  for (const m of code.matchAll(/@objc\s+(?:public\s+)?func\s+(\w+)\s*\(\s*_\s+\w+\s*:\s*CAPPluginCall\s*\)\s*\{/g)) {
+    const body = swiftBlock(code, m.index + m[0].length - 1);
+    (funcs[m[1]] = funcs[m[1]] || []).push(body === null ? null : [...body.matchAll(/\bforward\(\s*"([^"]*)"/g)].map((f) => f[1]));
+  }
   assert(plugin.length > 0 && J(plugin) === J(messages), 'intents.json\'s messages are the plugin\'s list, in order: ' + J({ messages, plugin }));
   assert(J(SHELL_METHODS['61']) === J(plugin), 'the harness\'s SHELL_METHODS[61] is the plugin\'s list: ' + J(SHELL_METHODS['61']));
   assert(SHELL_METHODS['60'].length === 11 && J(SHELL_METHODS['61'].slice(0, 11)) === J(SHELL_METHODS['60']),
     'v1 grows by additions: SHELL_METHODS[61]\'s first 11 are SHELL_METHODS[60]: ' + J(SHELL_METHODS['60']));
-  const noFunc = plugin.filter((n) => funcs.indexOf(n) < 0);
+  const noFunc = plugin.filter((n) => !funcs[n]);
   assert(noFunc.length === 0, 'every method the plugin lists has its @objc func: ' + J(noFunc));
+  const misrouted = plugin.filter((n) => funcs[n].length !== 1 || J(funcs[n][0]) !== J([n]));
+  assert(misrouted.length === 0, 'each listed method\'s @objc func forwards its own name to the host, once: '
+    + J(misrouted.map((n) => ({ method: n, forwards: funcs[n] }))));
   // the page's handlers (_FP_INTENTS): the page answers every intent the shell may send
   const app = await boot();
   try {
