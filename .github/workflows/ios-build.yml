@@ -100,14 +100,23 @@ jobs:
   # FPKit-Package scheme. The warm-up lint runs first: every test class that loads a web view warms WebKit
   # (.github/scripts/fpkit-lint.sh).
   #
-  # Time budget (the split rule): the test step prints its minutes as a notice. When it passes 22 of the
-  # job's 30 minutes, this job becomes two, each booting its own simulator first (as below):
-  #   -only-testing:FPCoreTests -only-testing:FPStoreTests -only-testing:FPHostTests
-  #   -only-testing:FPUITests
+  # Time budget (the split rule): the test step prints its minutes as a notice; past 22 of the job's 30
+  # minutes it warns, and the job is split again. Build 61's drain (ee0557a) took the single job past 30
+  # minutes (FPUITests about 19-24 minutes on a calm Mac, CI slower), so it runs as three parts, each on its
+  # own runner and simulator: `renders` and `tabs` run the classes named in RENDERS and TABS, `rest` runs
+  # everything else (it skips exactly those names, so a new test class always runs somewhere). A named class
+  # that no longer exists fails the job, and so does a part that executes no test.
   fpkit-ios:
-    name: FPKit on an iOS simulator (FPHost, FPUI)
+    name: FPKit on an iOS simulator (${{ matrix.part }})
     runs-on: macos-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [renders, tabs, rest]
+    env:
+      RENDERS: FPUITests/CoachHomeRenderTests FPUITests/CoachRenderTests
+      TABS: FPUITests/ShellBridgeTabsTests
 
     steps:
       - uses: actions/checkout@v4
@@ -162,25 +171,48 @@ jobs:
       - name: Boot the simulator
         run: xcrun simctl bootstatus "${{ steps.sim.outputs.udid }}" -b
 
+      # Every class the split names must exist, or its tests would quietly run nowhere but `rest`.
+      - name: Check the split's class names
+        working-directory: ios/App/FPKit/Tests
+        run: |
+          for t in $RENDERS $TABS; do
+            target=${t%%/*}; cls=${t#*/}
+            if ! grep -rqE "class ${cls}[: ]" "$target"; then
+              echo "::error title=fpkit-ios split::$t is named in the job's split but no such class exists in Tests/$target"
+              exit 1
+            fi
+          done
+
       # TEST_RUNNER_CI reaches the simulator's test process as CI (the speed bounds loosen on shared runners).
-      - name: Test on the simulator
+      - name: Test on the simulator (${{ matrix.part }})
         working-directory: ios/App/FPKit
         env:
           TEST_RUNNER_CI: 'true'
         run: |
           set -o pipefail
+          case "${{ matrix.part }}" in
+            renders) args=$(for t in $RENDERS; do printf -- '-only-testing:%s ' "$t"; done) ;;
+            tabs) args=$(for t in $TABS; do printf -- '-only-testing:%s ' "$t"; done) ;;
+            rest) args=$(for t in $RENDERS $TABS; do printf -- '-skip-testing:%s ' "$t"; done) ;;
+          esac
+          echo "part ${{ matrix.part }}: $args"
           start=$(date +%s)
           status=0
           xcodebuild \
             -scheme FPKit-Package \
             -destination "id=${{ steps.sim.outputs.udid }}" \
             -parallel-testing-enabled NO \
+            $args \
             test 2>&1 | tee "$RUNNER_TEMP/test.log" || status=$?
           secs=$(( $(date +%s) - start ))
           mins=$(awk -v s="$secs" 'BEGIN { printf "%.1f", s / 60 }')
-          echo "::notice title=fpkit-ios test minutes::the test step took $mins minutes (split at 22 of 30: see the job's comment)"
+          echo "::notice title=fpkit-ios test minutes (${{ matrix.part }})::the test step took $mins minutes (split again past 22 of 30: see the job's comment)"
           if [ "$secs" -gt $(( 22 * 60 )) ]; then
-            echo "::warning title=fpkit-ios time budget::the test step took $mins minutes, past 22: split the job (the job's comment)"
+            echo "::warning title=fpkit-ios time budget (${{ matrix.part }})::the test step took $mins minutes, past 22: split the job again (the job's comment)"
+          fi
+          if [ "$status" -eq 0 ] && ! grep -qE "Executed [1-9][0-9]* tests?," "$RUNNER_TEMP/test.log"; then
+            echo "::error title=fpkit-ios split::part ${{ matrix.part }} executed no test"
+            status=1
           fi
           exit $status
 
