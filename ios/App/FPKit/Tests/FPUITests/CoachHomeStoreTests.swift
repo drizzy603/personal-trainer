@@ -1033,7 +1033,8 @@ final class CoachHomeStoreTests: XCTestCase {
 
     /// The root as the shell hosts it (H4, H10): a hosting controller at the root of a navigation controller whose bar
     /// is hidden, in the Coach slot of a tab bar controller beside a plain Log slot, in a key window of the window
-    /// scene. The shell's funnel, hold and pushes are H's; here the test selects, pushes and pops with UIKit's own calls.
+    /// scene. The shell's funnel, hold and pushes are H's; here the test selects without animation, as the funnel does,
+    /// and pushes and pops with UIKit's own calls.
     @MainActor final class HostedStack {
         let tabs = UITabBarController()
         let nav: UINavigationController
@@ -1047,7 +1048,7 @@ final class CoachHomeStoreTests: XCTestCase {
             log.view.backgroundColor = .white
             log.tabBarItem = UITabBarItem(title: "Log", image: nil, tag: 0)
             tabs.viewControllers = [log, nav]
-            tabs.selectedIndex = 0
+            tabs.selectedIndex = 0   // before the bar is in a window: no transition
             window = UIWindow(frame: CGRect(origin: .zero, size: CoachHomeViewTests.screen))
             if let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first {
                 window.windowScene = scene
@@ -1058,9 +1059,15 @@ final class CoachHomeStoreTests: XCTestCase {
             settle(12)
         }
 
-        /// Selects a slot (0 Log, 1 Coach) and lets it settle.
-        func select(_ index: Int) {
-            tabs.selectedIndex = index
+        /// Selects a slot (0 Log, 1 Coach) as the shell's funnel does (RootTabController.move: inside
+        /// `performWithoutAnimation`, the selected slot in the window when the set returns) and lets it settle. iOS 26.x
+        /// animates a plain set of the selection once the bar has appeared, and in this host, which has no window scene,
+        /// that transition never ends: the Coach stack would stay out of the window for good (iOS 27.0 takes a plain set
+        /// at once).
+        func select(_ index: Int, file: StaticString = #filePath, line: UInt = #line) {
+            UIView.performWithoutAnimation { tabs.selectedIndex = index }
+            XCTAssertEqual(inWindow, index == 1, "the selection landed: the Coach stack \(index == 1 ? "in" : "out of") the window",
+                           file: file, line: line)
             settle(8)
         }
 

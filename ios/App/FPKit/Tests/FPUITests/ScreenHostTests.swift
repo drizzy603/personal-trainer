@@ -299,6 +299,15 @@ final class StackRig {
         nav.recording = true
     }
 
+    /// Selects a slot (0 Log, 1 Coach) as the root's funnel does (RootTabController.move): inside
+    /// `performWithoutAnimation`, so the selected slot is in the window when the set returns. iOS 26.x animates a plain
+    /// set of the selection once the bar has appeared, and in this host, which has no window scene, that transition never
+    /// ends: the destination stays out of the window for good (iOS 27.0 takes a plain set at once; measured in this host
+    /// on 26.5 and 27.0 for CI run 40886265725).
+    func select(_ index: Int) {
+        UIView.performWithoutAnimation { tabs.selectedIndex = index }
+    }
+
     /// What the root answers: Coach selected, the tab NATIVE, the hold, its release (which posts nothing to VoiceOver:
     /// StackState's rule for a hold a push ends).
     var state: StackState {
@@ -760,7 +769,7 @@ final class ScreenHostTests: XCTestCase {
         host.tearDown()
         let r = StackRig()
         window.rootViewController = r.container
-        r.tabs.selectedIndex = selected ? 1 : 0
+        r.select(selected ? 1 : 0)
         window.layoutIfNeeded()
         let h = ScreenHost(presenter: r.web, webView: r.webView, shellBuild: "61", pageBuild: "P1", markerFolder: folder,
                            coach: CoachStore(draft: CoachComposerDraft(defaults: nil)))
@@ -814,9 +823,13 @@ final class ScreenHostTests: XCTestCase {
         }
     }
 
-    /// The root's selection, then the bridge's word to ScreenHost (from the root's `coachShown`).
-    private func select(coach: Bool) {
-        rig?.tabs.selectedIndex = coach ? 1 : 0
+    /// The root's selection, then the bridge's word to ScreenHost (from the root's `coachShown`). The selection lands
+    /// before the word, as the root's funnel makes it (`StackRig.select`): the stack in the window exactly when Coach is
+    /// selected, which `selectionChanged()` reads.
+    private func select(coach: Bool, line: UInt = #line) {
+        guard let r = rig else { return XCTFail("no stack rig", line: line) }
+        r.select(coach ? 1 : 0)
+        XCTAssertEqual(r.nav.view.window != nil, coach, "the selection landed: the stack \(coach ? "in" : "out of") the window", line: line)
         host.selectionChanged()
     }
 
@@ -1563,7 +1576,7 @@ final class ScreenHostTests: XCTestCase {
             XCTAssertFalse(r.nav.topViewController is ScreenHostingController, "the chat popped: seed \(seed)")
             active = true
             NotificationCenter.default.post(name: UIApplication.didBecomeActiveNotification, object: nil)
-            r.tabs.selectedIndex = 1
+            r.select(1)
             host.selectionChanged()
             XCTAssertEqual(markerLines(), [], "none comes back: seed \(seed): \(trail)")
             XCTAssertEqual(r.webView.leftWindow, 0, "seed \(seed)")
@@ -2308,7 +2321,8 @@ final class ScreenHostTests: XCTestCase {
         try await settle(0.3)
         XCTAssertEqual(stand.log, ["present style 5 over UIViewController"], "the next chat goes up as the overlay")
         XCTAssertTrue(host.isUp("coach"))
-        r.tabs.selectedIndex = 1   // Coach again (the root fallen back: nothing tells ScreenHost)
+        r.select(1)   // Coach again (the root fallen back: nothing tells ScreenHost)
+        XCTAssertNotNil(r.nav.view.window, "the stack back in the window, where UIKit would play what it held")
         for _ in 0..<50 {          // about a second of the tab back
             XCTAssertEqual(r.nav.viewControllers.filter { $0 is ScreenHostingController }.count, 0, "no chat on the stack")
             XCTAssertNil(chat.viewIfLoaded?.window, "the dropped chat never on screen")
