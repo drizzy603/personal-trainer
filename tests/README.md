@@ -242,7 +242,7 @@ on its own (one JSON line per request).
 DD=$(tests/tools/fp-build.sh selftest)    # the Debug app, built as 61 at least
 python3 tests/tools/probe-selftest.py --phone <paired iPhone, iOS 26 or 27> --app "$DD"/Build/Products/Debug-iphonesimulator/App.app
 tests/tools/release-strings.sh <Release App.app> <Debug App.app>                 # a Release `build`
-tests/tools/release-strings.sh --archive <App.xcarchive> <Debug App.app>        # an archive (stripped)
+tests/tools/release-strings.sh --archive <App.xcarchive> <Debug App.app>        # an archive (stripped; its dSYM read)
 ```
 
 `tools/probe-selftest.py` proves FPUI's ShellProbe (`-fpShellProbe`) before the
@@ -251,19 +251,32 @@ the tab root (`tapTab`, `retapTab`, `stray`, `waitTab`, `press {where: hub}`,
 `navPop`, `back`, `edgeBack`, `waitCoach`, `type` and `nativeFocus` into the
 composer and the key field, the App's `openURL`, `openURLOnActive`, `share` and
 `sceneCycle` hooks, `-fpOpenURL`, `sceneDestroy`, `blockPage` with its confirming
-`ping`), each event's fields and types and each step's error form; the classic root
-a device switch pins ({kind: classic}, every tab-root step an error); every state's
-reports (`shell.root`, each screen's `host`, `leftWindowAny`, `input`, `replaced`,
-the page's tabs-mode fields) and every event kind's fields (`funnel`,
-`screenChanged`, page messages with their receipt time, `intent`, `trovoOpen`,
-`ping`, `fellBack`); and a canary typed into the native key field found in no probe
-log. It keeps what the container holds (never the key's value) and the shell's
-folder, turns a remembered decline of the tab bar back on through About's Try again
-(the paired phones hold one for page build 20261012-2), and puts both back at the
-end. It holds the paired simulators itself (`sim.lock`) unless its caller does, and
-exits 1 naming every check that failed. `tools/release-strings.sh` is
-RELEASE-STRINGS: each slice of a Release binary has none of the Debug-only type
-names, long literals and members (by demangled symbol), each first found in the same
-slice of the Debug build; `--archive` reads strings only, since an archive's binary
-is stripped (a simulator Debug build of the same commit will do: slices match by
-architecture).
+`ping`), each event's fields and types and each step's error form (a tab that is not
+one, a bar a sheet hides, the shell's confirm over the bar and the hub); setup's
+chat (Cancel, no control named Back); the classic root a device switch pins
+({kind: classic}, every tab-root step an error); every state's reports
+(`shell.root`, each screen's `host`, `leftWindowAny`, `input`, `replaced`, a key
+window, the page's tabs-mode fields) and every event kind's fields (`funnel`,
+`screenChanged` in contract 8.1's words, page messages with their receipt time,
+`intent` records with no argument, `trovoOpen`, `ping`, `fellBack` in contract
+10.3's words); the shell's counters moving only where a step moves them; and a
+canary (`sk-ant-test-` and 16 random characters) typed into the native key field
+and saved by CONNECT, found in no probe log (each log read after the app ended).
+The page's coach calls go to a closed loopback port (`-fpApiBase`), so the canary
+never leaves the Mac. A phone holding a key that is not the probe's fails the
+`typeKey` launch, which then types nothing: remove the key first. The run keeps what
+the container holds (never the key's value), the shell's folder and its UserDefaults
+copies (`fp.shell.switches`, `fp.shell.breakers`, `fp.shell.counters`, read through
+the simulator's cfprefsd stopped first), turns a remembered decline of the tab bar
+back on through About's Try again (the paired phones hold one for page build
+20261012-2), and puts all of it back at the end, proven by one more launch that
+reads it. It holds the paired simulators itself (`sim.lock`) unless its caller
+does, and exits 1 naming every check that failed; `--no-install` runs only the app
+the phone holds, which must be `--app` (else exit 2: install it first).
+`tools/release-strings.sh` is RELEASE-STRINGS: each slice of a Release binary has
+none of the Debug-only type names, long literals and members (by demangled symbol),
+each first found in the same slice of the Debug build; and the two are tied together
+(every Release slice carries build 61's shell types, both apps bundle the same page).
+`--archive` reads the symbols from the archive's `dSYMs/App.app.dSYM` (its UUID
+checked against the binary, slice by slice), since an archive's binary is stripped;
+a simulator Debug build of the same commit will do (slices match by architecture).

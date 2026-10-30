@@ -13,51 +13,69 @@ their types: `shell.root` (RootTabController's describe(), or {kind: classic}), 
 `leftWindowAny`, the top screen's first text input as `input {kind, focused, hasText, ...}` (never its text), `replaced`,
 and the page's tabs-mode fields (tabsMode, fpTabsClass, tabsDisplay, vars, zoom, lastOpen, visitFrom, awayFrom,
 screenChild, phScreen, seqSeen, fpTab, sheetsOpen, holds). Every event of a kind the probe logs must carry its fields:
-`funnel` runs, `screenChanged`, page messages with the shell's receipt time (`selectTab`, `sheets`, `setSwitch` among
-them), `intent` records, `trovoOpen`, `ping`, `fellBack`. A canary typed into the native key field must appear nowhere
-in any probe log of the run (contract 5 K4), and no `type`, `draft` or `share` event may carry the words it was given.
+`funnel` runs, `screenChanged` (a why in contract 8.1's words; ScreenHost's own with no run), page messages with the
+shell's receipt time (`selectTab`, `sheets`, `setSwitch` among them), `intent` records (never an argument), `trovoOpen`,
+`ping`, `fellBack` (contract 10.3's words). A canary typed into the native key field, and saved by CONNECT, must appear
+nowhere in any probe log of the run, read after the app ended (contract 5 K4), and no `type`, `draft` or `share` event
+may carry the words it was given. The shell's own counters (hidden, leftAny, leftWindow, markers, trips, strays) move
+only where a step moves them.
 
 Launches, in this order (`--only` picks among them; prepare and restore always run):
   prepare        what the container holds, kept to put back (every localStorage value but the key's, which is never
                  read: only whether there is one); a key (the probe's) and a programme (the starter) when there are none;
                  the native chat's device switch on. The tab root must come up: a page build the shell remembers as
                  declining tabs (or a crash verdict or breaker trip) is turned back on through TrovoShell reset, About's
-                 Try again, and launched once more. The shell's folder (Application Support/FPShell) is copied first
+                 Try again, and launched once more. The shell's folder (Application Support/FPShell) and its UserDefaults
+                 copies (fp.shell.switches, fp.shell.breakers, fp.shell.counters: read when the folder's file does not)
+                 are kept first
   tapTab         taps on two bar items (each one tap run, its screen change under its own run, the page hearing it),
                  a tab that is not a tab (an error, no run); the first frame's run logged once at the root's adoption
   retapTab       the selected tab again: one run, `again`
   stray          `selectedIndex` set behind the funnel: counted and redirected (a stray run); a tab that is not a tab
   waitTab        met for the selected tab, not met (in its time) for another
   pageEvents     the page's own paths: switchTab (a `selectTab` page event and a `page` run) and a sheet opened and
-                 closed (two `sheets` events, the bar hidden between them)
-  pressHub       `press {where: hub}`: a label no control has (an error event), then Open Chat (the chat pushed)
+                 closed (two `sheets` events, the bar hidden between them); a tap on the hidden bar (an error, no run)
+  pressHub       `press {where: hub}`: a label no control has (an error event); Disconnect (the page's confirm, forwarded:
+                 under it a tap on the bar and a press on the hub are errors that do nothing; Cancel keeps the key); then
+                 Open Chat (the chat pushed)
   navPop         the pushed chat's finished interactive pop (the hub on top again); with nothing pushed, an error
   back           `back` on the pushed chat; then Back pressed by its name: exactly one control has it
+  setup          Build My Programme on the hub (the programme set aside inside the page; setup's first turn to a closed
+                 loopback port): setup's chat has no control named Back (the press's matches 0, only the model's
+                 fallback, which the page refuses in setup) and one Cancel, which ends setup; the programme put back
   edgeBack       an edge pan let go early (the chat stays), then one carried through (it pops)
   waitCoach      met (up), not met in its time (down)
   typeComposer   `nativeFocus` and `type` into the composer (through the keys), then into its draft once it gave the
                  keys back; never the words in a step's event
   openURL        the App's openURL hook (trovo://start: a deepLink run to Log and a `trovoOpen` event), a URL with no
                  scheme (an error), the generic `hook` step and a hook the App never set (an error)
-  openURLOnActive  armed, the app sent to the background and brought back: opened as the scene came forward
-  fpOpenURL      -fpOpenURL trovo://share (H9's cold link): read at scene connect, the first frame on Coach, no
-                 _trovoOpen (a cold link is parked for the page's boot read)
-  share          the share hook as the build can take it (no App Group container: an error that writes nothing; a
-                 build signed to run locally: the file), then the legacy slot on purpose, read by trovo://share
+  openURLOnActive  armed, the app sent to the background (Settings, once the hook is armed) and brought back once its page
+                 went hidden: opened as the scene came forward
+  fpOpenURL      a share left in the legacy slot, then -fpOpenURL trovo://share (H9's cold link): read at scene connect,
+                 the first frame on Coach, no _trovoOpen; the page's boot read of the parked link takes the photo and the
+                 comment (before its own +2.5 s check could)
+  share          the share hook as the build can take it (no App Group container: an error that writes nothing, read back
+                 through trovo://share; a build signed to run locally: the file), then the legacy slot on purpose with a
+                 JPEG file beside the steps (`jpeg`), read by trovo://share
   ping           `blockPage` while a tap's tabs.select waits: its timeout held, confirmed by a ping (`ping` event, done),
                  no fallback
   sceneCycle     the scene's connection replayed twice (the step, then the generic `hook` step): a new web view in a
-                 new window each time, the next phase on the new page, and the old page, root and window let go
+                 new window each time, the next phase on the new page, the old page, root and window let go, a key window
   sceneDestroy   UIKit's own request to destroy the scene's session: refused on an iPhone, nothing replaced
   classic        the tab bar's device switch off (`setSwitch`: a page event, the scene falls back now), a launch on the
                  classic root ({kind: classic}, the chat in the overlay, every tab-root step an error event), the switch
                  on again and the tab root back at the next launch
-  typeKey        the connect screen (the key set aside inside the page, never read out): `type` before the field holds
-                 the keys (an error event, nothing typed), `nativeFocus`, the canary typed, the field's spoken label,
-                 CONNECT pressed (the page refuses the canary: no key saved); with the programme set aside the same way,
-                 the starter link pressed (coachHome.openStarter: the starter over Log, announced); both put back
-  restore        every localStorage value put back (and the key as it was), the native composer empty; then the shell's
-                 folder as it was found
+  typeKey        the connect screen (the probe's key taken away inside the page): with the programme set aside the same
+                 way, the starter link pressed (coachHome.openStarter: the starter over Log, announced) and the programme
+                 put back; then `type` before the field holds the keys (an error event, nothing typed), `nativeFocus`,
+                 the canary (contract 5 K8: sk-ant-test- and 16 random characters) typed, the field's spoken label,
+                 CONNECT pressed: the page saves it (API key saved; its key check goes to a closed loopback port, so the
+                 canary never leaves the Mac); the probe's key then over it. A phone holding a key that is not the
+                 probe's fails this launch and types nothing: the key would live only in the page's memory meanwhile
+  restore        every localStorage value put back (and the key as it was), the native composer empty, read back in the
+                 next launch (never a reload: a page reloaded under the tab root counts as hidden in use); then the
+                 shell's folder and UserDefaults copies as found, a launch that reads them back (switches, every screen's
+                 word, the counters' totals), and both put back once more
 
 Exit 0 when every check passes; 1 when any fails, each failure naming what is missing or wrong; 2 on bad arguments, an
 OS below 26 (no tab root), or --no-install with another app installed than --app.
@@ -72,7 +90,9 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import math
 import os
+import plistlib
 import secrets
 import shutil
 import sys
@@ -85,8 +105,16 @@ BID = 'app.kt.trainer'
 GROUP = 'group.app.kt.trainer'
 TABS = ('log', 'progress', 'coach', 'settings')
 PROBE_KEY = 'sk-ant-probe-not-a-key'    # the tools' stand-in key (native-shell.py's API_KEY): no real key is ever read
+CANARY_PREFIX = 'sk-ant-test-'          # contract 5 K8's test canary: this prefix and 16 random characters
 KEY_LABEL = 'Anthropic API Key'         # the connect screen's field, as VoiceOver reads it (contract 6.2: connect.label)
 STARTER_LABEL = 'No key? Build a starter plan instead \u2192'   # the connect screen's starter link (connect.starter.label)
+# The page's coach calls (the key check, setup's first turn) go to a closed port on this Mac (-fpApiBase): nothing the
+# run types or sends leaves it (D-T8).
+LOOPBACK = 'http://127.0.0.1:9'
+PHOTO = 'selftest-photo.jpg'            # the share hook's `jpeg` file, beside the steps files
+# The shell's own UserDefaults copies (ShellSwitches, the breaker book, ShellCounters): read when the file beside them
+# does not, so they are put back as found too.
+SHELL_PREFS = ('fp.shell.switches', 'fp.shell.breakers', 'fp.shell.counters')
 RUNS = [0]
 
 
@@ -203,8 +231,10 @@ TAB_OR_NULL = oneof(None, *TABS)
 RECT = {'x': 'num', 'y': 'num', 'w': 'num', 'h': 'num'}
 RUN = {'source': oneof('tap', 'page', 'deepLink', 'initial', 'stray', 'fallback'), 'from': TAB_OR_NULL, 'to': TAB,
        'seq': 'int', 'moved': 'bool', 't0': 'num', 't1': 'num'}
+# contract 10.3's fixed words for a fallback (FPCore FellBackWhy)
+FELL_BACK_WHY = oneof('page', 'refused', 'no-hello', 'failures', 'policy', 'switch')
 ROOT_TABS = {
-    'kind': oneof('tabs'), 'fellBack': maybe({'why': 'str', 'at': 'num'}), 'selected': TAB, 'seq': 'int', 'firstRoom': 'str',
+    'kind': oneof('tabs'), 'fellBack': maybe({'why': FELL_BACK_WHY, 'at': 'num'}), 'selected': TAB, 'seq': 'int', 'firstRoom': 'str',
     'web': {'slot': 'str', 'inWindow': 'bool', 'hidden': 'bool', 'a11yHidden': 'bool', 'frame': RECT, 'safeBottom': 'num'},
     'bar': {'hidden': 'bool', 'h': 'int', 'safe': 'int', 'rev': 'int', 'frame': RECT, 'slotInset': 'num', 'tint': 'str',
             'style': 'str', 'containerStyle': 'str|null', 'minimize': 'str'},
@@ -257,6 +287,10 @@ STATE = {'label': 'any', 'page': PAGE, 'shell': SHELL, 'keyboard': 'list', 'firs
          'keyWindow': 'str'}
 
 
+# every event's own fields (ShellProbe.event)
+COMMON = {'ev': 'str', 't': 'int', 'wall': 'int', 'appState': oneof(0, 1, 2)}
+
+
 def _alt(ok_spec, err_spec, ok=lambda e: 'error' not in e):
     """One shape when the event says it acted (`ok`), another for its error form."""
     def f(e):
@@ -279,6 +313,33 @@ def _all(*fs):
     return f
 
 
+def _only(*keys):
+    """No field beyond the event's common ones and `keys` (a record that must never carry an argument)."""
+    allowed = set(COMMON) | set(keys)
+
+    def f(e):
+        extra = sorted(k for k in e if k not in allowed)
+        return 'carries %s beyond its record' % ', '.join(extra) if extra else None
+    return f
+
+
+def screen_changed_ok(e):
+    """A VoiceOver screen change (ShellProbe's header): the tab root's (`by: root`) says why in contract 8.1's words, with
+    the funnel run that made it (`run`: always one; `hold`: the run that entered the tab, if any; `mode`, `fallback`:
+    none); ScreenHost's own (`by: screens`, why `screens`) has no run (delta 17.11: seq null)."""
+    p = shape(e, {'by': oneof('root', 'screens'), 'seq': 'int|null', 'why': 'str', 'target': oneof('web', 'native', 'none'),
+                  'rootSeq': 'int|null', 'selected': 'str|null', 'coachMode': 'str|null'})
+    if not p and e['by'] == 'root':
+        p = shape(e, {'why': oneof('run', 'hold', 'mode', 'fallback')})
+        if not p and e['why'] == 'run' and type(e['seq']) is not int:
+            p.append('.seq: a run\'s own screen change names its run')
+        if not p and e['why'] in ('mode', 'fallback') and e['seq'] is not None:
+            p.append('.seq: no run makes a %s screen change, got %s' % (e['why'], e['seq']))
+    elif not p:
+        p = shape(e, {'why': oneof('screens'), 'seq': 'null'})
+    return '; '.join(p) if p else None
+
+
 TAPPED = {'tab': 'str', 'activated': 'bool', 'copies': 'int', 'selected': TAB, 'seq': 'int', 'runs': [run_ok], 'strays': 'int'}
 EVENTS = {
     'probe': {'steps': 'str', 'phases': 'int', 'pid': 'int', 'args': ['str']},
@@ -289,15 +350,17 @@ EVENTS = {
     'phase': {'index': 'int', 'steps': 'int'},
     'document': {'n': 'int', 'effects': ['str']},
     'funnel': lambda e: run_ok(e) or (None if type(e.get('atAdopt', False)) is bool else 'atAdopt: bool expected'),
-    'screenChanged': {'by': oneof('root', 'screens'), 'seq': 'int|null', 'why': 'str', 'target': oneof('web', 'native', 'none'),
-                      'rootSeq': 'int|null', 'selected': 'str|null', 'coachMode': 'str|null'},
+    'screenChanged': screen_changed_ok,
     'page': _all(lambda e: '; '.join(shape(e, {'method': 'str', 'recvT': 'int', 'recvWall': 'int'})) or None,
                  lambda e: '; '.join(shape(e, PAGE_METHODS.get(e.get('method'), {}))) or None),
     'pageRefused': {'method': 'str', 'recvT': 'int', 'recvWall': 'int', 'refused': 'str'},
-    'intent': {'seq': 'int', 'name': 'str', 'boot': 'str', 'key': 'str|null', 'sent': 'bool', 'outcome': 'str|null', 'ms': 'num|null'},
+    # PageLink's records: names, keys and outcomes, never an argument (delta 17.12, contract 5 K4)
+    'intent': _all(lambda e: '; '.join(shape(e, {'seq': 'int', 'name': 'str', 'boot': 'str', 'key': 'str|null', 'sent': 'bool',
+                                                  'outcome': 'str|null', 'ms': 'num|null'})) or None,
+                   _only('seq', 'name', 'boot', 'key', 'sent', 'outcome', 'ms')),
     'trovoOpen': _alt({'url': 'str', 'handled': 'bool|null'}, {'url': 'str', 'error': 'str'}),
     'ping': {'confirming': oneof(True), 'outcome': 'str'},
-    'fellBack': {'why': 'str'},
+    'fellBack': {'why': FELL_BACK_WHY},
     'state': STATE,
     'js': {'label': 'any', 'result': 'any'},
     'keyboard': {'kb': 'str', 'h': 'num'},
@@ -355,7 +418,6 @@ PAGE_METHODS = {
     'toast': {'text': 'str'},
     'confirm': {'id': 'str', 'title': 'str'},
 }
-COMMON = {'ev': 'str', 't': 'int', 'wall': 'int', 'appState': oneof(0, 1, 2)}
 
 
 def event_problems(e):
@@ -377,10 +439,12 @@ class Ctx:
         self.away = set()       # scenarios that send the app to the background on purpose
         self.key_kind = None    # 'none', 'probe' or 'other': the key the run found (never its value)
         self.snap = None
-        self.canary = 'fpcanary' + secrets.token_hex(12)
+        self.canary = CANARY_PREFIX + secrets.token_hex(8)
         self.share_text = 'Probe photo ' + secrets.token_hex(4)
+        self.cold_text = 'Probe cold share ' + secrets.token_hex(4)
         self.words = ('Probe typed ' + secrets.token_hex(4), ' and more ' + secrets.token_hex(3))
         self.group = None       # whether the build has the App Group container (a build signed to run locally)
+        self.extra = []         # files the run put in the container beside the steps files (the share's JPEG), removed at the end
 
     def check(self, scen, name, ok, detail=''):
         """A check; its detail (what was there instead) is printed only when it fails."""
@@ -424,6 +488,9 @@ class Ctx:
                 during(ev)
             if ev.first(until):
                 break
+        # the app ended first, then the log read whole: what it wrote after `done` (a late intent record, page event or
+        # funnel run) is checked, scanned for the canary and copied too
+        self.sim.terminate()
         ev = read_log(logp)
         raw = ''
         if os.path.exists(logp):
@@ -433,7 +500,6 @@ class Ctx:
         self.logs.append((tag, raw))
         with open(os.path.join(self.out, tag + '.jsonl'), 'w', encoding='utf-8') as f:
             f.write(raw)
-        self.sim.terminate()
         return ev
 
     def well_formed(self, scen, ev):
@@ -573,13 +639,31 @@ var key = localStorage.getItem('kt_apikey');
 return { diff: diff, compared: n, key: key === null ? 'none' : (key === args.probeKey ? 'probe' : 'other') };
 """
 
-# The connect screen inside one document: the key set aside in the page's memory (a key that is not the probe's is never
-# read out of the page and never written anywhere else), the page's own render pushes the hub's connect model.
+# The connect screen inside one document: the probe's key taken away (typeKey runs only while the phone holds the probe's
+# key or none: a key that is not the probe's would live in nothing but the page's memory until it was put back), the
+# page's own render pushes the hub's connect model.
 KEY_ASIDE_JS = r"""
-window.__fpProbeKey = localStorage.getItem('kt_apikey');
+var had = localStorage.getItem('kt_apikey') !== null;
 localStorage.removeItem('kt_apikey');
 render();
-return { had: window.__fpProbeKey !== null };
+return { had: had };
+"""
+# What the connect screen saved, never the key: whether there is one, its first 12 characters (the canary's prefix, or
+# the probe key's) and its length.
+SAVED_JS = r"""
+var k = localStorage.getItem('kt_apikey');
+return { saved: k !== null, prefix: k ? k.slice(0, 12) : null, length: k ? k.length : 0 };
+"""
+# The page's two composers and the shared photo, by size only.
+COMPOSER_JS = r"""
+var i = document.getElementById('coach-input');
+return { web: i ? i.value.length : null, photo: (typeof pendingImage !== 'undefined' && pendingImage) ? pendingImage.data.length : 0 };
+"""
+CLEAR_JS = r"""
+if (typeof pendingImage !== 'undefined') pendingImage = null;
+var i = document.getElementById('coach-input'); if (i) _fillComposer('');
+render();
+return true;
 """
 # The connect screen's starter link shows only with no programme: the programme set aside the same way (page memory),
 # then put back as it was, the starter overlay closed.
@@ -600,12 +684,11 @@ window.__fpProbeRoutine = null;
 render();
 return { back: !!getCustomRoutine(), overlay: !!document.getElementById('starterOverlay') };
 """
+# The probe's key again, over what the connect screen saved (restore takes it away again when the phone had none).
 KEY_BACK_JS = r"""
-var k = args.keyKind === 'other' ? window.__fpProbeKey : args.probeKey;
-if (k) localStorage.setItem('kt_apikey', k);
-window.__fpProbeKey = null;
+localStorage.setItem('kt_apikey', args.probeKey);
 render();
-return { back: localStorage.getItem('kt_apikey') !== null };
+return { back: localStorage.getItem('kt_apikey') === args.probeKey };
 """
 
 
@@ -722,6 +805,7 @@ def scen_pageEvents(c):
     ev = c.launch(s, 'pageEvents', [[wait(800), step('tapTab', tab='log'), step('waitTab', tab='log', ms=3000), wait(500),
                                      js('select', "switchTab('progress'); return true;"), step('waitTab', tab='progress', ms=3000), wait(600),
                                      state('selected'), js('sheet', "openThemeSheet(); return true;"), wait(1200), state('sheet open'),
+                                     step('tapTab', tab='log'), wait(600), state('tapped under the sheet'),
                                      js('close', "closeThemeSheet(); return true;"), wait(1200), state('sheet closed'), DONE]])
     sel = [e for e in ev.all('page') if e.get('method') == 'selectTab']
     c.check(s, 'the page\'s switchTab sends selectTab, logged as a page event with the shell\'s receipt time (recvT, recvWall)',
@@ -738,11 +822,25 @@ def scen_pageEvents(c):
             and (root(sc).get('bar') or {}).get('hidden') is False and root(sc).get('sheetsOpen') is False and page(sc).get('sheetsOpen') == 0,
             {'open': [(root(so).get('bar') or {}).get('hidden'), root(so).get('sheetsOpen'), page(so).get('sheetsOpen'), page(so).get('holds')],
              'closed': [(root(sc).get('bar') or {}).get('hidden'), root(sc).get('sheetsOpen'), page(sc).get('sheetsOpen'), page(sc).get('holds')]})
+    # delta 17.4: no finger can tap a bar a sheet has hidden, so the step taps nothing (the lookup found the item: the
+    # refusal is the hit test's, not the tab id's)
+    hb, ut = first(ev, 'tapTab', tab='log'), ev.state('tapped under the sheet')
+    between = [e for e in runs_after(ev, ev.first('state', label='sheet open')) if e.get('t', 9e9) <= (ut or {}).get('t', -1)]
+    c.check(s, 'tapTab while a sheet hides the bar: an error event (the bar is hidden), no run, the selection and seq unchanged',
+            hb.get('activated') is False and str(hb.get('error', '')).startswith('the bar is hidden') and (hb.get('copies') or 0) >= 1
+            and not between and root(ut).get('selected') == 'progress' and root(ut).get('seq') == root(so).get('seq'),
+            {'event': hb, 'runs': between, 'selected': root(ut).get('selected'), 'seq': (root(so).get('seq'), root(ut).get('seq'))})
 
 
 def scen_pressHub(c):
     s = 'pressHub'
+    # Disconnect asks first: the page forwards its confirm, which fills the screen from the shell's window over the bar and
+    # the hub (delta 17.4, 17.13): neither a tap on the bar nor a press on the hub gets through it; Cancel keeps the key
     ev = c.launch(s, 'pressHub', [[wait(1500), state('hub'), step('press', label='No Such Control', where='hub'),
+                                   step('press', label='Disconnect', where='hub'), step('waitCoach', label='confirm', until='confirm', ms=5000),
+                                   wait(500), state('confirm'), step('tapTab', tab='log'), step('press', label='Open Chat', where='hub'),
+                                   wait(300), state('under the confirm'), step('press', label='Cancel', where='overlay'), wait(1200),
+                                   state('cancelled'),
                                    step('press', label='Open Chat', where='hub'), step('waitCoach', label='up', until='up', ms=6000),
                                    wait(1200), state('chat'), DONE]], args=['-devNav', 'coach'])
     h = ev.state('hub')
@@ -756,7 +854,30 @@ def scen_pressHub(c):
     c.check(s, 'press {where: hub} on a label no control has: an error event (error and why alike), nothing pressed',
             bad.get('pressed') is False and bad.get('matches') == 0 and bad.get('error') == bad.get('why')
             and str(bad.get('error', '')).startswith('no control named'), bad)
-    ok = next((p for p in ps if p.get('control') == 'Open Chat'), {})
+    dc = next((p for p in ps if p.get('control') == 'Disconnect'), {})
+    asked = [r for r in intents(ev, 'coachHome.disconnect')]
+    conf = [e for e in ev.all('page') if e.get('method') == 'confirm']
+    c.check(s, 'press {where: hub} on Disconnect: pressed through its element; the page took coachHome.disconnect and forwarded its confirm',
+            dc.get('pressed') is True and dc.get('via') == 'accessibility' and dc.get('matches') == 1 and len(asked) == 1
+            and asked[0].get('outcome') == 'done' and (first(ev, 'waitCoach', label='confirm').get('met') is True) and len(conf) == 1,
+            {'press': dc, 'disconnect': asked, 'confirm': [short(e, ('id', 'title')) for e in conf], 'wait': first(ev, 'waitCoach', label='confirm')})
+    cf, uc = ev.state('confirm'), ev.state('under the confirm')
+    tb = first(ev, 'tapTab', tab='log')
+    between = [e for e in runs_after(ev, cf) if e.get('t', 9e9) <= (uc or {}).get('t', -1)]
+    c.check(s, 'tapTab under the shell\'s confirm: an error event (a finger lands on the confirm over the bar), no run, Coach still selected',
+            tb.get('activated') is False and str(tb.get('error', '')).startswith("a finger on log lands on the shell's confirm")
+            and not between and root(uc).get('selected') == 'coach' and root(uc).get('seq') == root(cf).get('seq'),
+            {'event': tb, 'runs': between, 'selected': root(uc).get('selected')})
+    oc = [p for p in ps if p.get('control') == 'Open Chat']
+    hp = oc[0] if oc else {}
+    c.check(s, 'press {where: hub} under the shell\'s confirm: an error event, nothing pressed (the hub is covered)',
+            len(oc) == 2 and hp.get('pressed') is False and hp.get('error') == "the hub is covered: the shell's confirm is open"
+            and not [r for r in intents(ev, 'coachHome.openChat') if r.get('t', 9e9) < (uc or {}).get('t', -1)], hp)
+    cn, ca = next((p for p in ps if p.get('control') == 'Cancel'), {}), ev.state('cancelled')
+    c.check(s, 'press {label: Cancel, where: overlay}: the confirm answered no, the key kept (the hub, not the connect screen)',
+            cn.get('pressed') is True and stack(ca).get('homeRoute') == 'hub' and root(ca).get('selected') == 'coach',
+            {'press': cn, 'route': stack(ca).get('homeRoute')})
+    ok = oc[-1] if oc else {}
     c.check(s, 'press {where: hub} on Open Chat: pressed through its accessibility element, one match', ok.get('pressed') is True
             and ok.get('via') == 'accessibility' and ok.get('matches') == 1 and ok.get('where') == 'hub', ok)
     oc = intents(ev, 'coachHome.openChat')
@@ -802,6 +923,56 @@ def scen_back(c):
     c.check(s, 'the pushed chat has exactly one control named Back, pressed through it', pb.get('pressed') is True
             and pb.get('via') == 'accessibility' and pb.get('matches') == 1, pb)
     c.check(s, 'the chat down again after it', 'coach' not in (scr(ev.state('back2')).get('up') or []), scr(ev.state('back2')).get('up'))
+
+
+def scen_setup(c):
+    s = 'setup'
+    # The hub's Build My Programme (the programme set aside inside the page, as typeKey's starter step does): setup's chat
+    # pushed with Cancel and no Back (T15 item 1, "none in setup"); its first turn goes to the closed loopback port. Over
+    # an earlier chat the page asks first (Start). `press {label: Back}` falls back to the chat model's Back when no
+    # control has the name, so the proof is its matches (0) and its via (model, never accessibility); the page refuses
+    # that coach.back in setup (intake) and the shell puts the chat up again. Cancel then asks to stop setup (Stop setup).
+    ev = c.launch(s, 'setup', [[wait(1500), js('no programme', NO_PROGRAMME_JS), wait(1500), state('hub'),
+                                step('press', label='Build My Programme', where='hub'), step('waitCoach', label='ask', until='confirm', ms=2500),
+                                step('press', label='Start', where='overlay'), step('waitCoach', label='up', until='up', ms=8000),
+                                step('waitCoach', label='settled', until='idle', ms=10000), wait(1000),
+                                js('intake', "return { intake: intakeMode };"), state('setup'),
+                                step('press', label='Back'), wait(1500), step('waitCoach', label='up again', until='up', ms=6000), wait(800),
+                                state('after back'), step('press', label='Cancel'), step('waitCoach', label='stop?', until='confirm', ms=5000),
+                                step('press', label='Stop setup', where='overlay'), wait(1500), js('ended', "return { intake: intakeMode };"),
+                                state('stopped'), js('programme back', PROGRAMME_BACK_JS), wait(800), DONE]],
+                  args=['-devNav', 'coach', '-fpApiBase', LOOPBACK], timeout=200)
+    h = ev.state('hub')
+    c.check(s, 'with no programme the hub offers Build My Programme (the hub route, the programme set aside)',
+            stack(h).get('homeRoute') == 'hub' and (first(ev, 'js', label='no programme').get('result') or {}).get('now') is False,
+            {'route': stack(h).get('homeRoute'), 'js': first(ev, 'js', label='no programme').get('result')})
+    ps = ev.all('press')
+    bp = next((p for p in ps if p.get('control') == 'Build My Programme'), {})
+    si = intents(ev, 'coachHome.startIntake')
+    st = ev.state('setup')
+    c.check(s, 'press {where: hub} on Build My Programme: the page took coachHome.startIntake; setup\'s chat pushed over the hub',
+            bp.get('pressed') is True and bp.get('via') == 'accessibility' and len(si) == 1 and si[0].get('outcome') == 'done'
+            and (first(ev, 'js', label='intake').get('result') or {}).get('intake') is True and 'coach' in (scr(st).get('up') or [])
+            and chat(st).get('host') == 'stack',
+            {'press': bp, 'startIntake': si, 'intake': first(ev, 'js', label='intake').get('result'), 'up': scr(st).get('up')})
+    back = next((p for p in ps if p.get('label') == 'Back' or p.get('control') == 'Back'), {})
+    c.check(s, 'setup\'s chat has no control named Back: the press found none (matches 0) and only the model\'s fallback went (via model)',
+            back.get('matches') == 0 and back.get('via') == 'model', back)
+    cb = intents(ev, 'coach.back')
+    ab = ev.state('after back')
+    c.check(s, 'the page refused that Back in setup (coach.back: intake) and the chat is up again, still in setup',
+            len(cb) == 1 and 'intake' in str(cb[0].get('outcome')) and 'coach' in (scr(ab).get('up') or [])
+            and first(ev, 'waitCoach', label='up again').get('met') is True,
+            {'coach.back': cb, 'up': scr(ab).get('up'), 'wait': first(ev, 'waitCoach', label='up again')})
+    cn = next((p for p in ps if p.get('control') == 'Cancel'), {})
+    stop = next((p for p in ps if p.get('control') == 'Stop setup'), {})
+    c.check(s, 'setup\'s Cancel: one control of that name, pressed through it; the page asked to stop setup and the answer ended it',
+            cn.get('pressed') is True and cn.get('via') == 'accessibility' and cn.get('matches') == 1
+            and [r.get('outcome') for r in intents(ev, 'coach.cancelIntake')] == ['done'] and stop.get('pressed') is True
+            and (first(ev, 'js', label='ended').get('result') or {}).get('intake') is False,
+            {'cancel': cn, 'cancelIntake': intents(ev, 'coach.cancelIntake'), 'stop': stop, 'ended': first(ev, 'js', label='ended').get('result')})
+    pb = first(ev, 'js', label='programme back').get('result') or {}
+    c.check(s, 'the programme put back inside the page', pb.get('back') is True, pb)
 
 
 def scen_edgeBack(c):
@@ -883,18 +1054,27 @@ def scen_openURL(c):
 def scen_openURLOnActive(c):
     s = 'openURLOnActive'
     c.away.add(s)
-    trip = {'armed': False}
+    # The trip follows the log, not the host's clock (a loaded Mac can take seconds to switch apps): Settings comes up once
+    # the hook is armed; the app is brought back once its page has gone hidden (the page's visibility message, sent as
+    # the app leaves the screen), or after 30 s without it; the phase waits up to 60 s for the link's tab.
+    trip = {'stage': 'arming', 'at': 0.0, 'hidden': None}
 
     def away(ev):
-        if not trip['armed'] and ev.first('openURLOnActive', armed=True):
-            trip['armed'] = True
-            time.sleep(1.0)
+        now = time.time()
+        if trip['stage'] == 'arming' and ev.first('openURLOnActive', armed=True):
             c.sim.open_app('com.apple.Preferences')     # the app leaves the screen
-            time.sleep(6.0)
-            c.sim.sh('xcrun', 'simctl', 'launch', c.sim.udid, BID, check=False)   # and comes back, as a widget's link brings it
+            trip.update(stage='leaving', at=now)
+        elif trip['stage'] == 'leaving':
+            hidden = any(e.get('method') == 'visibility' and e.get('state') == 'hidden' for e in ev.all('page'))
+            if hidden or now - trip['at'] > 30:
+                trip.update(stage='back', hidden=hidden)
+                c.sim.sh('xcrun', 'simctl', 'launch', c.sim.udid, BID, check=False)   # and comes back, as a widget's link brings it
     ev = c.launch(s, 'openURLOnActive', [[wait(800), step('tapTab', tab='progress'), step('waitTab', tab='progress', ms=3000), wait(300),
-                                          step('openURLOnActive', url='trovo://start'), wait(16000), state('back'), DONE]], during=away, timeout=200)
+                                          step('openURLOnActive', url='trovo://start'), step('waitTab', tab='log', ms=60000), wait(800),
+                                          state('back'), DONE]], during=away, timeout=200)
     armed, fired = first(ev, 'openURLOnActive', armed=True), first(ev, 'openURLOnActive', fired=True)
+    c.rep.fact(s, 'the trip: %s' % ('the page went hidden, then the app was brought back' if trip['hidden']
+                                     else 'brought back after 30 s with no hidden page seen' if trip['stage'] == 'back' else 'never armed'))
     c.check(s, 'openURLOnActive: armed for the next foreground', armed.get('url') == 'trovo://start' and armed.get('ran') is True, armed)
     c.check(s, 'fired as the scene came forward, opened through the App delegate', fired.get('opened') is True
             and fired.get('url') == 'trovo://start', fired or 'no fired event (the app never came back?)')
@@ -905,7 +1085,17 @@ def scen_openURLOnActive(c):
 
 def scen_fpOpenURL(c):
     s = 'fpOpenURL'
-    ev = c.launch(s, 'fpOpenURL', [[wait(1200), state('cold'), DONE]], args=['-fpOpenURL', 'trovo://share'])
+    # A share waits in the legacy slot first (written once the page's own +2.5 s boot read has passed, so nothing reads it
+    # in that launch); then a cold launch with -fpOpenURL trovo://share. Contract 9: the first frame's tab, the parked
+    # link, no _trovoOpen. The page's boot read (TrovoWidget.consumeDeepLink at +0.4 s, then the share read after hello)
+    # takes the photo and the comment well before its own +2.5 s check could have: the share's selectTab {coach, chat}
+    # within 1.5 s of hello says the parked link did it.
+    pre = c.launch(s, 'fpOpenURL-share', [[wait(3200), step('share', comment=c.cold_text, legacy=True), DONE]])
+    sh = first(pre, 'share')
+    c.check(s, 'a share waits in the legacy slot (the photo drawn, nothing read it in that launch)', sh.get('stored') == 'defaults'
+            and sh.get('jpeg') == 'drawn' and not [e for e in pre.all('page') if e.get('method') == 'selectTab'], sh)
+    ev = c.launch(s, 'fpOpenURL', [[wait(1200), state('cold'), wait(3500), js('composer', COMPOSER_JS), state('read'),
+                                    step('draft', text=''), js('clear', CLEAR_JS), DONE]], args=['-fpOpenURL', 'trovo://share'])
     first_run = [e for e in ev.all('funnel') if e.get('atAdopt') and e.get('source') == 'initial']
     k = ev.state('cold')
     c.check(s, '-fpOpenURL trovo://share is read at scene connect as a connection URL: the first frame on Coach (a cold share)',
@@ -913,6 +1103,16 @@ def scen_fpOpenURL(c):
             {'initial': first_run, 'root': root(k).get('selected'), 'page': page(k).get('tab')})
     c.check(s, 'a cold link is parked for the page\'s boot read: no _trovoOpen evaluated (no trovoOpen event)', not ev.all('trovoOpen'),
             ev.all('trovoOpen'))
+    got, rd = first(ev, 'js', label='composer').get('result') or {}, ev.state('read')
+    c.check(s, 'the page\'s boot read took the parked link: the shared photo in hand, the comment in a composer',
+            (got.get('photo') or 0) > 1000 and (chat(rd).get('draft') == c.cold_text or got.get('web') == len(c.cold_text)),
+            {'composer': got, 'native draft length': len(chat(rd).get('draft') or '')})
+    hello = first(ev, 'page', method='hello')
+    took = next((e for e in ev.all('page') if e.get('method') == 'selectTab' and e.get('tab') == 'coach' and e.get('intent') == 'chat'), {})
+    c.check(s, 'it read the share through the parked link, not the page\'s +2.5 s check: its selectTab {coach, chat} within 1.5 s of hello '
+               '(a timing check: rerun under load)',
+            bool(hello) and bool(took) and took.get('t', 9e9) - hello.get('t', 0) <= 1500,
+            {'hello': hello.get('t'), 'selectTab': took.get('t')})
 
 
 def scen_share(c):
@@ -921,15 +1121,24 @@ def scen_share(c):
     c.group = bool(gc) and os.path.isdir(gc)
     c.rep.fact(s, 'this build has %s (%s)' % ('the App Group container' if c.group else 'no App Group container',
                                                'signed to run locally' if c.group else 'CODE_SIGNING_ALLOWED=NO: the share hook must refuse'))
+    # the `jpeg` argument's file: a real JPEG beside the steps files (the app icon, through sips), removed at the end
+    photo, size = c.sim.path('Documents', 'fp-probe', PHOTO), 0
+    os.makedirs(os.path.dirname(photo), exist_ok=True)
+    icon = os.path.join(REPO, 'ios', 'App', 'App', 'Assets.xcassets', 'AppIcon.appiconset', 'AppIcon-512@2x.png')
+    c.sim.sh('sips', '-s', 'format', 'jpeg', '-s', 'formatOptions', '80', icon, '--out', photo, check=False)
+    c.extra.append(photo)
+    if os.path.exists(photo):
+        size = os.path.getsize(photo)
+    c.check(s, 'a JPEG for the hook\'s jpeg argument beside the steps files (%d bytes)' % size, size > 1000, photo)
     phase = [wait(800), step('share', comment=c.share_text)]
     if c.group:
-        phase += [step('openURL', url='trovo://share'), wait(3500), state('shared file')]
-    phase += [step('share', comment=c.share_text, legacy=True), step('openURL', url='trovo://share'), wait(3500), state('shared'),
-              js('composer', "var i = document.getElementById('coach-input'); return { web: i ? i.value.length : null, "
-                             "photo: (typeof pendingImage !== 'undefined' && pendingImage) ? pendingImage.data.length : 0 };"),
-              step('draft', text=''), js('clear', "if (typeof pendingImage !== 'undefined') pendingImage = null; "
-                                                  "var i = document.getElementById('coach-input'); if (i) _fillComposer(''); render(); return true;"),
-              DONE]
+        phase += [step('openURL', url='trovo://share'), wait(3500), state('shared file'), js('composer file', COMPOSER_JS),
+                  step('draft', text=''), js('clear file', CLEAR_JS)]
+    else:
+        # the refused write is read back: trovo://share must find nothing (no photo, no comment, both composers empty)
+        phase += [step('openURL', url='trovo://share'), wait(3500), js('composer refused', COMPOSER_JS), state('refused read')]
+    phase += [step('share', comment=c.share_text, legacy=True, jpeg=PHOTO), step('openURL', url='trovo://share'), wait(3500), state('shared'),
+              js('composer', COMPOSER_JS), step('draft', text=''), js('clear', CLEAR_JS), DONE]
     ev = c.launch(s, 'share', [phase])
     sh = ev.all('share')
     one = sh[0] if sh else {}
@@ -939,19 +1148,24 @@ def scen_share(c):
     else:
         c.check(s, 'share with no App Group container: an error event that writes nothing (stored none), never the legacy slot unasked',
                 one.get('ran') is True and one.get('stored') == 'none' and 'error' in one, one)
+        got, rr = first(ev, 'js', label='composer refused').get('result') or {}, ev.state('refused read')
+        c.check(s, 'read back, the refused share left nothing: trovo://share read no photo and no comment (both composers empty)',
+                got.get('photo') == 0 and got.get('web') in (0, None) and (chat(rr).get('draft') or '') == '',
+                {'composer': got, 'native draft length': len(chat(rr).get('draft') or '')})
     leg = sh[1] if len(sh) > 1 else {}
-    c.check(s, 'share {legacy: true}: the base64 slot on purpose (stored defaults), the photo drawn, the comment\'s length only',
-            leg.get('stored') == 'defaults' and leg.get('legacy') is True and leg.get('jpeg') == 'drawn' and leg.get('bytes', 0) > 1000
-            and leg.get('commentLength') == len(c.share_text), leg)
+    c.check(s, 'share {legacy: true, jpeg: <file>}: the base64 slot on purpose (stored defaults), the file\'s bytes, the comment\'s length only',
+            leg.get('stored') == 'defaults' and leg.get('legacy') is True and leg.get('jpeg') == 'file' and leg.get('bytes') == size
+            and size > 0 and leg.get('commentLength') == len(c.share_text), {'event': leg, 'file': size})
     c.check(s, 'no share event carries the comment', not [e for e in sh if c.share_text in json.dumps(e)], None)
     to = [e for e in ev.all('trovoOpen') if e.get('url') == 'trovo://share']
     c.check(s, 'trovo://share: a trovoOpen event (handled) and a deepLink run that says share', bool(to) and to[-1].get('handled') is True
             and any(e.get('source') == 'deepLink' and e.get('share') is True for e in ev.all('funnel')), {'trovoOpen': to[-1:]})
     got = first(ev, 'js', label='composer').get('result') or {}
     st = ev.state('shared')
-    c.check(s, 'the page read the shared photo and comment (TrovoShare\'s read): the photo in hand, the comment in a composer',
-            (got.get('photo') or 0) > 1000 and (chat(st).get('draft') == c.share_text or got.get('web') == len(c.share_text)),
-            {'composer': got, 'native draft': chat(st).get('draft')})
+    c.check(s, 'the page read the shared file and comment (TrovoShare\'s read): the file\'s photo in hand (its base64), the comment in a composer',
+            got.get('photo') == 4 * math.ceil(size / 3) and size > 0
+            and (chat(st).get('draft') == c.share_text or got.get('web') == len(c.share_text)),
+            {'composer': got, 'want photo': 4 * math.ceil(size / 3), 'native draft length': len(chat(st).get('draft') or '')})
 
 
 def scen_ping(c):
@@ -990,6 +1204,10 @@ def scen_sceneCycle(c):
     c.check(s, 'the next phase ran on the new page, and the old page, root and window went (replaced)', a and a.get('replaced') == gone
             and root(a).get('kind') == 'tabs' and shellst(a).get('documents') == 1, {'replaced': (a or {}).get('replaced'), 'root': short(root(a), ('kind', 'seq'))})
     c.check(s, 'the new root takes taps', root(cy).get('selected') == 'settings', root(cy).get('selected'))
+    # the old window let go (replaced.window false), so the scene's key window after a replay is the new one: SceneDelegate
+    # made it key and visible (the state names the key window's type; nil when the scene has none)
+    kw = {lb: (e or {}).get('keyWindow') for lb, e in (('before', b), ('after', a), ('cycled', cy), ('after hook', ah))}
+    c.check(s, 'the scene has a key window, a UIWindow, before and after each replay', all(v == 'Optional(UIWindow)' for v in kw.values()), kw)
     c.check(s, 'the generic hook step replays it too (the phase ended there; replaced again, all let go)', ah and ah.get('replaced') == gone,
             (ah or {}).get('replaced'))
     c.check(s, 'three documents, three bootDones (one per page)', len(ev.all('bootDone')) == 3, len(ev.all('bootDone')))
@@ -1043,21 +1261,55 @@ def scen_classic(c):
 
 def scen_typeKey(c):
     s = 'typeKey'
+    if c.key_kind == 'other':
+        # the connect screen needs the key gone and a canary saved in its place; a key that is not the probe's would live
+        # only in the page's memory meanwhile, and a crash or a timeout would lose it for good: nothing is touched
+        c.check(s, 'the phone holds a key that is not the probe\'s: typeKey sets nothing aside and types no canary (remove the '
+                   'key, or run on a phone with the probe\'s key or none)', False, 'key: other')
+        return
     can = c.canary
+    # The connect screen (the key taken away inside the page): its starter link first (it shows only with no programme),
+    # then the canary (contract 5 K8: sk-ant-test- and 16 random characters) typed into the key field and saved by
+    # CONNECT, the key check sent to a closed loopback port (-fpApiBase), so the canary never leaves the Mac; the probe's
+    # key then over it again (restore takes it away when the phone had none).
     ev = c.launch(s, 'typeKey', [[wait(1500), state('hub'), js('aside', KEY_ASIDE_JS), wait(2000), state('connect'),
-                                  step('type', text=can), wait(300), state('untyped'), step('nativeFocus'), wait(900),
-                                  step('type', text=can), wait(500), state('typed', a11y=True), step('resign'), wait(500),
-                                  step('press', label='CONNECT', where='hub'), step('waitCoach', label='toast', until='toast', ms=5000), wait(500),
-                                  state('refused'), js('no programme', NO_PROGRAMME_JS), wait(1500), state('starter link'),
+                                  js('no programme', NO_PROGRAMME_JS), wait(1500), state('starter link'),
                                   step('press', label=STARTER_LABEL, where='hub'), wait(1500), js('starter', STARTER_JS), state('starter'),
                                   js('programme back', PROGRAMME_BACK_JS), wait(800),
-                                  js('back', KEY_BACK_JS, keyKind=c.key_kind, probeKey=PROBE_KEY), wait(2000),
-                                  state('hub again'), DONE]], args=['-devNav', 'coach'])
+                                  js('to coach', "switchTab('coach'); return true;"), step('waitTab', tab='coach', ms=3000), wait(1500),
+                                  state('connect again'),
+                                  step('type', text=can), wait(300), state('untyped'), step('nativeFocus'), wait(900),
+                                  step('type', text=can), wait(500), state('typed', a11y=True), step('resign'), wait(500),
+                                  step('press', label='CONNECT', where='hub'), step('waitCoach', label='toast', until='toast', ms=5000),
+                                  wait(1500), js('saved', SAVED_JS), state('saved'),
+                                  js('back', KEY_BACK_JS, probeKey=PROBE_KEY), wait(2000), state('hub again'), DONE]],
+                  args=['-devNav', 'coach', '-fpApiBase', LOOPBACK], timeout=200)
     cn = ev.state('connect')
     inp = (cn or {}).get('input') or {}
     c.check(s, 'the connect screen: the hub\'s route connect, its key field the top screen\'s first input (kind key), empty',
             stack(cn).get('homeRoute') == 'connect' and stack(cn).get('keyField') == 'empty' and inp.get('kind') == 'key'
             and inp.get('hasText') is False, {'route': stack(cn).get('homeRoute'), 'input': inp})
+    sl = ev.state('starter link')
+    c.check(s, 'with no programme the connect screen draws its starter link', (first(ev, 'js', label='no programme').get('result') or {}).get('now') is False
+            and stack(sl).get('homeRoute') == 'connect' and scr(sl).get('home', {}).get('starter') is True,
+            {'route': stack(sl).get('homeRoute'), 'home': short(scr(sl).get('home'), ('route', 'connect', 'starter'))})
+    pst = first(ev, 'press', control=STARTER_LABEL)
+    op = intents(ev, 'coachHome.openStarter')
+    st = first(ev, 'js', label='starter').get('result') or {}
+    after = [e for e in ev.all('page') if pst.get('t', 9e9) <= e.get('t', -1) <= first(ev, 'js', label='starter').get('t', 9e9)]
+    c.check(s, 'press {where: hub} on the starter link: through its element, one match; the page took coachHome.openStarter',
+            pst.get('pressed') is True and pst.get('via') == 'accessibility' and pst.get('matches') == 1 and len(op) == 1
+            and op[0].get('outcome') == 'done', {'press': pst, 'openStarter': op})
+    c.check(s, 'the starter opened over Log: a selectTab page event (log) and a sheets {open: true} event after the press, the overlay up',
+            any(e.get('method') == 'selectTab' and e.get('tab') == 'log' for e in after) and any(e.get('method') == 'sheets' and e.get('open') is True for e in after)
+            and st.get('overlay') is True and st.get('tab') == 'log' and root(ev.state('starter')).get('selected') == 'log',
+            {'page events': [short(e, ('method', 'tab', 'open')) for e in after][:6], 'page': st, 'root': root(ev.state('starter')).get('selected')})
+    pb = first(ev, 'js', label='programme back').get('result') or {}
+    ca = ev.state('connect again')
+    c.check(s, 'the programme put back inside the page, the starter closed; back on Coach, the connect screen again',
+            pb.get('back') is True and pb.get('overlay') is False and root(ca).get('selected') == 'coach'
+            and stack(ca).get('homeRoute') == 'connect' and stack(ca).get('keyField') == 'empty',
+            {'programme': pb, 'selected': root(ca).get('selected'), 'route': stack(ca).get('homeRoute')})
     ty = ev.all('type')
     c.check(s, 'type before the key field holds the keys: an error event, nothing typed (never a draft)', len(ty) == 2
             and ty[0].get('kind') == 'key' and str(ty[0].get('error', '')).startswith('the key field does not hold the keys')
@@ -1074,29 +1326,19 @@ def scen_typeKey(c):
             and ti.get('a11yLabel') == KEY_LABEL and stack(t).get('keyField') == 'typed', ti)
     pk = first(ev, 'press', control='CONNECT')
     sk = intents(ev, 'coachHome.setKey')
-    c.check(s, 'CONNECT pressed through its element; the page refuses the canary (coachHome.setKey: invalid), no key saved',
-            pk.get('pressed') is True and pk.get('via') == 'accessibility' and len(sk) == 1 and 'invalid' in str(sk[0].get('outcome'))
-            and stack(ev.state('refused')).get('homeRoute') == 'connect', {'press': pk, 'setKey': sk})
-    sl = ev.state('starter link')
-    c.check(s, 'with no programme the connect screen draws its starter link', (first(ev, 'js', label='no programme').get('result') or {}).get('now') is False
-            and stack(sl).get('homeRoute') == 'connect' and scr(sl).get('home', {}).get('starter') is True,
-            {'route': stack(sl).get('homeRoute'), 'home': short(scr(sl).get('home'), ('route', 'connect', 'starter'))})
-    pst = first(ev, 'press', control=STARTER_LABEL)
-    op = intents(ev, 'coachHome.openStarter')
-    st = first(ev, 'js', label='starter').get('result') or {}
-    after = [e for e in ev.all('page') if e.get('t', -1) >= pst.get('t', 9e9)]
-    c.check(s, 'press {where: hub} on the starter link: through its element, one match; the page took coachHome.openStarter',
-            pst.get('pressed') is True and pst.get('via') == 'accessibility' and pst.get('matches') == 1 and len(op) == 1
-            and op[0].get('outcome') == 'done', {'press': pst, 'openStarter': op})
-    c.check(s, 'the starter opened over Log: a selectTab page event (log) and a sheets {open: true} event after the press, the overlay up',
-            any(e.get('method') == 'selectTab' and e.get('tab') == 'log' for e in after) and any(e.get('method') == 'sheets' and e.get('open') is True for e in after)
-            and st.get('overlay') is True and st.get('tab') == 'log' and root(ev.state('starter')).get('selected') == 'log',
-            {'page events': [short(e, ('method', 'tab', 'open')) for e in after][:6], 'page': st, 'root': root(ev.state('starter')).get('selected')})
-    pb = first(ev, 'js', label='programme back').get('result') or {}
+    toasts = [e.get('text') for e in ev.all('page') if e.get('method') == 'toast' and e.get('t', -1) >= pk.get('t', 9e9)]
+    c.check(s, 'CONNECT pressed through its element; the page saved the canary (coachHome.setKey done) and said so (API key saved)',
+            pk.get('pressed') is True and pk.get('via') == 'accessibility' and len(sk) == 1 and sk[0].get('outcome') == 'done'
+            and 'API key saved' in toasts and first(ev, 'waitCoach', label='toast').get('met') is True,
+            {'press': pk, 'setKey': sk, 'toasts': toasts})
+    sv, sd = first(ev, 'js', label='saved').get('result') or {}, ev.state('saved')
+    c.check(s, 'kt_apikey holds the canary (its prefix and length; the key never read out); the hub, its key field empty again',
+            sv.get('saved') is True and sv.get('prefix') == CANARY_PREFIX and sv.get('length') == len(can)
+            and stack(sd).get('homeRoute') == 'hub' and stack(sd).get('keyField') == 'empty',
+            {'saved': sv, 'route': stack(sd).get('homeRoute'), 'keyField': stack(sd).get('keyField')})
     back = first(ev, 'js', label='back').get('result') or {}
-    c.check(s, 'the programme and the key put back inside the page, the starter closed; the hub again', pb.get('back') is True
-            and pb.get('overlay') is False and back.get('back') is True and stack(ev.state('hub again')).get('homeRoute') == 'hub',
-            {'programme': pb, 'key': back, 'route': stack(ev.state('hub again')).get('homeRoute')})
+    c.check(s, 'the probe\'s key over the canary; the hub again', back.get('back') is True and stack(ev.state('hub again')).get('homeRoute') == 'hub',
+            {'key': back, 'route': stack(ev.state('hub again')).get('homeRoute')})
 
 
 def scen_restore(c):
@@ -1104,29 +1346,32 @@ def scen_restore(c):
     if not isinstance(c.snap, dict):
         c.check(s, 'something to put back', False, 'prepare kept nothing')
         return
+    # two launches, never a reload: a page reloaded under the tab root goes hidden in use, which the shell counts as a
+    # fault (its `hidden` counter); WebKit is given time to write the values down before the app ends, and the next
+    # launch reads what the first put back
     ev = c.launch(s, 'restore', [[wait(600), js('restore', RESTORE_JS, snap=c.snap, keyKind=c.key_kind, probeKey=PROBE_KEY),
-                                  step('draft', text=''), {'op': 'reload'}],
-                                 [wait(900), js('same', SAME_JS, snap=c.snap, probeKey=PROBE_KEY), state('restored'), DONE]])
+                                  step('draft', text=''), wait(2500), DONE]])
     r = first(ev, 'js', label='restore').get('result') or {}
+    ev = c.launch(s, 'restored', [[wait(900), js('same', SAME_JS, snap=c.snap, probeKey=PROBE_KEY), state('restored'), DONE]])
     same = first(ev, 'js', label='same').get('result') or {}
     c.rep.fact(s, 'put back %d value(s), removed %d: %s' % (len(r.get('changed') or []), len(r.get('removed') or []),
                                                          ', '.join(sorted((r.get('changed') or []) + (r.get('removed') or [])))[:300]))
-    c.check(s, 'every localStorage value as the run found it (after a reload), the key as it was (%s)' % c.key_kind,
+    c.check(s, 'every localStorage value as the run found it (read in the next launch), the key as it was (%s)' % c.key_kind,
             same.get('diff') == [] and same.get('key') == ('none' if c.key_kind == 'none' else ('probe' if c.key_kind == 'probe' else 'other')),
             same)
     c.check(s, 'the native composer is empty', chat(ev.state('restored')).get('draft') in ('', None), chat(ev.state('restored')).get('draft'))
 
 
-ORDER = ['tapTab', 'retapTab', 'stray', 'waitTab', 'pageEvents', 'pressHub', 'navPop', 'back', 'edgeBack', 'waitCoach', 'typeComposer',
+ORDER = ['tapTab', 'retapTab', 'stray', 'waitTab', 'pageEvents', 'pressHub', 'navPop', 'back', 'setup', 'edgeBack', 'waitCoach', 'typeComposer',
          'openURL', 'openURLOnActive', 'fpOpenURL', 'share', 'ping', 'sceneCycle', 'sceneDestroy', 'classic', 'typeKey']
 
 
 # ── the run's own checks ─────────────────────────────────────────────────────────────────────────────────────────────
 
 def canary_scan(c):
-    """Contract 5 K4: the canary typed into the key field is in no probe log of the run, whole or in any 8 characters of
-    its random part."""
-    rand = c.canary[len('fpcanary'):]
+    """Contract 5 K4: the canary typed into the key field, and saved by CONNECT, is in no probe log of the run, whole or in
+    any 8 characters of its random part."""
+    rand = c.canary[len(CANARY_PREFIX):]
     pieces = {rand[i:i + 8] for i in range(len(rand) - 7)}
     hits = []
     for tag, raw in c.logs:
@@ -1160,6 +1405,29 @@ def aggregates(c):
     c.check('reports', 'under a live tab root every state says tabs mode (tabsMode, html.fp-tabs, #tabs hidden, --fp-bar-up set)',
             tabs and not mode, sorted(set(mode)))
     c.check('reports', 'every state of the run carries contract 15.3\'s reports with their types (%d states)' % len(c.states), not sp, sp[:6])
+    # The shell's counters (About's, kept across launches) see what one document's visEvents cannot: a page that went
+    # hidden in use and was replaced, a web view that left its window in an earlier document. State to state, in run
+    # order, each moves only where a step moves it: strays by one at the stray launch; hidden and leftAny on the
+    # background trip.
+    moved, prev = [], None
+    for s, e in c.states:
+        cur = counter_totals(e)
+        for k in COUNTERS if prev else ():
+            if cur[k] != prev[k]:
+                ok = (k == 'strays' and s == 'stray' and cur[k] == prev[k] + 1) or (k in ('hidden', 'leftAny') and s in c.away)
+                if not ok:
+                    moved.append('%s (%s): %s %s -> %s' % (s, e.get('label'), k, prev[k], cur[k]))
+        prev = cur
+    c.check('window', 'the shell\'s fault counters (%s) moved only where a step moves them (%d states)' % (', '.join(COUNTERS), len(c.states)),
+            c.states and not moved, moved[:6])
+
+
+COUNTERS = ('hidden', 'leftAny', 'leftWindow', 'markers', 'trips', 'strays')
+
+
+def counter_totals(e):
+    cs = ((shellst(e).get('status') or {}).get('counters') or {})
+    return {k: (cs.get(k) or {}).get('total', 0) for k in COUNTERS}
 
 
 def shell_folder(sim):
@@ -1174,6 +1442,91 @@ def put_back_shell(sim, saved):
         shutil.rmtree(live)
     if saved is not None:
         shutil.copytree(saved, live)
+
+
+# The shell's UserDefaults copies (ShellSwitches, the breaker book, ShellCounters) live in the app's preferences plist,
+# which the simulator's cfprefsd caches and writes later. Stopping it (launchd starts it again at the next use) makes it
+# write what it holds and keep no copy: the plist is then what the app last wrote, and an edit is what the app reads next.
+
+def prefs_path(sim):
+    return sim.path('Library', 'Preferences', BID + '.plist')
+
+
+def prefs_settle(sim):
+    sim.sh('xcrun', 'simctl', 'spawn', sim.udid, 'launchctl', 'stop', 'com.apple.cfprefsd.xpc.daemon', check=False)
+    time.sleep(1.0)
+
+
+def read_shell_prefs(sim):
+    """The three copies as the app last wrote them (the app ended): key -> bytes, None when absent."""
+    prefs_settle(sim)
+    d = {}
+    if os.path.exists(prefs_path(sim)):
+        with open(prefs_path(sim), 'rb') as f:
+            d = plistlib.load(f)
+    return {k: d.get(k) for k in SHELL_PREFS}
+
+
+def put_back_shell_prefs(sim, found):
+    """The three copies as found (the app ended), every other key of the plist left as the run left it (the store's own
+    copies follow its database, which the run did not put back)."""
+    prefs_settle(sim)
+    p = prefs_path(sim)
+    d, fmt, mode = {}, plistlib.FMT_BINARY, 0o600
+    if os.path.exists(p):
+        with open(p, 'rb') as f:
+            raw = f.read()
+        fmt = plistlib.FMT_XML if raw.lstrip().startswith(b'<') else plistlib.FMT_BINARY
+        d = plistlib.loads(raw)
+        mode = os.stat(p).st_mode & 0o777
+    if all(d.get(k) == found[k] for k in SHELL_PREFS):
+        return
+    for k in SHELL_PREFS:
+        if found[k] is None:
+            d.pop(k, None)
+        else:
+            d[k] = found[k]
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    with open(p + '.selftest', 'wb') as f:
+        plistlib.dump(d, f, fmt=fmt)
+    os.chmod(p + '.selftest', mode)
+    os.replace(p + '.selftest', p)
+    prefs_settle(sim)
+
+
+def found_totals(found):
+    try:
+        cs = json.loads(found['fp.shell.counters'] or b'{}')
+    except ValueError:
+        cs = {}
+    return {k: (cs.get(k) or {}).get('total', 0) for k in COUNTERS}
+
+
+def screens_word(e):
+    st = (shellst(e).get('status') or {}).get('screens') or {}
+    return {k: short(v, ('on', 'off', 'why', 'canReset', 'trip')) for k, v in st.items()}
+
+
+def check_put_back(c, saved, found):
+    """What the run changed in the shell's own state, put back and proven: the folder and the three copies as found, then
+    one launch that reads them (the switches and every screen's word as the run's first state had them, the counters'
+    totals as found), then both put back once more (that launch leaves its crash markers) and the copies read back."""
+    sim, s = c.sim, 'restore'
+    put_back_shell(sim, saved)
+    put_back_shell_prefs(sim, found)
+    if c.states:
+        start = c.states[0][1]
+        ev = c._launch('asFound', [[wait(1200), state('as found'), DONE]], (), 90, None, 'done')
+        e = ev.state('as found')
+        got = {'switches': (shellst(e).get('status') or {}).get('switches'), 'screens': screens_word(e), 'counters': counter_totals(e)}
+        want = {'switches': (shellst(start).get('status') or {}).get('switches'), 'screens': screens_word(start), 'counters': found_totals(found)}
+        c.check(s, 'the next launch reads the shell\'s state as the run found it: its switches and every screen\'s word as at the run\'s '
+                   'start, the counters\' totals as found', e and got == want, {'got': got, 'want': want})
+    put_back_shell(sim, saved)
+    put_back_shell_prefs(sim, found)
+    now = read_shell_prefs(sim)
+    c.check(s, 'the shell\'s UserDefaults copies (%s) as found' % ', '.join(SHELL_PREFS), now == found,
+            sorted(k for k in SHELL_PREFS if now.get(k) != found.get(k)))
 
 
 def app_print(app):
@@ -1252,8 +1605,11 @@ def main():
         saved = os.path.join(tmp, 'FPShell')
         shutil.copytree(shell_folder(sim), saved)
     rep.fact('prepare', 'the shell\'s folder kept to put back (%s)' % (', '.join(sorted(os.listdir(saved))) if saved else 'none yet'))
+    found = read_shell_prefs(sim)
+    rep.fact('prepare', 'the shell\'s UserDefaults copies kept to put back (%s)' % ', '.join(
+        '%s %s' % (k, 'absent' if v is None else '%d bytes' % len(v)) for k, v in found.items()))
+    up = False
     try:
-        up = False
         try:
             up = scen_prepare(c)
         except Exception as e:  # noqa: BLE001 -- a launch that breaks is a failure; restore still runs
@@ -1279,15 +1635,22 @@ def main():
             traceback.print_exc()
             rep.check('restore', 'ran to the end', False, repr(e)[:300])
     finally:
-        put_back_shell(sim, saved)
+        try:
+            check_put_back(c, saved, found)
+        except Exception as e:  # noqa: BLE001 -- the folder and the copies still go back
+            import traceback
+            traceback.print_exc()
+            rep.check('restore', 'the shell\'s state put back and read back', False, repr(e)[:300])
+            put_back_shell(sim, saved)
+            put_back_shell_prefs(sim, found)
         shutil.rmtree(tmp, ignore_errors=True)
         pdir = sim.path('Documents', 'fp-probe')
-        for tag in c.tags:
-            p = os.path.join(pdir, tag + '.json')
+        for p in [os.path.join(pdir, tag + '.json') for tag in c.tags] + c.extra:
             if os.path.exists(p):
                 os.remove(p)
-    rep.fact('restore', 'the shell\'s folder put back as found; the steps files removed (the logs stay, and are copied to %s)' % out)
-    if up and (not only or 'typeKey' in only):
+    rep.fact('restore', 'the shell\'s folder and UserDefaults copies put back as found; the steps files and the share\'s JPEG removed '
+                        '(the logs stay, and are copied to %s)' % out)
+    if up and (not only or 'typeKey' in only) and c.key_kind != 'other':
         canary_scan(c)
     if up:
         aggregates(c)
