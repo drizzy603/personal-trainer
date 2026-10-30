@@ -48,6 +48,10 @@ final class RootRig {
     var bars: [BarMetrics] = []
     var sections: [Bool] = []
     var shown: [Bool] = []
+    /// Each `coachShown` at which the Coach stack's window membership did not match the selection (ScreenHost reads the
+    /// stack's window there: `selectionChanged()`). Empty while the funnel's selection lands in its own call, as under
+    /// `performWithoutAnimation` on iOS 26.x and 27 (a plain set on iOS 26.x starts an animated tab transition instead).
+    var stackAstray: [String] = []
     /// VoiceOver's screen changes: the argument, NSNull for none.
     var posts: [AnyObject] = []
     var runs: [RootTabController.FunnelRun] = []
@@ -93,9 +97,14 @@ final class RootRig {
             self?.events.append("section \(on ? "on" : "off")")
         }
         h.coachShown = { [weak self] on in
-            self?.lastActive = Date()
-            self?.shown.append(on)
-            self?.events.append("coachShown \(on)")
+            guard let self else { return }
+            self.lastActive = Date()
+            self.shown.append(on)
+            self.events.append("coachShown \(on)")
+            let inWindow = self.root.coachSlot.nav.viewIfLoaded?.window != nil
+            if inWindow != (self.root.selected == "coach") {
+                self.stackAstray.append("\(self.root.selected): the Coach stack \(inWindow ? "in" : "out of") the window")
+            }
         }
         root.hooks = h
         root.postScreenChanged = { [weak self] arg in
@@ -271,6 +280,8 @@ final class RootTabControllerTests: XCTestCase {
         XCTAssertEqual(moves, 0, "\(what): no move out of the window", file: file, line: line)
         XCTAssertTrue(r.window.rootViewController === r.root, "\(what): the window's root unchanged", file: file, line: line)
         XCTAssertTrue(r.web.parent === r.slot(r.root.selected), "\(what): the web controller in \(r.root.selected)'s slot", file: file, line: line)
+        XCTAssertEqual(r.stackAstray, [], "\(what): at every coachShown the Coach stack is in the window exactly while Coach is selected",
+                       file: file, line: line)
     }
 
     /// A colour as the page writes it (`#rrggbb`), nil for none.
