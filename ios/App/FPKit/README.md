@@ -633,12 +633,22 @@ xcodebuild -scheme FPKit-Package -destination 'platform=iOS Simulator,id=<udid>'
   -parallel-testing-enabled NO test
 ```
 
-CI (`.github/workflows/ios-build.yml`) runs `swift test` on macOS (job `fpkit-mac`) and both commands above
-on the newest iOS runtime's first iPhone (job `fpkit-ios`), beside the app build. Since build 61's drain the iOS
-tests run in three parts on their own runners, each inside the job's 30 minutes: `renders` and `tabs` take the classes
-the job's `RENDERS` and `TABS` name (the coach renders; `ShellBridgeTabsTests`), `rest` skips exactly those, so a new
-class always runs somewhere. A named class that no longer exists, or a part that runs no test, fails the job; a
-part whose test step passes 22 minutes warns that it is time to split again.
+CI (`.github/workflows/ios-build.yml`) builds the app, runs `swift test` on macOS (job `fpkit-mac`) and both commands
+above (job `fpkit-ios`) with the Xcode the app ships with, Xcode 27.1, on GitHub's `xcode-27` label (a preview, with
+no SLA; `macos-latest` is macOS 26, with Xcode 26.x and iOS 26.x runtimes only). The iOS tests run in six parts, each on
+its own runner and an iPhone 17 Pro: `renders` (`CoachHomeRenderTests`, `CoachRenderTests`), `tabs`
+(`ShellBridgeTabsTests`, `RootTabControllerTests`), `stack` (`ScreenHostTests`, `CoachHomeStoreTests`,
+`CoachHomeViewTests`) and `rest` (every other test: it skips exactly the named classes, so a new class always runs
+somewhere) run on the newest iOS 27.x there that runs that model (27.1; the Mac's gates run 27.0). `tabs-26` and
+`stack-26` run the tabs and stack classes again on the floor of the tab root and the native Coach tab: the newest iOS
+26.x on the `macos-26` image (26.5), built by Xcode 26.6, since `xcode-27` has no iOS 26 runtime. So FPKit must keep
+compiling with Xcode 26.6, which cannot compile an API only the iOS 27 SDK declares, even behind `#available`.
+`.github/scripts/fpkit-parts.sh` is the one place that names the classes and each part's iOS major. A named class that
+no longer exists, a matrix row missing or on another iOS major, a part that runs no test or a named class that ran none
+fails the job; a part whose test step passes 22 minutes warns that it is time to rebalance or split again (on a calm
+Mac renders takes about 220 s, tabs 190, stack 250 and rest 140; a runner about three times that, plus building the
+tests). Only a Mac runs Xcode 27.1's own build on iOS 26.x, and the other classes on iOS 26.x: every local FPKit gate
+runs on iOS 26.5 and 27.0.
 
 `.build` (SwiftPM's build folder, or the link to it) is ignored by the root `.gitignore`. xcodebuild leaves
 an empty `.swiftpm/` folder here, which git does not see.
