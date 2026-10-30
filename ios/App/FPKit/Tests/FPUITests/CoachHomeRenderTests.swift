@@ -392,13 +392,15 @@ final class CoachHomeRenderTests: XCTestCase {
     /// not strings, so the match is lenient where it must be and no more: both sides lowercased and cut to their
     /// letters and digits (white space and punctuation go, so do the meta row's disc, a row's chevron and CONNECT's
     /// arrow, which are marks of the view's own), a dotless "ı" read as an "i", the letters the recognizer trades taken
-    /// as one (`fold`: "l0g." for "log.", "APl" for "API"), a mended lone surrogate (U+FFFD, drawn as the face's
-    /// replacement glyph) and an emoji (drawn as a picture) matching any one letter or none, a line of one letter (an
-    /// icon's stroke read as "L") free to stand alone, and a line or a string allowed one misread letter in ten (none
-    /// under five), but never a word of three letters or more that is not there. Probed on iOS 27.0 over the hand-made
-    /// fixtures, the page-built ones (P6) and the variant, both rooms, at 390 pt large and at 320 pt .xxLarge: every
-    /// line was read in the column's order but the avatar's (read beside the meta label's line or between its two
-    /// lines, and on Heavyweight's blue disc often not at all), none with more than one error.
+    /// as one (`fold`: "l0g." for "log.", "APl" for "API", and on iOS 26.5 a Cyrillic С for a Latin C), a mended lone
+    /// surrogate (U+FFFD, drawn as the face's replacement glyph) and an emoji (drawn as a picture) matching any one
+    /// letter or none, a line of one letter (an icon's stroke read as "L") free to stand alone, and a line or a string
+    /// allowed one misread letter in ten (none under five), but never a word of three letters or more that is not
+    /// there. Probed on iOS 27.0 over the hand-made fixtures, the page-built ones (P6) and the variant, both rooms, at
+    /// 390 pt large and at 320 pt .xxLarge: every line was read in the column's order but the avatar's (read beside the
+    /// meta label's line or between its two lines, and on Heavyweight's blue disc often not at all), none with more
+    /// than one error. iOS 26.5 reads them within the same allowance but for Lime's meta label at 320 pt .xxLarge,
+    /// whose Latin capitals it reads as the Cyrillic ones drawn like them (`latin`).
     enum DrawnText {
         static let wildcard: Character = "\u{FFFD}"
 
@@ -460,15 +462,30 @@ final class CoachHomeRenderTests: XCTestCase {
             return out
         }
 
-        /// The letters the recognizer trades for one another, as one (probed: "l0g." for "log.", "APl" for "API"): a
-        /// zero is an o, a one and an i (a capital I lowercased) are an l.
+        /// The letters the recognizer trades for one another, as one (probed: "l0g." for "log.", "APl" for "API"; on
+        /// iOS 26.5, Cyrillic capitals for the Latin ones they are drawn like: "• СОАСН : WК 06 / 12" for Lime's meta
+        /// label "COACH · WK 06 / 12 · BUILD" at 320 pt .xxLarge): a zero is an o, a one and an i (a capital I
+        /// lowercased) are an l, and a Cyrillic letter is the Latin letter it is drawn like (`latin`).
         static func fold(_ c: Character) -> Character {
             switch c {
             case "0": return "o"
             case "1", "i": return "l"
-            default: return c
+            default: return latin[c].map(fold) ?? c
             }
         }
+
+        /// The Cyrillic letters drawn like a Latin capital (А В Е К М Н О Р С Т У Х, and Ѕ І Ј), lowercased as
+        /// `normalize` leaves them, each with the Latin letter it stands for. iOS 26.5's accurate recognizer (revision
+        /// 3; its languages hold ru-RU and uk-UA, and no Greek) reads JetBrains Mono's Latin capitals as these in the
+        /// Lime meta label's wrapped line whatever the request says: probed with revisions 2 and 3, automatic language
+        /// detection off, `recognitionLanguages` en-US, en-GB, en-US and fr-FR, or none, every one read the same
+        /// Cyrillic letters (iOS 27.0's reads Latin). Only these look-alikes are one letter: a Cyrillic П or И is no
+        /// Latin letter, and a Latin letter is never taken for another.
+        static let latin: [Character: Character] = [
+            "\u{0430}": "a", "\u{0432}": "b", "\u{0435}": "e", "\u{043A}": "k", "\u{043C}": "m", "\u{043D}": "h",
+            "\u{043E}": "o", "\u{0440}": "p", "\u{0441}": "c", "\u{0442}": "t", "\u{0443}": "y", "\u{0445}": "x",
+            "\u{0455}": "s", "\u{0456}": "i", "\u{0458}": "j",
+        ]
 
         /// How the lines read lie against the strings shown, both in their order (`match`).
         struct Match: Equatable {
@@ -648,6 +665,31 @@ final class CoachHomeRenderTests: XCTestCase {
                        DrawnText.Match(lineErrors: [0, 0], stringErrors: [0, 0], missing: [], extra: []), "U+FFFD: nothing, or any one letter")
         XCTAssertEqual(m(["the squat is moving L"], ["the squat is moving\u{1F4AA}\u{2026}"]).lineErrors, [0], "an emoji read as a letter")
         XCTAssertEqual(m(["ACCOUNT", "L\u{2192}", "Disconnect"], ["Account", "Disconnect"]).lineErrors, [0, 0, 0], "an icon's stroke read as a letter")
+        // iOS 26.5 reads Latin capitals as the Cyrillic ones drawn like them, each the Latin letter and no other
+        func folded(_ s: String) -> [Character] { DrawnText.normalize(s).map(DrawnText.fold) }
+        let cyrillic = "\u{0410}\u{0412}\u{0415}\u{041A}\u{041C}\u{041D}\u{041E}\u{0420}\u{0421}\u{0422}\u{0423}\u{0425}\u{0405}\u{0406}\u{0408}"
+        XCTAssertEqual(folded(cyrillic), folded("ABEKMHOPCTYXSIJ"), "А В Е К М Н О Р С Т У Х Ѕ І Ј")
+        XCTAssertEqual(folded(cyrillic.lowercased()), folded("abekmhopctyxsij"))
+        XCTAssertNotEqual(folded("\u{041F}"), folded("N"), "П is drawn like no N")
+        XCTAssertNotEqual(folded("\u{0418}"), folded("N"), "nor И")
+        XCTAssertNotEqual(folded("\u{0421}"), folded("O"), "С is a C, never an O")
+        // the Lime meta label at 320 pt .xxLarge, wrapped around the avatar, as iOS 26.5 read it (CI and here)
+        let label = ["COACH \u{00B7} WK 06 / 12 \u{00B7} BUILD", "Hi Kalani."]
+        let first = "\u{2022} \u{0421}\u{041E}\u{0410}\u{0421}\u{041D} : W\u{041A} 06 / 12"
+        XCTAssertEqual(m([first, "K", "\u{2022} BUILD", "Hi Kalani."], label),
+                       DrawnText.Match(lineErrors: [0, 0, 0, 0], stringErrors: [0, 0], missing: [], extra: []), "every letter its Latin one")
+        // and a look-alike forgives nothing else: a word cut or left out is still not drawn whole
+        r = m([first, "K", "\u{2022} B...", "Hi Kalani."], label)
+        XCTAssertEqual(r.missing, ["uild of \"COACH \u{00B7} WK 06 / 12 \u{00B7} BUILD\""], "a label cut short")
+        XCTAssertEqual(r.stringErrors, [4, 0])
+        r = m([first, "K", "Hi Kalani."], label)
+        // (the avatar's lone K may stand for BUILD's d as a misread: the word is missing either way)
+        XCTAssertEqual(r.missing.count, 1, "a label's second line not drawn: \(r)")
+        XCTAssertTrue(r.missing.first?.hasPrefix("buil") == true && r.missing.first?.hasSuffix(" of \"\(label[0])\"") == true, "\(r.missing)")
+        XCTAssertGreaterThan(r.stringErrors[0], DrawnText.allowed(16), "\(r)")
+        r = m(["\u{2022} \u{0421}\u{041E}\u{0410}\u{0421}\u{041D} : W\u{041A} 07 / 13", "K", "\u{2022} BUILD", "Hi Kalani."], label)
+        XCTAssertEqual(r.lineErrors[0], 2, "another week: \(r)")
+        XCTAssertGreaterThan(r.lineErrors[0], DrawnText.allowed(11))
         // the order is the column's
         r = m(["Disconnect", "Open Chat"], ["Open Chat", "Disconnect"])
         XCTAssertTrue(r.lineErrors[0] > DrawnText.allowed(10) || r.lineErrors[1] > DrawnText.allowed(8),
