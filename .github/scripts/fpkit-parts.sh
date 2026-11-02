@@ -7,8 +7,9 @@
 # stack-26 run tabs' and stack's classes again on iOS 26.x, the floor of the tab root and the native Coach tab: the
 # classes that drive UIKit's tab bar (tabs) and the Coach tab's navigation stack (stack), where the two runtimes differ.
 #
-# The groups are also the time budget (the job's comment): on a calm Mac, with H10's and H11's classes, renders takes
-# about 220 s, tabs 190 s, stack 250 s and rest 140 s, and a GitHub runner about three times that. rest is kept the
+# The groups are also the time budget (the job's comment): on a calm Mac, with H10's and H11's tests, renders takes
+# about 200 s, tabs 230 s, stack 200 s and rest 95 s, and a GitHub runner's test step about 2.3 minutes of building
+# plus 2.8 times that (16ee484's parts). A class that must run on iOS 26 too belongs to tabs or stack; rest is kept the
 # lightest because every new class lands there.
 #
 # Usage (from anywhere; the script finds the repo from its own path):

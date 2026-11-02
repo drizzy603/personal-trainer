@@ -33,9 +33,10 @@ env:
   # The Xcode the app ships with: the owner's Mac archives with Xcode 27.1 (27A9275); this moves when that Mac's does.
   # GitHub has Xcode 27 only on the xcode-27 label, a public preview (runner-images issue 14404: no SLA, and queueing
   # while capacity grows). Its image of 2026-10-26 has macOS 27, Xcode 27.0, 27.1 (27A9275, the default) and 27.2 RC,
-  # and the iOS 27.0 and 27.1 runtimes, none of 26.x. macos-latest is macos-26 (image of 2026-10-13: Xcode 26.0.1 to
-  # 26.6, the iOS 26.2, 26.4.1 and 26.5 runtimes). The app build, fpkit-mac and fpkit-ios' iOS 27 parts run on xcode-27
-  # with this Xcode; when GitHub gives Xcode 27 a GA label (or drops the preview's), move their runs-on there.
+  # and the iOS 27.0 and 27.1 runtimes, none of 26.x. macos-latest is macos-26 (image of 2026-10-26: Xcode 26.0.1 to
+  # 26.6, the iOS 26.2, 26.4.1 and 26.5 runtimes, no Xcode 27); both checked in runner-images on 2026-11-02. The app
+  # build, fpkit-mac and fpkit-ios' iOS 27 parts run on xcode-27 with this Xcode; when GitHub gives Xcode 27 a GA label
+  # (or drops the preview's), move their runs-on there.
   XCODE_SHIP: '27.1'
   # The newest Xcode on macos-26, the only image with iOS 26.x runtimes: fpkit-ios' iOS 26 parts (that job's comment).
   XCODE_FLOOR: '26.6'
@@ -123,13 +124,13 @@ jobs:
   # 2026-10-26; the Mac's gates run 27.0). The tab root and the native Coach tab support iOS 26 and later (delta 14) and
   # xcode-27 has no iOS 26 runtime, so tabs-26 and stack-26 run tabs' and stack's classes, the ones that drive UIKit's
   # tab bar and the Coach tab's navigation stack, again on macos-26's newest iOS 26.x (26.5), built by Xcode 26.6. That
-  # is the floor's own UIKit and SwiftUI, which go by the runtime and by an SDK of at least 26 (true of both Xcodes),
-  # under an older compiler than the app's. (The four cases that failed at 16ee484 under Xcode 26.6 on iOS 26.5 fail
-  # line for line under Xcode 27.1 on iOS 26.5 on the owner's Mac, and pass in its gates on 27.0.) So FPKit must keep
+  # is the floor's own UIKit and SwiftUI, which go by the runtime; Xcode 26.6 links against the iOS 26.5 SDK, the
+  # runtime's own, so every linked-on-or-after check the runtime makes reads as it does for the app (linked against
+  # 27.1): only the compiler is older than the app's. (The four cases that failed at 16ee484 under Xcode 26.6 on iOS
+  # 26.5 fail line for line under Xcode 27.1 on iOS 26.5 on the owner's Mac, and pass there on 27.0.) So FPKit must keep
   # compiling with Xcode 26.6: an API only the iOS 27 SDK declares does not compile there even behind #available. Should
-  # FPKit need one, those two parts move to xcode-27 and download the iOS 26.5 runtime on each run (8.5 GB from Apple).
-  # Only the Mac runs Xcode 27.1's own build on iOS 26.x, and the other classes on iOS 26.x (every local FPKit gate runs
-  # on iOS 26.5 and 27.0).
+  # FPKit need one, those two parts move to xcode-27 and download the iOS 26.5 runtime on each run (gigabytes from
+  # Apple). CI leaves to a Mac Xcode 27.1's own build on iOS 26.x, and every other class on iOS 26.x.
   #
   # Parts, each on its own runner and simulator; .github/scripts/fpkit-parts.sh is the one place that names their
   # classes and each part's iOS major. renders, tabs and stack run the classes named there, rest runs everything else
@@ -140,11 +141,13 @@ jobs:
   # Time budget (the split rule): the test step prints its minutes as a notice; past 22 minutes it warns, and the parts
   # are rebalanced or split again. At 16ee484 (three parts on macos-26, Xcode 26.6, iOS 26.5) the test steps took 12.0
   # minutes (CoachHomeRenderTests and CoachRenderTests), 7.5 (ShellBridgeTabsTests, 34 tests) and 20.6 (every other
-  # class, three failures' waits included), each building its tests first: about three times a calm Mac's run of the
-  # same classes, one and a half times a busy one's. Another 8 to 9 minutes went outside them (the first simulator boot
-  # 5.5 to 6.8), hence 40 minutes for the job, so the warning comes well before the job is cut off. On a calm Mac, with
-  # H10's and H11's classes, renders takes about 220 s, tabs 190, stack 250 and rest 140 (fpkit-parts.sh): about 12,
-  # 11, 14 and 9 minutes here, rest being the part every new class joins.
+  # class, three failures' waits included): about 2.3 minutes of building the tests plus 2.8 times a calm Mac's seconds
+  # for the same classes (its whole run of those tests on 27.0: renders 205 s, ShellBridgeTabsTests 110), the failures
+  # adding about 5 minutes to the last. Another 8 to 9 minutes went outside the test steps (the first simulator boot 5.5
+  # to 6.8), hence 40 minutes for the job, so the warning comes well before the job is cut off. With H10's and H11's
+  # tests (ShellBridgeTabsTests 52, ScreenHostTests 61) a calm Mac takes about 200 s for renders, 230 for tabs, 200 for
+  # stack and 95 for rest: about 12, 13, 12 and 7 minutes a test step by that rule, rest being the part every new class
+  # joins, and a failing case's waits on top. xcode-27's runners are not measured yet.
   #
   # A run takes eight macOS runners (build, fpkit-mac and six parts), and GitHub runs at most five macOS jobs at once
   # below its Enterprise plan: the last parts can wait for a runner (time queued is not counted in timeout-minutes).
