@@ -258,8 +258,9 @@ chat (Cancel, no control named Back); the classic root a device switch pins
 (`shell.root`, each screen's `host`, `leftWindowAny`, `input`, `replaced`, a key
 window, the page's tabs-mode fields) and every event kind's fields (`funnel`,
 `screenChanged` in contract 8.1's words, page messages with their receipt time,
-`intent` records with no argument, `trovoOpen`, `ping`, `fellBack` in contract
-10.3's words); the shell's counters moving only where a step moves them; and a
+`intent` records with no argument, `type`, `draft` and `share` with no field
+beyond their own (lengths, never the words), `trovoOpen`, `ping`, `fellBack` in
+contract 10.3's words); the shell's counters moving only where a step moves them; and a
 canary (`sk-ant-test-` and 16 random characters) typed into the native key field
 and saved by CONNECT, found in no probe log (each log read after the app ended).
 The page's coach calls go to a closed loopback port (`-fpApiBase`), so the canary

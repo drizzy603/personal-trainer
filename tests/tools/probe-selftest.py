@@ -17,7 +17,7 @@ screenChild, phScreen, seqSeen, fpTab, sheetsOpen, holds). Every event of a kind
 shell's receipt time (`selectTab`, `sheets`, `setSwitch` among them), `intent` records (never an argument), `trovoOpen`,
 `ping`, `fellBack` (contract 10.3's words). A canary typed into the native key field, and saved by CONNECT, must appear
 nowhere in any probe log of the run, read after the app ended (contract 5 K4), and no `type`, `draft` or `share` event
-may carry the words it was given. The shell's own counters (hidden, leftAny, leftWindow, markers, trips, strays) move
+may carry the words it was given, nor any field beyond its own. The shell's own counters (hidden, leftAny, leftWindow, markers, trips, strays) move
 only where a step moves them.
 
 Launches, in this order (`--only` picks among them; prepare and restore always run):
@@ -299,13 +299,6 @@ def _alt(ok_spec, err_spec, ok=lambda e: 'error' not in e):
     return f
 
 
-def _no_text(*keys):
-    def f(e):
-        bad = [k for k in keys if k in e]
-        return 'carries %s' % ', '.join(bad) if bad else None
-    return f
-
-
 def _all(*fs):
     def f(e):
         p = [x for x in (g(e) for g in fs) if x]
@@ -377,8 +370,8 @@ EVENTS = {
                                  + (shape(e, {'via': oneof('accessibility', 'model')}) if e.get('pressed')
                                     else shape(e, {'why': 'str'}))) or None,
     'type': _all(_alt({'length': 'int', 'kind': oneof('composer', 'key'), 'via': oneof('keys', 'draft')}, {'length': 'int', 'error': 'str'}),
-                 _no_text('text')),
-    'draft': _all(lambda e: '; '.join(shape(e, {'length': 'int|null'})) or None, _no_text('text')),
+                 _only('length', 'kind', 'via', 'error')),      # the words' length, never the words (contract 5 K4)
+    'draft': _all(lambda e: '; '.join(shape(e, {'length': 'int|null'})) or None, _only('length')),
     'nativeFocus': {'ok': 'bool', 'kind': 'str|null', 'field': 'str|null'},
     'resign': {'ok': 'bool'},
     'openURL': _alt({'ran': oneof(True), 'url': 'str', 'opened': 'bool'}, {'ran': 'bool', 'error': 'str'}),
@@ -386,7 +379,7 @@ EVENTS = {
                             ok=lambda e: 'fired' in e),
     'share': _all(_alt({'ran': oneof(True), 'jpeg': oneof('drawn', 'file'), 'bytes': 'int', 'stored': oneof('file', 'defaults'),
                         'legacy': 'bool', 'commentLength': 'int'}, {'ran': 'bool', 'error': 'str'}),
-                  _no_text('comment', 'text')),
+                  _only('ran', 'jpeg', 'bytes', 'stored', 'legacy', 'commentLength', 'error')),
     'sceneCycle': _alt({'ran': oneof(True), 'root': oneof('tabs', 'classic'), 'newWebView': 'bool', 'newWindow': 'bool'},
                        {'error': 'str'}),
     'sceneDestroy': _alt({'session': 'str'}, {'error': 'str'}),
@@ -823,8 +816,9 @@ def scen_pageEvents(c):
             {'open': [(root(so).get('bar') or {}).get('hidden'), root(so).get('sheetsOpen'), page(so).get('sheetsOpen'), page(so).get('holds')],
              'closed': [(root(sc).get('bar') or {}).get('hidden'), root(sc).get('sheetsOpen'), page(sc).get('sheetsOpen'), page(sc).get('holds')]})
     # delta 17.4: no finger can tap a bar a sheet has hidden, so the step taps nothing (the lookup found the item: the
-    # refusal is the hit test's, not the tab id's)
-    hb, ut = first(ev, 'tapTab', tab='log'), ev.state('tapped under the sheet')
+    # refusal is the hit test's, not the tab id's); the launch's first tapTab (log, before the sheet) is not this one
+    ut = ev.state('tapped under the sheet')
+    hb = next((e for e in ev.all('tapTab') if e.get('tab') == 'log' and e.get('t', -1) >= (so or {}).get('t', 9e9)), {})
     between = [e for e in runs_after(ev, ev.first('state', label='sheet open')) if e.get('t', 9e9) <= (ut or {}).get('t', -1)]
     c.check(s, 'tapTab while a sheet hides the bar: an error event (the bar is hidden), no run, the selection and seq unchanged',
             hb.get('activated') is False and str(hb.get('error', '')).startswith('the bar is hidden') and (hb.get('copies') or 0) >= 1
@@ -1088,8 +1082,8 @@ def scen_fpOpenURL(c):
     # A share waits in the legacy slot first (written once the page's own +2.5 s boot read has passed, so nothing reads it
     # in that launch); then a cold launch with -fpOpenURL trovo://share. Contract 9: the first frame's tab, the parked
     # link, no _trovoOpen. The page's boot read (TrovoWidget.consumeDeepLink at +0.4 s, then the share read after hello)
-    # takes the photo and the comment well before its own +2.5 s check could have: the share's selectTab {coach, chat}
-    # within 1.5 s of hello says the parked link did it.
+    # takes the photo and the comment before its own +2.5 s check could have: the share's selectTab {coach, chat} reaching
+    # the shell less than 2.5 s after the page's script began says the parked link did it.
     pre = c.launch(s, 'fpOpenURL-share', [[wait(3200), step('share', comment=c.cold_text, legacy=True), DONE]])
     sh = first(pre, 'share')
     c.check(s, 'a share waits in the legacy slot (the photo drawn, nothing read it in that launch)', sh.get('stored') == 'defaults'
@@ -1107,12 +1101,19 @@ def scen_fpOpenURL(c):
     c.check(s, 'the page\'s boot read took the parked link: the shared photo in hand, the comment in a composer',
             (got.get('photo') or 0) > 1000 and (chat(rd).get('draft') == c.cold_text or got.get('web') == len(c.cold_text)),
             {'composer': got, 'native draft length': len(chat(rd).get('draft') or '')})
-    hello = first(ev, 'page', method='hello')
+    # The page's own check is set 2.5 s ahead (setTimeout) after its script stamped _visitFrom (Date.now(), earlier in the
+    # same script): a read by that check reaches the shell no sooner than visitFrom + 2500 on the wall clock the shell's
+    # receipt (recvWall) shares. A selectTab {coach, chat} received before that came from the parked link's read. No
+    # visibilitychange in the launch (_arrive would move visitFrom). Load can only push the parked read past the bound
+    # (a failure to rerun), never a +2.5 s read under it.
+    vf = page(k).get('visitFrom')
     took = next((e for e in ev.all('page') if e.get('method') == 'selectTab' and e.get('tab') == 'coach' and e.get('intent') == 'chat'), {})
-    c.check(s, 'it read the share through the parked link, not the page\'s +2.5 s check: its selectTab {coach, chat} within 1.5 s of hello '
-               '(a timing check: rerun under load)',
-            bool(hello) and bool(took) and took.get('t', 9e9) - hello.get('t', 0) <= 1500,
-            {'hello': hello.get('t'), 'selectTab': took.get('t')})
+    lead = took.get('recvWall', 9e15) - vf if type(vf) in (int, float) else None
+    c.check(s, 'it read the share through the parked link, not the page\'s +2.5 s check: its selectTab {coach, chat} reached the shell less '
+               'than 2.5 s after the page\'s script began (visitFrom; under heavy load rerun)',
+            bool(took) and lead is not None and lead < 2500 and not page(k).get('visEvents') and not page(rd).get('visEvents'),
+            {'visitFrom': vf, 'selectTab recvWall': took.get('recvWall'), 'lead ms': lead,
+             'visEvents': [page(k).get('visEvents'), page(rd).get('visEvents')]})
 
 
 def scen_share(c):
