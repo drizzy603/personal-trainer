@@ -429,14 +429,20 @@ final class CoachHomeRenderTests: XCTestCase {
         }
 
         /// Reading order: rows from the top, each row's lines from the left. A line joins the row of the line above it
-        /// when their heights overlap by half the shorter one's or more (two halves of one line of text, a lone mark
-        /// beside a line, whatever their middles), else it starts the next row.
+        /// when their heights overlap by half the taller one's or more (two halves of one line of text, a lone mark
+        /// beside a line, whatever their middles), else it starts the next row. Half the taller, not the shorter: the
+        /// meta row's disc sits midway between a wrapped label's two lines, and the recognizer reads it with one of
+        /// them, stretching that line's box to it, or alone, so a box of the next row reaches into the row above by a
+        /// few points (probed at 320 pt .xxLarge: on iOS 26.5 Heavyweight's "• STRENGTH", 21 pt tall, 6 pt into "COACH
+        /// • WK 06 / 12" above it, 11 pt tall; on iOS 27.0 Lime's lone "•", 20 pt tall, 9.6 pt into "COACH • WK 06 / 12
+        /// •", 13.6 pt tall), where half the shorter one's height would put it on the upper line's row and, being
+        /// further left, before it.
         static func ordered(_ lines: [Line]) -> [Line] {
             var rows: [[Line]] = []
             for line in lines.sorted(by: { $0.box.midY < $1.box.midY }) {
                 if let anchor = rows.last?.first {
                     let overlap = min(anchor.box.maxY, line.box.maxY) - max(anchor.box.minY, line.box.minY)
-                    if overlap >= 0.5 * min(anchor.box.height, line.box.height) {
+                    if overlap >= 0.5 * max(anchor.box.height, line.box.height) {
                         rows[rows.count - 1].append(line)
                         continue
                     }
@@ -700,7 +706,9 @@ final class CoachHomeRenderTests: XCTestCase {
     }
 
     /// Reading order, on boxes the recognizer gave (probed): a meta label wrapped around the avatar reads its first
-    /// line, the avatar, then its second; a mark on a line's row reads after the line whatever their middles.
+    /// line, the avatar, then its second; a mark on a line's row reads after the line whatever their middles; a line
+    /// whose box the recognizer stretched to the meta row's disc, midway between the label's two lines, reads in its
+    /// own row, the upper line first, whichever of the two took the disc.
     func testTheLinesAreReadInRowsFromTheLeft() {
         typealias L = DrawnText.Line
         let first = L(text: "COACH \u{2022} WK 06 / 12", box: CGRect(x: 33.3, y: 52.0, width: 170.7, height: 13.5))
@@ -714,6 +722,21 @@ final class CoachHomeRenderTests: XCTestCase {
         let arrow = L(text: "\u{2192}", box: CGRect(x: 238.7, y: 687.6, width: 22.6, height: 20.0))
         let next = L(text: "start coaching", box: CGRect(x: 43.7, y: 704.0, width: 158.1, height: 26.6))
         XCTAssertEqual(DrawnText.ordered([next, arrow, line]).map(\.text), [line.text, arrow.text, next.text])
+        // Heavyweight's label at 320 pt .xxLarge ("COACH · WK 06 / 12 ·" over "STRENGTH"), the disc read with the lower
+        // line (iOS 26.5): 6 pt into the upper line's 11, more than half the upper's height, less than half its own
+        let upper = L(text: "COACH \u{2022} WK 06 / 12-", box: CGRect(x: 33.3, y: 53.3, width: 154.7, height: 10.7))
+        let lower = L(text: "\u{2022} STRENGTH", box: CGRect(x: 15.9, y: 58.0, width: 102.9, height: 21.3))
+        let greet = L(text: "Hi Kalani.", box: CGRect(x: 19.9, y: 124.8, width: 82.8, height: 18.1))
+        XCTAssertEqual(DrawnText.ordered([greet, lower, upper]).map(\.text), [upper.text, lower.text, greet.text], "the disc read with the lower line")
+        // the same render on iOS 27.0, the disc read with the upper line, its box stretched over the lower one's top
+        let tall = L(text: "\u{2022} COACH \u{2022} WK 06 /12.", box: CGRect(x: 14.7, y: 41.6, width: 173.9, height: 35.3))
+        let below = L(text: "STRENGTH", box: CGRect(x: 33.3, y: 66.6, width: 85.3, height: 12.0))
+        XCTAssertEqual(DrawnText.ordered([below, tall]).map(\.text), [tall.text, below.text], "the disc read with the upper line")
+        // Lime's at 320 pt .xxLarge ("COACH · WK 06 / 12 ·" over "BUILD") on iOS 27.0: the disc read alone, between
+        let lime = L(text: "COACH \u{2022} WK 06 / 12 \u{2022}", box: CGRect(x: 34.7, y: 51.9, width: 186.7, height: 13.6))
+        let disc = L(text: "\u{2022}", box: CGRect(x: 14.7, y: 55.9, width: 18.7, height: 20.0))
+        let build = L(text: "BUILD", box: CGRect(x: 33.3, y: 67.6, width: 50.8, height: 12.6))
+        XCTAssertEqual(DrawnText.ordered([build, disc, lime]).map(\.text), [lime.text, disc.text, build.text], "the disc read alone")
     }
 }
 #endif
