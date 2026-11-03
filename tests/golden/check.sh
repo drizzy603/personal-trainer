@@ -11,7 +11,10 @@
 # 3. dump-coach-home.js --check: the Coach home and tab bar models equal Fixtures/{coachHome,tabs}'s
 #    page-built files (`node tests/golden/dump-coach-home.js` rewrites them), and the chat built under the
 #    tabs shell equals Fixtures/coach (one CoachModel whichever host draws it).
-# 4. swift test: CoachModelTests, BlocksTests, CoachHomeModelTests and TabsModelTests decode every fixture
+# 4. dump-meta-row.js --check: the Coach hub's meta row as the page lays it out (the label's lines, the avatar
+#    tile's width) equals Fixtures/layout/meta-row.json, which CoachHomeViewTests (FPUITests, on a simulator) holds
+#    the native row to; `node tests/golden/dump-meta-row.js` rewrites it.
+# 5. swift test: CoachModelTests, BlocksTests, CoachHomeModelTests and TabsModelTests decode every fixture
 #    with FPCore.
 set -e
 cd "$(dirname "$0")/../.."
@@ -19,6 +22,7 @@ if [ ! -d tests/node_modules/playwright ]; then (cd tests && npm install --no-fu
 node tests/golden/coach-html.js
 node tests/golden/dump-coach.js --check
 node tests/golden/dump-coach-home.js --check
+node tests/golden/dump-meta-row.js --check
 if [ "${SKIP_SWIFT:-}" = "1" ] || ! command -v swift >/dev/null 2>&1; then echo "swift: skipped"; exit 0; fi
 flags=()
 # Inside iCloud Drive SwiftPM cannot sign the test bundle unless .build lives outside it (FPKit README).
