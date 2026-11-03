@@ -989,8 +989,9 @@ final class CoachHomeViewTests: XCTestCase {
     /// draws one (the row keeps no gap of its own); where it wraps, the separator ends a line ("COACH · WK 06 / 12 ·"
     /// over "BUILD"), never leads the next ("· BUILD", SwiftUI's own breaker); and the tile gives the label the room the
     /// web's flexbox gives it ("… · FOUNDATION" over "PHASE" with the tile at 36.4 of its 42.6 pt in Heavyweight at
-    /// 320 pt .xLarge, where a tile kept at 38 px broke "… ·" over "FOUNDATION PHASE"), its width the web's within a
-    /// tenth of a point. Laid out (every case at 320 and 390 pt), the label (the dot, its gap and the lines: one element
+    /// 320 pt .xLarge; a tile kept at 38 px broke "… · HYPERTROPHY ACCUMULATION" in three lines at 320 pt .xxLarge, where
+    /// the web draws two), its width the web's within a tenth of a point. Laid out (every case at 320 and 390 pt), the
+    /// label (the dot, its gap and the lines: one element
     /// for VoiceOver) starts at the gutter, as tall as its lines and as wide as the widest, so the view draws those
     /// lines and no others (CoachHomeRenderTests holds the drawn tile's width by its letter's place).
     func testTheMetaLabelBreaksWhereTheWebsDoes() throws {
