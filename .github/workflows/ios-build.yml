@@ -76,11 +76,20 @@ jobs:
             -scheme App \
             -configuration Debug \
             -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/dd" \
             -skipPackagePluginValidation \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
             build
+
+      # iOS 27 kills an app built against its SDK at launch unless the scene manifest names its scene delegate, and the
+      # simulator does not enforce it (TestFlight builds 44 and 45). The checker's self-test first, so a plutil that
+      # reads differently on this runner fails here instead of passing the app falsely.
+      - name: The scene rule on the built app
+        run: |
+          tests/tools/scene-plist.sh --self-test
+          tests/tools/scene-plist.sh "$RUNNER_TEMP/dd/Build/Products/Debug-iphonesimulator/App.app/Info.plist"
 
   # FPKit (ios/App/FPKit), the native half of the move to SwiftUI. FPCore and FPStore run on the Mac, compiled by the
   # Xcode the app ships with, on macOS 27 like the owner's Mac.

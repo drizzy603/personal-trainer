@@ -204,6 +204,16 @@ if missing:
 print('✓ all inline handlers resolve (%d checked)' % len(called))
 EOF
 
+# iOS 27 kills an app built against its SDK at launch unless the scene manifest names its scene delegate, and the
+# simulator does not enforce it (TestFlight builds 44 and 45 died on the phone). From build 61 SceneDelegate builds the
+# root in code, so a storyboard key would add a second root and page. The source plist is checked here; the native
+# tools, CI and the release check the built app with the same tool.
+if command -v plutil >/dev/null 2>&1; then
+  tests/tools/scene-plist.sh --source ios/App/App/Info.plist
+else
+  echo "· the scene plist check needs plutil (macOS): skipped"
+fi
+
 echo "ALL CHECKS PASSED"
 
 # build.txt mirrors <meta build> — the native shell polls this 12-byte file

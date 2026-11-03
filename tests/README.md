@@ -164,7 +164,7 @@ chat's HTML, the page's coach models and FPCore's fixtures together.
 ## The native store on a simulator
 
 ```sh
-./tests/native-store.sh               # build as build 60, every scenario on iOS 26.x and 27.0
+./tests/native-store.sh               # build as build 61 at least, every scenario on iOS 26.x and 27.0
 ./tests/native-store.sh --downgrade   # also build 59 at its own commit: the 59 <-> 60 drill
 ```
 
@@ -180,14 +180,29 @@ an OTA page, Settings › About › Storage through the real TrovoStore plugin).
 reinstalls the app on that phone and leaves it with the scenario seed.
 
 `../test-native.sh` (the "test it" flow) drives its routes with launch arguments
-too (`-devNav <route>`, `-devTheme <room>`), builds as build 60 so the native copy
-stays attached, runs every route once per room on one app container, and checks
-the native copy against WebKit's file before the watch step.
+too (`-devNav <route>`, `-devTheme <room>`), builds as build 61 at least so the
+native copy stays attached (a new store's minReader is 60), runs every route once
+per room on one app container, and checks the native copy against WebKit's file
+before the watch step.
+
+The three tools (`native-store.sh`, `native-shell.sh`, `../test-native.sh`) hold
+the paired simulators for the whole run: each takes `~/Library/Caches/FPKit/sim.lock`
+first (`tools/simlock.sh`: it waits as long as a live holder holds, naming it every
+10 minutes, and breaks a lock whose holder is gone, or one naming no holder once it
+is 2 hours old; an agent's `fplock sim.lock` around a tool counts as the tool's
+hold). Each then builds through `tools/fp-build.sh` into
+`~/Library/Caches/FPKit/<checkout>/dd-<tool>` (`dd-store`, `dd-shell`, `dd-native`;
+`<checkout>` is `main` or the worktree's folder name, never `/tmp`), checks the
+scene rule on the built app (`tools/scene-plist.sh`) and writes `build-id.txt`
+beside it: HEAD, the tree's state, the bundled page's stamp, the build number.
+`--no-build` runs that build only when it is this tree's and the page staged in
+`ios/App/App/public` is the one it bundled, else exits 1 naming the difference;
+`--no-build=any` runs it anyway, its identity first.
 
 ## The native screens on a simulator
 
 ```sh
-./tests/native-shell.sh               # build as build 60, every scenario on iOS 26.x
+./tests/native-shell.sh               # build as build 61 at least, every scenario on iOS 26.x
 ./tests/native-shell.sh --os 27 --only chat,wckill
 ```
 

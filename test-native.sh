@@ -3,16 +3,25 @@
 # drive the main screens, and drop screenshots for eyeballing.
 #
 #   ./test-native.sh              # full run: build + drive + screenshots
-#   ./test-native.sh --no-build   # reuse the last build, just drive + shoot
+#   ./test-native.sh --no-build   # reuse this tree's last build, just drive + shoot
+#                                 # (another tree's build is refused; --no-build=any takes it, saying so)
 #   ROOMS="heavyweight" ./test-native.sh   # one pass instead of two ("default": the stored room)
+#
+# One runner uses the paired simulators at a time: the run takes ~/Library/Caches/FPKit/sim.lock
+# first (tests/tools/simlock.sh: it waits as long as a live holder holds, says whose lock it waits
+# for, and breaks one whose holder is gone, or one naming no holder once it is 2 hours old), and
+# builds inside that hold.
 #
 # What it does (the verified recipe from 2026-08-02):
 #   1. Refresh www/ from repo-root sources (cap copy alone ships a STALE www).
 #   2. Build the App scheme with -destination (never -sdk: forcing the
 #      iphonesimulator SDK breaks the embedded watch target's WatchKit), as
-#      build 60 at least (FPStore gives a new store minReader 60, so a lower
-#      build number would refuse its own native copy from its second launch),
-#      and check the built app still names its scene delegate.
+#      build 61 at least (FPStore gives a new store minReader 60, so a lower
+#      build number would refuse its own native copy from its second launch,
+#      and the verdicts a container kept from build 60's runs must not apply),
+#      and check the built app's scene manifest (tests/tools/scene-plist.sh).
+#      Steps 1-2 are tests/tools/fp-build.sh's: the build lands in
+#      ~/Library/Caches/FPKit/<checkout>/dd-native with build-id.txt beside it.
 #   3. Boot the first paired iPhone+Watch simulator duo.
 #   4. Install + launch the phone app, then drive screens by relaunching it
 #      with the route as a launch argument (-devNav <route>; routes per
@@ -45,7 +54,12 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-DERIVED=/tmp/supero-build
+NOBUILD=""
+case "${1:-}" in
+  "") ;;
+  --no-build|--no-build=any) NOBUILD="$1" ;;
+  *) echo "unknown option $1"; exit 2 ;;
+esac
 OUT=screenshots/out/native
 APP_ID=app.kt.trainer
 WATCH_ID=app.kt.trainer.watchkitapp
@@ -53,23 +67,14 @@ ROUTES="log/workout progress progress/calendar progress/day progress/compare pro
 ROOMS=${ROOMS:-"heavyweight dark"}
 mkdir -p "$OUT"
 
-PROJ=$(grep -m1 'CURRENT_PROJECT_VERSION = ' ios/App/App.xcodeproj/project.pbxproj | sed 's/[^0-9]//g')
-SHELL_BUILD=$(( PROJ >= 60 ? PROJ : 60 ))
-if [ "${1:-}" != "--no-build" ]; then
-  echo "── Refreshing www/ from repo root"
-  npm run --silent build:web
-  npx cap copy ios >/dev/null
-  echo "── Building App scheme (phone + watch) for simulators, as build $SHELL_BUILD"
-  ( cd ios/App && xcodebuild -project App.xcodeproj -scheme App -configuration Debug \
-      -destination 'generic/platform=iOS Simulator' -derivedDataPath "$DERIVED" \
-      build CODE_SIGNING_ALLOWED=NO CURRENT_PROJECT_VERSION="$SHELL_BUILD" 2>&1 | tail -1 )
-fi
+. tests/tools/simlock.sh
+simlock test-native
+# iOS 27 kills an app built against its SDK without a scene delegate (builds 44/45), and the simulator does not
+# enforce it: fp-build checks the built Info.plist (tests/tools/scene-plist.sh) on every run, --no-build included.
+DERIVED=$(tests/tools/fp-build.sh native $NOBUILD)
 PHONE_APP="$DERIVED/Build/Products/Debug-iphonesimulator/App.app"
 WATCH_APP="$DERIVED/Build/Products/Debug-watchsimulator/SuperoWatch.app"
-[ -d "$PHONE_APP" ] || { echo "FAIL: $PHONE_APP missing — run without --no-build"; exit 1; }
-# iOS 27 kills an app built against its SDK without a scene delegate (builds 44/45), and the simulator does not
-# enforce it: check the built Info.plist instead.
-plutil -p "$PHONE_APP/Info.plist" | grep -q 'UISceneDelegateClassName' || { echo "FAIL: the built app names no UISceneDelegateClassName"; exit 1; }
+SHELL_BUILD=$(plutil -extract CFBundleVersion raw -o - "$PHONE_APP/Info.plist")
 
 # First active pair: watch UDID then phone UDID.
 read -r WATCH PHONE <<<"$(xcrun simctl list pairs | python3 -c "

@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """The live native Coach chat in the real app (plan task C7), the coach half of test-native.sh.
 
-test-native.sh builds and installs the app (Debug, as build 60) and calls this on the phone of the paired iPhone + Watch.
-Every scenario drives the real index.html in the real Capacitor shell through the app's own launch arguments (FPUI's
-ShellProbe, Debug builds only: `-fpShellProbe <steps>`, `-devNav coach/chat`, `-devTheme <room>`, `-fpApiBase`); the
-app acts and reports, this decides, and every screen worth a look is shot by name into --out.
+test-native.sh builds and installs the app (Debug, as build 61 at least, through tests/tools/fp-build.sh into
+~/Library/Caches/FPKit/<checkout>/dd-native, holding the paired simulators' sim.lock) and calls this on the phone of the
+paired iPhone + Watch. Every scenario drives the real index.html in the real Capacitor shell through the app's own
+launch arguments (FPUI's ShellProbe, Debug builds only: `-fpShellProbe <steps>`, `-devNav coach/chat`, `-devTheme
+<room>`, `-fpApiBase`); the app acts and reports, this decides, and every screen worth a look is shot by name into
+--out.
 
   native-chat.py --phone UDID --out DIR [--shell 60] [--only prepare,smoke,keys,live,combos,restore]
 
