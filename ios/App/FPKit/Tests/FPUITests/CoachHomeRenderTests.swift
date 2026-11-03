@@ -392,13 +392,16 @@ final class CoachHomeRenderTests: XCTestCase {
     /// not strings, so the match is lenient where it must be and no more: both sides lowercased and cut to their
     /// letters and digits (white space and punctuation go, so do the meta row's disc, a row's chevron and CONNECT's
     /// arrow, which are marks of the view's own), a dotless "ı" read as an "i", the letters the recognizer trades taken
-    /// as one (`fold`: "l0g." for "log.", "APl" for "API"), a mended lone surrogate (U+FFFD, drawn as the face's
-    /// replacement glyph) and an emoji (drawn as a picture) matching any one letter or none, a line of one letter (an
-    /// icon's stroke read as "L") free to stand alone, and a line or a string allowed one misread letter in ten (none
-    /// under five), but never a word of three letters or more that is not there. Probed on iOS 27.0 over the hand-made
-    /// fixtures, the page-built ones (P6) and the variant, both rooms, at 390 pt large and at 320 pt .xxLarge: every
-    /// line was read in the column's order but the avatar's (read beside the meta label's line or between its two
-    /// lines, and on Heavyweight's blue disc often not at all), none with more than one error.
+    /// as one (`fold`: "l0g." for "log.", "APl" for "API", and on iOS 26.5 a Cyrillic С for a Latin C), a mended lone
+    /// surrogate (U+FFFD, drawn as the face's replacement glyph) and an emoji (drawn as a picture) matching any one
+    /// letter or none, a line of one letter (an icon's stroke read as "L") free to stand alone, and a line or a string
+    /// allowed one misread letter in ten (none under five), but never a word of three letters or more that is not
+    /// there. Probed on iOS 27.0 over the hand-made fixtures, the page-built ones (P6) and the variant, both rooms, at
+    /// 390 pt large and at 320 pt .xxLarge: every line was read in the column's order but the avatar's (read beside the
+    /// meta label's line or between its two lines, and on Heavyweight's blue disc often not at all), none with more
+    /// than one error. iOS 26.5 reads them within the same allowance too, but it read Lime's meta label at 320 pt
+    /// .xxLarge, while that broke as "COACH · WK 06 / 12" over "· BUILD", in the Cyrillic capitals drawn like its Latin
+    /// ones (`latin`), and it reads a wrapped label's disc with one of its lines (`ordered`).
     enum DrawnText {
         static let wildcard: Character = "\u{FFFD}"
 
@@ -427,14 +430,20 @@ final class CoachHomeRenderTests: XCTestCase {
         }
 
         /// Reading order: rows from the top, each row's lines from the left. A line joins the row of the line above it
-        /// when their heights overlap by half the shorter one's or more (two halves of one line of text, a lone mark
-        /// beside a line, whatever their middles), else it starts the next row.
+        /// when their heights overlap by half the taller one's or more (two halves of one line of text, a lone mark
+        /// beside a line, whatever their middles), else it starts the next row. Half the taller, not the shorter: the
+        /// meta row's disc sits midway between a wrapped label's two lines, and the recognizer reads it with one of
+        /// them, stretching that line's box to it, or alone, so a box of the next row reaches into the row above by a
+        /// few points (probed at 320 pt .xxLarge: on iOS 26.5 Heavyweight's "• STRENGTH", 21 pt tall, 6 pt into "COACH
+        /// • WK 06 / 12" above it, 11 pt tall; on iOS 27.0 Lime's lone "•", 20 pt tall, 9.6 pt into "COACH • WK 06 / 12
+        /// •", 13.6 pt tall), where half the shorter one's height would put it on the upper line's row and, being
+        /// further left, before it.
         static func ordered(_ lines: [Line]) -> [Line] {
             var rows: [[Line]] = []
             for line in lines.sorted(by: { $0.box.midY < $1.box.midY }) {
                 if let anchor = rows.last?.first {
                     let overlap = min(anchor.box.maxY, line.box.maxY) - max(anchor.box.minY, line.box.minY)
-                    if overlap >= 0.5 * min(anchor.box.height, line.box.height) {
+                    if overlap >= 0.5 * max(anchor.box.height, line.box.height) {
                         rows[rows.count - 1].append(line)
                         continue
                     }
@@ -460,15 +469,34 @@ final class CoachHomeRenderTests: XCTestCase {
             return out
         }
 
-        /// The letters the recognizer trades for one another, as one (probed: "l0g." for "log.", "APl" for "API"): a
-        /// zero is an o, a one and an i (a capital I lowercased) are an l.
+        /// The letters the recognizer trades for one another, as one (probed: "l0g." for "log.", "APl" for "API"; on
+        /// iOS 26.5, Cyrillic capitals for the Latin ones they are drawn like: "• СОАСН : WК 06 / 12" for Lime's meta
+        /// label "COACH · WK 06 / 12 · BUILD" at 320 pt .xxLarge): a zero is an o, a one and an i (a capital I
+        /// lowercased) are an l, and a Cyrillic letter is the Latin letter it is drawn like (`latin`).
         static func fold(_ c: Character) -> Character {
             switch c {
             case "0": return "o"
             case "1", "i": return "l"
-            default: return c
+            default: return latin[c].map(fold) ?? c
             }
         }
+
+        /// The Cyrillic letters drawn like a Latin capital (А В Е К М Н О Р С Т У Х, and Ѕ І Ј), lowercased as
+        /// `normalize` leaves them, each with the Latin letter it stands for. iOS 26.5's accurate recognizer (revision
+        /// 3; its languages hold ru-RU and uk-UA, and no Greek) read JetBrains Mono's Latin capitals as these in the
+        /// Lime meta label's first line while the label broke as "COACH · WK 06 / 12" over "· BUILD", whatever the
+        /// request said (probed with revisions 2 and 3, automatic language detection off, `recognitionLanguages` en-US,
+        /// en-GB, en-US and fr-FR, or none: every one read the same Cyrillic letters), in its own render and in two of
+        /// the three iOS 27.0 renders it was given (the two runtimes draw the same lines; only their glyphs' edge
+        /// pixels differ). iOS 27.0's recognizer reads all of them in Latin, and iOS 26.5's reads the label in Latin
+        /// since it breaks as the web's does ("COACH · WK 06 / 12 ·" over "BUILD"): which script a recognizer takes a
+        /// face's capitals for is no part of what is drawn. Only these look-alikes are one letter: a Cyrillic П or И is
+        /// no Latin letter, and a Latin letter is never taken for another.
+        static let latin: [Character: Character] = [
+            "\u{0430}": "a", "\u{0432}": "b", "\u{0435}": "e", "\u{043A}": "k", "\u{043C}": "m", "\u{043D}": "h",
+            "\u{043E}": "o", "\u{0440}": "p", "\u{0441}": "c", "\u{0442}": "t", "\u{0443}": "y", "\u{0445}": "x",
+            "\u{0455}": "s", "\u{0456}": "i", "\u{0458}": "j",
+        ]
 
         /// How the lines read lie against the strings shown, both in their order (`match`).
         struct Match: Equatable {
@@ -648,6 +676,32 @@ final class CoachHomeRenderTests: XCTestCase {
                        DrawnText.Match(lineErrors: [0, 0], stringErrors: [0, 0], missing: [], extra: []), "U+FFFD: nothing, or any one letter")
         XCTAssertEqual(m(["the squat is moving L"], ["the squat is moving\u{1F4AA}\u{2026}"]).lineErrors, [0], "an emoji read as a letter")
         XCTAssertEqual(m(["ACCOUNT", "L\u{2192}", "Disconnect"], ["Account", "Disconnect"]).lineErrors, [0, 0, 0], "an icon's stroke read as a letter")
+        // iOS 26.5 reads Latin capitals as the Cyrillic ones drawn like them, each the Latin letter and no other
+        func folded(_ s: String) -> [Character] { DrawnText.normalize(s).map(DrawnText.fold) }
+        let cyrillic = "\u{0410}\u{0412}\u{0415}\u{041A}\u{041C}\u{041D}\u{041E}\u{0420}\u{0421}\u{0422}\u{0423}\u{0425}\u{0405}\u{0406}\u{0408}"
+        XCTAssertEqual(folded(cyrillic), folded("ABEKMHOPCTYXSIJ"), "А В Е К М Н О Р С Т У Х Ѕ І Ј")
+        XCTAssertEqual(folded(cyrillic.lowercased()), folded("abekmhopctyxsij"))
+        XCTAssertNotEqual(folded("\u{041F}"), folded("N"), "П is drawn like no N")
+        XCTAssertNotEqual(folded("\u{0418}"), folded("N"), "nor И")
+        XCTAssertNotEqual(folded("\u{0421}"), folded("O"), "С is a C, never an O")
+        // the Lime meta label at 320 pt .xxLarge, wrapped around the avatar, as iOS 26.5 read it (CI's run 40886265725
+        // and here) while it broke as "COACH · WK 06 / 12" over "· BUILD"
+        let label = ["COACH \u{00B7} WK 06 / 12 \u{00B7} BUILD", "Hi Kalani."]
+        let first = "\u{2022} \u{0421}\u{041E}\u{0410}\u{0421}\u{041D} : W\u{041A} 06 / 12"
+        XCTAssertEqual(m([first, "K", "\u{2022} BUILD", "Hi Kalani."], label),
+                       DrawnText.Match(lineErrors: [0, 0, 0, 0], stringErrors: [0, 0], missing: [], extra: []), "every letter its Latin one")
+        // and a look-alike forgives nothing else: a word cut or left out is still not drawn whole
+        r = m([first, "K", "\u{2022} B...", "Hi Kalani."], label)
+        XCTAssertEqual(r.missing, ["uild of \"COACH \u{00B7} WK 06 / 12 \u{00B7} BUILD\""], "a label cut short")
+        XCTAssertEqual(r.stringErrors, [4, 0])
+        r = m([first, "K", "Hi Kalani."], label)
+        // (the avatar's lone K may stand for BUILD's d as a misread: the word is missing either way)
+        XCTAssertEqual(r.missing.count, 1, "a label's second line not drawn: \(r)")
+        XCTAssertTrue(r.missing.first?.hasPrefix("buil") == true && r.missing.first?.hasSuffix(" of \"\(label[0])\"") == true, "\(r.missing)")
+        XCTAssertGreaterThan(r.stringErrors[0], DrawnText.allowed(16), "\(r)")
+        r = m(["\u{2022} \u{0421}\u{041E}\u{0410}\u{0421}\u{041D} : W\u{041A} 07 / 13", "K", "\u{2022} BUILD", "Hi Kalani."], label)
+        XCTAssertEqual(r.lineErrors[0], 2, "another week: \(r)")
+        XCTAssertGreaterThan(r.lineErrors[0], DrawnText.allowed(11))
         // the order is the column's
         r = m(["Disconnect", "Open Chat"], ["Open Chat", "Disconnect"])
         XCTAssertTrue(r.lineErrors[0] > DrawnText.allowed(10) || r.lineErrors[1] > DrawnText.allowed(8),
@@ -658,7 +712,9 @@ final class CoachHomeRenderTests: XCTestCase {
     }
 
     /// Reading order, on boxes the recognizer gave (probed): a meta label wrapped around the avatar reads its first
-    /// line, the avatar, then its second; a mark on a line's row reads after the line whatever their middles.
+    /// line, the avatar, then its second; a mark on a line's row reads after the line whatever their middles; a line
+    /// whose box the recognizer stretched to the meta row's disc, midway between the label's two lines, reads in its
+    /// own row, the upper line first, whichever of the two took the disc.
     func testTheLinesAreReadInRowsFromTheLeft() {
         typealias L = DrawnText.Line
         let first = L(text: "COACH \u{2022} WK 06 / 12", box: CGRect(x: 33.3, y: 52.0, width: 170.7, height: 13.5))
@@ -672,6 +728,21 @@ final class CoachHomeRenderTests: XCTestCase {
         let arrow = L(text: "\u{2192}", box: CGRect(x: 238.7, y: 687.6, width: 22.6, height: 20.0))
         let next = L(text: "start coaching", box: CGRect(x: 43.7, y: 704.0, width: 158.1, height: 26.6))
         XCTAssertEqual(DrawnText.ordered([next, arrow, line]).map(\.text), [line.text, arrow.text, next.text])
+        // Heavyweight's label at 320 pt .xxLarge ("COACH · WK 06 / 12 ·" over "STRENGTH"), the disc read with the lower
+        // line (iOS 26.5): 6 pt into the upper line's 11, more than half the upper's height, less than half its own
+        let upper = L(text: "COACH \u{2022} WK 06 / 12-", box: CGRect(x: 33.3, y: 53.3, width: 154.7, height: 10.7))
+        let lower = L(text: "\u{2022} STRENGTH", box: CGRect(x: 15.9, y: 58.0, width: 102.9, height: 21.3))
+        let greet = L(text: "Hi Kalani.", box: CGRect(x: 19.9, y: 124.8, width: 82.8, height: 18.1))
+        XCTAssertEqual(DrawnText.ordered([greet, lower, upper]).map(\.text), [upper.text, lower.text, greet.text], "the disc read with the lower line")
+        // the same render on iOS 27.0, the disc read with the upper line, its box stretched over the lower one's top
+        let tall = L(text: "\u{2022} COACH \u{2022} WK 06 /12.", box: CGRect(x: 14.7, y: 41.6, width: 173.9, height: 35.3))
+        let below = L(text: "STRENGTH", box: CGRect(x: 33.3, y: 66.6, width: 85.3, height: 12.0))
+        XCTAssertEqual(DrawnText.ordered([below, tall]).map(\.text), [tall.text, below.text], "the disc read with the upper line")
+        // Lime's at 320 pt .xxLarge ("COACH · WK 06 / 12 ·" over "BUILD") on iOS 27.0: the disc read alone, between
+        let lime = L(text: "COACH \u{2022} WK 06 / 12 \u{2022}", box: CGRect(x: 34.7, y: 51.9, width: 186.7, height: 13.6))
+        let disc = L(text: "\u{2022}", box: CGRect(x: 14.7, y: 55.9, width: 18.7, height: 20.0))
+        let build = L(text: "BUILD", box: CGRect(x: 33.3, y: 67.6, width: 50.8, height: 12.6))
+        XCTAssertEqual(DrawnText.ordered([build, disc, lime]).map(\.text), [lime.text, disc.text, build.text], "the disc read alone")
     }
 }
 #endif

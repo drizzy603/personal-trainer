@@ -241,7 +241,8 @@ public struct CoachHomeView: View {
     /// a word only when that word alone is wider; measured in the face drawn (`font`) with its tracking in points
     /// (CSS letter-spacing, after every letter). The view stacks the lines one per text, so a wrapped part keeps the
     /// CSS line pitch (SwiftUI cannot set a line spacing below the face's own line). The web's `text-wrap: balance`
-    /// (1516) changes nothing for the one- and two-word parts the page writes, so the break here is the greedy one.
+    /// (1516) changes nothing for the one- and two-word parts the page writes, so the break here is the greedy one. The
+    /// meta label breaks so too (`HomeMetaRow.labelLines`).
     static func headlineLines(_ text: String, font: UIFont, tracking: CGFloat, width: CGFloat) -> [String] {
         // CSS white space (space, tab, line feed, carriage return, form feed) collapses to one space
         let collapsed = text.split(whereSeparator: { " \t\n\r\u{0C}".contains($0) }).joined(separator: " ")
@@ -306,7 +307,7 @@ public struct CoachHomeView: View {
 
     private func column(_ t: RoomTheme, width: CGFloat, safeTop: CGFloat?) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            HomeMetaRow(meta: model.meta, safeTop: safeTop)
+            HomeMetaRow(meta: model.meta, width: width, safeTop: safeTop)
             HomeHero(hero: model.hero, width: width)
             // the groups exactly where `drawsGroups` says (the probe's rows read it)
             switch model.route {
@@ -347,16 +348,43 @@ public struct CoachHomeView: View {
 
 /// The meta row (`.kt-meta-row`, `index.html:1504-1511`): the room's dot and the label ("COACH · WK 06 / 12 ·
 /// STRENGTH": Lime's JetBrains Mono at .14em, Heavyweight's Archivo caps at .1em), the owner's initial on the right
-/// (hidden from VoiceOver). It publishes its bottom for the host's toast (`HubHeaderBottomKey`), 0 once it has
-/// scrolled under the status bar.
+/// (hidden from VoiceOver). The row is the web's `justify-content: space-between` with no gap of its own: the label
+/// takes the room up to the avatar's tile and breaks its lines there as the browser does (`labelLines`). It publishes
+/// its bottom for the host's toast (`HubHeaderBottomKey`), 0 once it has scrolled under the status bar.
 struct HomeMetaRow: View {
     let meta: CoachHomeModel.Meta
+    /// The screen's width (the label's room reads it, as the headline's size does).
+    let width: CGFloat
     /// The safe area's top in window coordinates while the hub scrolls; nil for the unscrolled column.
     var safeTop: CGFloat? = nil
     @Environment(\.roomTheme) private var t
 
-    var body: some View {
+    /// The label's face: `homeMeta`, 700, `lite`; Lime's JetBrains Mono tracked .14em, Heavyweight's Archivo caps
+    /// with tabular figures tracked .1em (`index.html:1505`, `1922`).
+    static func labelStyle(_ t: RoomTheme) -> InlineStyle {
         let size = t.home(.homeMeta)
+        return InlineStyle(face: .eyebrow, size: size, weight: 700, color: .lite,
+                           tracking: (t.flavor == .paper ? 0.1 : 0.14) * size, tabular: t.flavor == .paper)
+    }
+
+    /// The label's lines as the browser lays out `.kt-meta-label`'s text (`white-space: normal`): broken at a space
+    /// where the next word would pass the label's room, the separator that ends a line kept on it ("COACH · WK 06 / 12
+    /// ·" over "BUILD"), never carried down with the next word as SwiftUI's own breaker does to keep a word from
+    /// standing alone on the last line ("COACH · WK 06 / 12" over "· BUILD"). The room is the column (the screen less
+    /// its two gutters) less the avatar's 38 px tile when there is one, the dot's 7 px and its 9 px gap: the web's row
+    /// has no gap between the label and the tile, so a label the web draws on one line is one line here (the web's
+    /// tile gives way a few px to a label that wraps, `flex-shrink: 1`; the native tile keeps its 38 px). A word wider
+    /// than the room alone breaks between its letters, where the web's would run under the tile. Measured in the face
+    /// drawn, caps in Heavyweight (`CoachHomeView.headlineLines`).
+    static func labelLines(_ meta: CoachHomeModel.Meta, _ t: RoomTheme, width: CGFloat) -> [String] {
+        let style = labelStyle(t)
+        let column = width - 2 * CoachHomeView.gutter(t, width: width)
+        let room = column - (meta.avatar != nil ? t.px(38) : 0) - t.px(7) - t.px(9)
+        return CoachHomeView.headlineLines(t.flavor == .paper ? meta.label.uppercased() : meta.label,
+                                           font: CoachInline.baseFont(style, theme: t), tracking: t.px(style.tracking ?? 0), width: room)
+    }
+
+    var body: some View {
         HStack(alignment: .center, spacing: 0) {
             if !meta.label.isEmpty {
                 HStack(alignment: .center, spacing: t.px(9)) {
@@ -364,15 +392,18 @@ struct HomeMetaRow: View {
                     Circle()
                         .fill(t.color(t.flavor == .paper ? .accent : .muted))
                         .frame(width: t.px(7), height: t.px(7))
-                    PlainText(text: meta.label,
-                              style: InlineStyle(face: .eyebrow, size: size, weight: 700, color: .lite,
-                                                 tracking: (t.flavor == .paper ? 0.1 : 0.14) * size, tabular: t.flavor == .paper),
-                              uppercase: t.flavor == .paper)
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(Array(Self.labelLines(meta, t, width: width).enumerated()), id: \.offset) { _, line in
+                            // its own width: the break above is the line, never re-wrapped or cut
+                            PlainText(text: line, style: Self.labelStyle(t))
+                                .fixedSize()
+                        }
+                    }
                 }
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(Text(verbatim: CoachHomeSpeech.meta(meta)))
             }
-            Spacer(minLength: t.px(12))
+            Spacer(minLength: 0)
             if let avatar = meta.avatar {
                 HomeAvatar(initial: avatar)
             }

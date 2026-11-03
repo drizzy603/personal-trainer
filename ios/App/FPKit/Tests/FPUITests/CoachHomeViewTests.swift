@@ -1,4 +1,5 @@
 #if os(iOS)
+import CoreText
 import SwiftUI
 import UIKit
 import XCTest
@@ -978,6 +979,59 @@ final class CoachHomeViewTests: XCTestCase {
         let plain = width("your coach.", font: inter)
         XCTAssertEqual(lines("your coach.", plain - 10, font: inter), ["your", "coach."])
         XCTAssertEqual(lines("your coach.", plain - 10, tracking: -2.6, font: inter), ["your coach."], "11 letters at -2.6 make room")
+    }
+
+    /// The meta label breaks where the web's does. The lines below are the page's own: `.kt-meta-label` as renderCoach
+    /// draws the hub in each room with each fixture's label (Chromium, each letter's line read off its client rect) at
+    /// 320 and 390 pt and the root zoom of each text size (1, 1.12, 1.24). The label is one line wherever the web draws
+    /// one, as the row keeps no gap of its own between the label and the avatar's tile (Lime's "… · BUILD" at 320 pt
+    /// .xLarge and "… · STRENGTH" at 390 pt .xxLarge, which a 12 px gap wrapped); where it wraps, the separator ends
+    /// the first line ("COACH · WK 06 / 12 ·" over "BUILD"), never leads the second ("· BUILD", as SwiftUI's own
+    /// breaker had it, to keep a word from standing alone). Laid out, the label (the dot, its gap and the lines: one
+    /// element for VoiceOver) is as tall as its lines and as wide as the widest, so the view draws those lines and no
+    /// others.
+    func testTheMetaLabelBreaksWhereTheWebsDoes() throws {
+        let build = "COACH \u{00B7} WK 06 / 12 \u{00B7} BUILD", strength = "COACH \u{00B7} WK 06 / 12 \u{00B7} STRENGTH"
+        let first = "COACH \u{00B7} WK 06 / 12 \u{00B7}"
+        let cases: [(fixture: String, room: Room, width: CGFloat, size: DynamicTypeSize, web: [String])] = [
+            ("hub-empty", .lime, 390, .large, [build]),
+            ("hub-empty", .lime, 320, .xLarge, [build]),
+            ("hub-empty", .lime, 390, .xxLarge, [build]),
+            ("hub-empty", .lime, 320, .xxLarge, [first, "BUILD"]),
+            ("hub-empty", .heavyweight, 320, .xxLarge, [build]),
+            ("lone-surrogates", .lime, 320, .large, [strength]),
+            ("lone-surrogates", .lime, 390, .xxLarge, [strength]),
+            ("lone-surrogates", .lime, 320, .xLarge, [first, "STRENGTH"]),
+            ("lone-surrogates", .lime, 320, .xxLarge, [first, "STRENGTH"]),
+            ("lone-surrogates", .heavyweight, 390, .xxLarge, [strength]),
+            ("lone-surrogates", .heavyweight, 320, .xLarge, [strength]),
+            ("lone-surrogates", .heavyweight, 320, .xxLarge, [first, "STRENGTH"]),
+            ("hub-programme", .lime, 320, .xxLarge, ["COACH \u{00B7} WK 06 / 12"]),
+        ]
+        for c in cases {
+            let what = "\(c.fixture) \(c.room.id) at \(Int(c.width)) pt, \(c.size)"
+            let m = try CoachHomeFixtures.model(c.fixture, in: c.room)
+            let t = RoomTheme(home: m, system: c.size)
+            XCTAssertEqual(HomeMetaRow.labelLines(m.meta, t, width: c.width), c.web, "\(what): the web's lines")
+            let hosted = Hosted(Phone(model: m, host: Recorder().host(), size: c.size, unscrolledWidth: c.width),
+                                size: CGSize(width: c.width, height: 844))
+            let label = try XCTUnwrap(hosted.elements.first { $0.label == m.meta.label }, "\(what): the meta label")
+            hosted.close()
+            let style = HomeMetaRow.labelStyle(t)
+            let face = CoachInline.baseFont(style, theme: t)
+            // a line's drawn width: its letters in the face, each tracked, the space it may end on hanging
+            func drawn(_ s: String) -> CGFloat {
+                let text = NSAttributedString(string: s, attributes: [.font: face, .kern: t.px(style.tracking ?? 0)])
+                let line = CTLineCreateWithAttributedString(text)
+                return CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil) - CTLineGetTrailingWhitespaceWidth(line))
+            }
+            let widest = c.web.map(drawn).max() ?? 0
+            XCTAssertEqual(label.frame.minX, CoachHomeView.gutter(t, width: c.width), accuracy: 0.5, "\(what): at the gutter")
+            XCTAssertEqual(label.frame.height, CGFloat(c.web.count) * face.lineHeight, accuracy: 1,
+                           "\(what): \(c.web.count) line(s) of the face (\(label.frame))")
+            XCTAssertEqual(label.frame.width, t.px(7) + t.px(9) + widest, accuracy: 2,
+                           "\(what): the dot, its gap and the widest of \(c.web) (\(label.frame))")
+        }
     }
 
     /// The help is one element whose two paragraphs draw as two lines (its "\n" a line break, as the web's <br>).
