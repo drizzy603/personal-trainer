@@ -804,15 +804,18 @@ final class ShellBridgeTests: XCTestCase {
     func testASceneTeardownLettingThePageGoIsNoFault() {
         let active = ShellWebView.appActive
         let note = ShellWebView.noteLeftWindow
+        let noteAny = ShellWebView.noteLeftAny
         let stored = UserDefaults.standard.data(forKey: ShellBridge.countersKey)
         defer {
             ShellWebView.appActive = active
             ShellWebView.noteLeftWindow = note
+            ShellWebView.noteLeftAny = noteAny
             ShellWebView.sceneEnding = false
         }
         ShellWebView.appActive = { true }
         var noted = 0
         ShellWebView.noteLeftWindow = { noted += 1 }
+        ShellWebView.noteLeftAny = {}
         ShellWebView.sceneEnding = false
         let wv = ShellWebView(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
         let n = ShellWebView.leftWindowWhileActive
@@ -835,6 +838,69 @@ final class ShellBridgeTests: XCTestCase {
         wv.removeFromSuperview()
         XCTAssertEqual(ShellWebView.leftWindowWhileActive, n + 2, "after the next connection's first step a move counts again")
         XCTAssertEqual(noted, 2, "each counted move reaches the totals once")
+        XCTAssertEqual(UserDefaults.standard.data(forKey: ShellBridge.countersKey), stored,
+                       "the shared bridge's counters, kept in the host's UserDefaults, are as the test found them")
+    }
+
+    /// Build 61 also counts the web view leaving its window in any app state (`leftWindowAny`; contract 11 I1, 15.3, G23):
+    /// a move while the app is active counts in both counts, one while it is not (a deep link foregrounding it, the
+    /// background) in the any-state count only, each once in About's totals (`counters.leftAny`); a scene's teardown
+    /// counts in neither, nor a view that was in no window. The status (this launch's `leftAny`) and the probe's
+    /// `describe()` carry it.
+    func testTheWebViewLeavingItsWindowInAnyAppStateIsCounted() async throws {
+        let active = ShellWebView.appActive
+        let note = ShellWebView.noteLeftWindow
+        let noteAny = ShellWebView.noteLeftAny
+        let stored = UserDefaults.standard.data(forKey: ShellBridge.countersKey)
+        defer {
+            ShellWebView.appActive = active
+            ShellWebView.noteLeftWindow = note
+            ShellWebView.noteLeftAny = noteAny
+            ShellWebView.sceneEnding = false
+        }
+        var noted = 0, notedAny = 0
+        ShellWebView.noteLeftWindow = { noted += 1 }
+        ShellWebView.noteLeftAny = { notedAny += 1 }
+        ShellWebView.sceneEnding = false
+        let wv = ShellWebView(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        let n = ShellWebView.leftWindowWhileActive, any = ShellWebView.leftWindowAny
+        ShellWebView.appActive = { true }
+        window.addSubview(wv)
+        wv.removeFromSuperview()
+        XCTAssertEqual(ShellWebView.leftWindowWhileActive, n + 1, "while the app is active: build 60's count")
+        XCTAssertEqual(ShellWebView.leftWindowAny, any + 1, "and the any-state count")
+        ShellWebView.appActive = { false }
+        window.addSubview(wv)
+        wv.removeFromSuperview()
+        XCTAssertEqual(ShellWebView.leftWindowWhileActive, n + 1, "while the app is not active: not build 60's count")
+        XCTAssertEqual(ShellWebView.leftWindowAny, any + 2, "but the any-state count")
+        ShellWebView.sceneEnding = true
+        window.addSubview(wv)
+        wv.removeFromSuperview()
+        XCTAssertEqual(ShellWebView.leftWindowAny, any + 2, "a scene's teardown letting the page go counts in neither")
+        ShellWebView.sceneEnding = false
+        let holder = UIView()
+        let loose = ShellWebView(frame: .zero)
+        holder.addSubview(loose)
+        loose.removeFromSuperview()
+        XCTAssertEqual(ShellWebView.leftWindowAny, any + 2, "a view in no window leaves none")
+        XCTAssertEqual(noted, 1, "About's active total, once")
+        XCTAssertEqual(notedAny, 2, "About's any-state total, once per counted move")
+
+        // this launch's count in the status and the probe's describe(); the bridge's own totals kept in its defaults
+        let b = bridge61()
+        b.install(webView: webView, presenter: root, pageBuild: "P1")
+        let binding = try XCTUnwrap(b.binding)
+        func leftAny() throws -> [String: Any] {
+            let counters = try XCTUnwrap(b.status(binding)["counters"] as? [String: Any], "the status's counters")
+            return try XCTUnwrap(counters["leftAny"] as? [String: Any], "the status's leftAny")
+        }
+        XCTAssertEqual((try leftAny()["launch"] as? NSNumber)?.intValue, ShellWebView.leftWindowAny, "this launch's count")
+        XCTAssertEqual((try leftAny()["total"] as? NSNumber)?.intValue, 0, "none in all yet: the moves above went to the test's own")
+        XCTAssertEqual((b.describe()["leftWindowAny"] as? NSNumber)?.intValue, ShellWebView.leftWindowAny, "the probe's describe()")
+        b.noteLeftAny(at: Date(timeIntervalSince1970: 1_000))
+        XCTAssertEqual((try leftAny()["total"] as? NSNumber)?.intValue, 1, "a counted move kept in the totals")
+        XCTAssertEqual(ShellCounters.decoded(defaults.data(forKey: ShellBridge.countersKey)).leftAny.total, 1, "across launches")
         XCTAssertEqual(UserDefaults.standard.data(forKey: ShellBridge.countersKey), stored,
                        "the shared bridge's counters, kept in the host's UserDefaults, are as the test found them")
     }

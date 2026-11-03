@@ -1205,6 +1205,64 @@ final class RootTabControllerTests: XCTestCase {
         XCTAssertNil(r.root.pendingWebAnnounce)
     }
 
+#if DEBUG
+    /// Contract 15.3 (a funnel run's event says when its `.screenChanged` was posted) and 8.1 step 7 ("a re-tap posts
+    /// nothing of its own"; the H11 review): every post names the run whose step 7 it is, never the root's seq at the
+    /// post. A tap to a web tab, then the owner's re-tap before the page has drawn it: the move is heard under its own
+    /// seq once its page answers, though the re-tap took the next one. A NATIVE Coach tab entered: its run, at once; a
+    /// hold that runs out: the run that entered; the Coach tab's mode turning under the owner, and the fallback: no run.
+    func test09cEachScreenChangeNamesTheRunItBelongsTo() async throws {
+        let r = rig(mode: .native)
+        var heard: [(run: Int?, why: String, argument: AnyObject)] = []
+        r.root.onScreenChanged = { argument, run, why in heard.append((run, why, (argument as AnyObject?) ?? NSNull())) }
+
+        r.tap("progress")
+        let move = r.root.seq
+        r.tap("progress")
+        XCTAssertEqual(r.root.seq, move + 1, "the re-tap took the next seq")
+        XCTAssertTrue(heard.isEmpty, "nothing heard before the page has drawn Progress, nothing for the re-tap")
+        r.root.announceWeb(seq: move + 1)
+        XCTAssertTrue(heard.isEmpty, "the re-tap's answer: nothing of its own")
+        r.root.announceWeb(seq: move)
+        XCTAssertEqual(heard.count, 1)
+        XCTAssertEqual(heard.last?.run, move, "the move's run, though the root's seq is the re-tap's (\(r.root.seq))")
+        XCTAssertEqual(heard.last?.why, "run")
+        XCTAssertTrue(heard.last?.argument === r.webView)
+        XCTAssertEqual(r.posts.count, 1, "the post itself, as before")
+
+        r.tap("coach")
+        XCTAssertEqual(heard.last?.run, r.root.seq, "a NATIVE Coach tab: its own run, at once")
+        XCTAssertEqual(heard.last?.why, "run")
+        XCTAssertTrue(heard.last?.argument === r.home.view)
+
+        r.tap("log")
+        r.root.holdBudget = 0.2
+        r.root.select("coach", source: .page(intent: "chat"))
+        let entered = r.root.seq
+        XCTAssertTrue(r.root.held)
+        r.tap("coach")
+        XCTAssertEqual(r.root.seq, entered + 1, "a re-tap while held")
+        let ended = try await until { !r.root.held }
+        XCTAssertTrue(ended)
+        XCTAssertEqual(heard.last?.run, entered, "the hold ran out: the run that entered, not the re-tap")
+        XCTAssertEqual(heard.last?.why, "hold")
+
+        r.root.setCoachMode(.web)
+        XCTAssertNil(heard.last?.run, "the mode turned: no run made it")
+        XCTAssertEqual(heard.last?.why, "mode")
+        XCTAssertTrue(heard.last?.argument === r.webView)
+        r.root.setHome(r.home)
+        XCTAssertEqual(heard.last?.why, "mode")
+        XCTAssertTrue(heard.last?.argument === r.home.view)
+        let before = heard.count
+        r.root.fallBack(why: .failures, at: Date())
+        XCTAssertEqual(heard.count, before + 1)
+        XCTAssertNil(heard.last?.run, "the fallback: no run made it")
+        XCTAssertEqual(heard.last?.why, "fallback")
+        XCTAssertEqual(heard.count, r.posts.count, "one report per post")
+    }
+#endif
+
     // MARK: 10. The status bar
 
     func test10StatusBar() throws {

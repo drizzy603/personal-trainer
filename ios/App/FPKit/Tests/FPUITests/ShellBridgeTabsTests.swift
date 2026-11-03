@@ -132,6 +132,9 @@ final class ShellBridgeTabsTests: XCTestCase {
     }
 
     override func tearDown() async throws {
+        #if DEBUG
+        ShellProbe.shared = nil   // the tests' probe of the probe cases (29-33)
+        #endif
         for s in scenes { s.letGo() }
         scenes = []
         for suite in suites { UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
@@ -1817,6 +1820,219 @@ final class ShellBridgeTabsTests: XCTestCase {
         XCTAssertNil(root.fellBack)
         XCTAssertTrue(b.link.isLive("tabs"))
     }
+
+    #if DEBUG
+    // MARK: 29-33. The probe through the bridge (11-shell.md H11; its review)
+
+    /// What the tests' probe heard: its events, as their log lines.
+    private final class Heard {
+        var events: [[String: Any]] = []
+        func all(_ ev: String) -> [[String: Any]] { events.filter { $0["ev"] as? String == ev } }
+        func last(_ ev: String) -> [String: Any]? { all(ev).last }
+    }
+
+    /// A build 61 bridge with the tests' probe as `ShellProbe.shared`, set before the scene binds so the bridge relays to
+    /// it (`tearDown` takes it away).
+    private func probed() -> (bridge: ShellBridge, probe: ShellProbe, heard: Heard) {
+        let bridge = makeBridge()
+        let heard = Heard()
+        let probe = ShellProbe(bridge: bridge) { heard.events.append($0) }
+        ShellProbe.shared = probe
+        return (bridge, probe, heard)
+    }
+
+    /// Runs `steps` as one phase of the tests' probe, until it ends.
+    private func runSteps(_ probe: ShellProbe, _ steps: [[String: Any]]) async {
+        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in probe.runPhase(steps) { c.resume() } }
+    }
+
+    /// Contract 15.3 and 8.1 step 7 (the H11 review): the probe hears each VoiceOver screen change under the funnel run
+    /// whose step 7 it is. A tap to Progress, then the owner's re-tap before the page has drawn it: the move is heard once
+    /// its `tabs.select` is answered, under the move's seq, never the re-tap's (a re-tap posts nothing of its own), and
+    /// each run is a `funnel` event of its seq. Entering the NATIVE Coach tab is heard at once under its run; ScreenHost's
+    /// own post for the chat pushed onto it is heard too, `by: screens`, with no run.
+    func test29TheProbeHearsEachScreenChangeUnderItsRun() async throws {
+        let (bridge, _, heard) = probed()
+        let s = try await scene(first: "log", bridge: bridge)
+        let root = try XCTUnwrap(s.root)
+        XCTAssertEqual(heard.all("funnel").first?["atAdopt"] as? Bool, true, "the first frame's run, at the adoption")
+        await setHow(s, "tabs.select", ["late:600"])
+        tap(s, "progress")
+        let move = root.seq
+        tap(s, "progress")
+        XCTAssertEqual(root.seq, move + 1, "the re-tap took the next seq")
+        try await expect("the move heard once the page answered: \(s.posts)") { s.posts == ["web"] }
+        try await sleep(0.3)
+        let changes = heard.all("screenChanged")
+        XCTAssertEqual(changes.count, 1, "the move, once; the re-tap nothing: \(changes)")
+        XCTAssertEqual(changes.first?["seq"] as? Int, move, "under the move's seq")
+        XCTAssertEqual(changes.first?["rootSeq"] as? Int, move + 1, "the root's own seq is the re-tap's by then")
+        XCTAssertEqual(changes.first?["by"] as? String, "root")
+        XCTAssertEqual(changes.first?["why"] as? String, "run")
+        XCTAssertEqual(changes.first?["target"] as? String, "web")
+        XCTAssertEqual(changes.first?["selected"] as? String, "progress")
+        let runs = heard.all("funnel").filter { $0["atAdopt"] == nil }
+        XCTAssertEqual(runs.map { $0["seq"] as? Int }, [move, move + 1])
+        XCTAssertEqual(runs.last?["again"] as? Bool, true)
+
+        root.setHome(s.home)
+        tap(s, "coach")
+        XCTAssertEqual(heard.last("screenChanged")?["seq"] as? Int, root.seq, "a NATIVE Coach tab: its run, at once")
+        XCTAssertEqual(heard.last("screenChanged")?["target"] as? String, "native")
+        _ = try await message(s, "model", ["screen": "coach", "rev": 1, "json": try coachModelJSON(rev: 1)]).get()
+        _ = try await message(s, "present", ["screen": "coach"]).get()
+        try await expect("ScreenHost's own post heard", within: 10) { heard.last("screenChanged")?["by"] as? String == "screens" }
+        let pushed = try XCTUnwrap(heard.last("screenChanged"))
+        XCTAssertTrue(pushed["seq"] is NSNull, "no funnel run made it")
+        XCTAssertEqual(pushed["why"] as? String, "screens")
+        XCTAssertEqual(pushed["target"] as? String, "native")
+        XCTAssertEqual(pushed["selected"] as? String, "coach")
+    }
+
+    /// Contract 15.3 (the H11 review): a page message is logged at its answer, with the moment it came in. `status
+    /// {refresh}` is answered after the forced fetch: its `page` event comes then, never when the handler returned; and
+    /// one whose binding went during the fetch is answered with a refusal, logged as `pageRefused`, never as taken.
+    func test30TheProbeLogsAPageMessageAtItsAnswer() async throws {
+        let (bridge, _, heard) = probed()
+        let s = try await scene(first: "log", bridge: bridge)
+        XCTAssertNotNil(heard.all("page").first { $0["method"] as? String == "hello" }, "the hello, at its answer")
+        final class Fetch { var dropBinding = false }
+        let f = Fetch()
+        bridge.environment.fetchPolicy = { [weak s] done in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {   // a fetch takes a moment
+                MainActor.assumeIsolated {
+                    if f.dropBinding, let s { s.bridge.sceneDisconnected(webView: s.webView) }
+                    done()
+                }
+            }
+        }
+        _ = try await message(s, "status", ["refresh": true]).get()
+        let taken = try XCTUnwrap(heard.all("page").last { $0["method"] as? String == "status" })
+        XCTAssertEqual(taken["refresh"] as? Bool, true)
+        let waited = (taken["t"] as? Int ?? 0) - (taken["recvT"] as? Int ?? 0)
+        XCTAssertGreaterThanOrEqual(waited, 350, "logged at the answer, after the forced fetch (\(waited) ms after it came in)")
+
+        bridge.refreshEvery = 0
+        f.dropBinding = true
+        let r = await message(s, "status", ["refresh": true])
+        guard case .failure = r else { return XCTFail("answered though the binding went: \(r)") }
+        let statuses = heard.events.filter { $0["method"] as? String == "status" }
+        XCTAssertEqual(statuses.map { $0["ev"] as? String }, ["page", "pageRefused"], "the refusal logged as refused, once")
+        XCTAssertNotNil(statuses.last?["refused"] as? String)
+    }
+
+    /// `tapTab` through the probe's own step (the H11 review, uikit lens): a bar a web sheet hid is tapped by no one, so the
+    /// step is an error event and nothing moves; shown again, the same step taps Progress through UIKit's path.
+    func test31TheProbesTapTabTapsOnlyABarAFingerCanReach() async throws {
+        let (bridge, probe, heard) = probed()
+        let s = try await scene(first: "log", bridge: bridge)
+        let root = try XCTUnwrap(s.root)
+        try await sleep(0.5)
+        root.view.layoutIfNeeded()
+        guard !ShellProbe.tabControls(root, "progress").controls.isEmpty else {
+            throw XCTSkip("this host draws no control under the bar (the probe's tapTab finds them in the app)")
+        }
+        _ = try await sheets(s, open: true)
+        XCTAssertTrue(root.isTabBarHidden)
+        let runs = root.funnelRuns.count
+        await runSteps(probe, [["op": "tapTab", "tab": "progress"]])
+        let refused = try XCTUnwrap(heard.last("tapTab"))
+        XCTAssertEqual(refused["activated"] as? Bool, false)
+        XCTAssertEqual(refused["error"] as? String, "the bar is hidden (a sheet is open, or the root fell back): no finger can tap progress")
+        XCTAssertEqual(root.selected, "log", "nothing tapped")
+        XCTAssertEqual(root.funnelRuns.count, runs, "no funnel run")
+
+        _ = try await sheets(s, open: false)
+        try await sleep(0.8)
+        await runSteps(probe, [["op": "tapTab", "tab": "progress"]])
+        let tapped = try XCTUnwrap(heard.last("tapTab"))
+        XCTAssertEqual(tapped["activated"] as? Bool, true, "\(tapped)")
+        XCTAssertNil(tapped["error"])
+        XCTAssertEqual(root.selected, "progress")
+        XCTAssertEqual(root.funnelRuns.last?.source, .tap)
+    }
+
+    /// `sceneDestroy` (20-order section 9 item 35; the H11 review): UIKit refuses it for this app, so nothing was replaced
+    /// and the phase goes on; a request with no answer within the wait counts as granted: the phase ends and every state
+    /// that follows says whether the web view, the root and the window the scene held are still alive (`replaced`, by
+    /// `sceneDestroy`), as after a `sceneCycle`; a refusal after the wait is logged (`late`) and takes that back.
+    func test32TheProbesSceneDestroyHoldsWhatTheSceneHeldUnlessUIKitRefuses() async throws {
+        let (bridge, probe, heard) = probed()
+        let request = ShellProbe.destroySession, wait = ShellProbe.destroyWait
+        defer {
+            ShellProbe.destroySession = request
+            ShellProbe.destroyWait = wait
+        }
+        ShellProbe.destroyWait = 0.3
+        _ = try await scene(first: "log", bridge: bridge)
+        struct Refused: Error, CustomStringConvertible {
+            var description: String { "The current device does not support multiple scenes." }
+        }
+
+        ShellProbe.destroySession = { window, refused in
+            XCTAssertNotNil(window, "the page's window")
+            refused(Refused())
+            return "S1"
+        }
+        await runSteps(probe, [["op": "sceneDestroy"], ["op": "state", "label": "refused"]])
+        XCTAssertEqual(heard.last("sceneDestroy")?["session"] as? String, "S1")
+        XCTAssertEqual(heard.last("sceneDestroyRefused")?["error"] as? String, "The current device does not support multiple scenes.")
+        XCTAssertNil(heard.last("sceneDestroyRefused")?["late"])
+        XCTAssertNil(heard.last("sceneDestroyNoAnswer"))
+        XCTAssertEqual(heard.last("state")?["label"] as? String, "refused", "the phase went on")
+        XCTAssertTrue(heard.last("state")?["replaced"] is NSNull, "refused: nothing was replaced")
+
+        final class Later { var refuse: ((Error) -> Void)? }
+        let later = Later()
+        ShellProbe.destroySession = { _, refused in
+            later.refuse = refused
+            return "S2"
+        }
+        await runSteps(probe, [["op": "sceneDestroy"], ["op": "state", "label": "not run: the phase ended"]])
+        XCTAssertEqual(heard.last("sceneDestroyNoAnswer")?["ms"] as? Int, 300)
+        XCTAssertFalse(heard.all("state").contains { $0["label"] as? String == "not run: the phase ended" })
+        await runSteps(probe, [["op": "state", "label": "granted"]])
+        let granted = try XCTUnwrap(heard.last("state")?["replaced"] as? [String: Any], "what the scene held, reported")
+        XCTAssertEqual(granted["by"] as? String, "sceneDestroy")
+        XCTAssertEqual(granted["webView"] as? Bool, true, "this test still holds the scene: alive")
+        XCTAssertEqual(granted["root"] as? Bool, true)
+        XCTAssertEqual(granted["window"] as? Bool, true)
+
+        later.refuse?(Refused())
+        try await expect("the late refusal logged") { heard.last("sceneDestroyRefused")?["late"] as? Bool == true }
+        await runSteps(probe, [["op": "state", "label": "taken back"]])
+        XCTAssertTrue(heard.last("state")?["replaced"] is NSNull, "refused after all: nothing replaced")
+    }
+
+    /// `press {label, where: hub}` through the probe's own step (11-shell.md H11; the H11 review): with no hub on screen it
+    /// is an error event (`error`, `why` in the same words) that presses nothing, said before the accessibility runtime
+    /// is touched: the Coach tab not NATIVE, not selected, and the chat pushed over the hub.
+    func test33TheProbesHubPressIsAnErrorUnlessTheOwnerSeesTheHub() async throws {
+        let (bridge, probe, heard) = probed()
+        let s = try await scene(first: "log", bridge: bridge)
+        let root = try XCTUnwrap(s.root)
+        let press: [String: Any] = ["op": "press", "label": "Open the chat", "where": "hub"]
+        func check(_ words: String, file: StaticString = #filePath, line: UInt = #line) {
+            let e = heard.last("press")
+            XCTAssertEqual(e?["pressed"] as? Bool, false, file: file, line: line)
+            XCTAssertEqual(e?["error"] as? String, words, file: file, line: line)
+            XCTAssertEqual(e?["why"] as? String, words, file: file, line: line)
+            XCTAssertEqual(e?["where"] as? String, "hub", file: file, line: line)
+            XCTAssertEqual(e?["control"] as? String, "Open the chat", file: file, line: line)
+        }
+        await runSteps(probe, [press])
+        check("no hub: the Coach tab is waiting, not native")
+        root.setHome(s.home)
+        await runSteps(probe, [press])
+        check("the hub is not on screen: log is selected")
+        tap(s, "coach")
+        _ = try await message(s, "model", ["screen": "coach", "rev": 1, "json": try coachModelJSON(rev: 1)]).get()
+        _ = try await message(s, "present", ["screen": "coach"]).get()
+        try await expect("the chat pushed", within: 10) { root.coachSlot.nav.viewControllers.count == 2 }
+        await runSteps(probe, [press])
+        check("the hub is covered: the chat is pushed over it")
+    }
+    #endif
 }
 
 /// The stand-in page never came up: the case fails there, saying so.

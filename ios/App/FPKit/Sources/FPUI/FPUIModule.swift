@@ -51,6 +51,13 @@ import FPCore
 ///   stack left, `screens.off` in order, covered off, `dropTabsScript` for the scene's later documents) from each trigger
 ///   (a hello, `dismiss tabs`, no hello, a trip, the policy, `setSwitch`); the status's root, fallback, switches and
 ///   policy check, `status {refresh}`; the composer's words on every `screens.off` for the chat, cleared on `took`.
+/// - ShellProbe for the tab root (build 61, H11; Debug builds): `tapTab`/`retapTab` send the bar item's control
+///   `.touchUpInside` (the item by TabsModel's `a11y`, the control by the title it draws), `stray`, `waitTab`, `navPop`,
+///   `press {where: "hub"}` with its match count, `type` (its length only; never a draft for the key field) and
+///   `nativeFocus` into the top screen's first text input, the state's `input` (the label VoiceOver reads, never the
+///   text) and the page's tabs-mode fields, the App's hooks (`openURL`, `openURLOnActive`, `share`, `sceneCycle`), and
+///   `funnel`, `screenChanged`, `trovoOpen` and `ping` events beside page events with their receipt times.
+///   `ShellWebView.leftWindowAny` counts a move out of the window in any app state (in Release too: About's `leftAny`).
 ///
 /// Later: CoachStore (C7).
 public enum FPUIModule {

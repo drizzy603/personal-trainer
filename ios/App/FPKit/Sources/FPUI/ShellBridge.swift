@@ -64,8 +64,8 @@ import FPCore
 ///   ("Try the native chat again": the screen's crash verdicts, breaker record and decline go through the link's book,
 ///   for the next document). The counters the owner cannot see in os_log are kept across
 ///   launches (FPCore ShellCounters, UserDefaults `fp.shell.counters`): the web view leaving its window while the app is
-///   active (ShellWebView), the page going hidden under a native screen while the app is in use (the page's
-///   `visibility`), breaker trips and crash markers.
+///   active, and in any app state (ShellWebView), the page going hidden under a native screen while the app is in use
+///   (the page's `visibility`), breaker trips and crash markers.
 ///
 /// FPHost's policy fetch and the store's bootDone reach this through `environment` (the App target sets it: FPUI does
 /// not import FPHost).
@@ -240,8 +240,20 @@ public final class ShellBridge: NSObject {
     /// The launch arguments the launch reads (tests set their own).
     var launchArguments: () -> [String] = { ProcessInfo.processInfo.arguments }
     /// Debug builds: what the App target lets the scenario runner do that FPUI cannot reach itself (ShellProbe's `hook`
-    /// step), by name: "policy" writes a local policy file and fetches it (FPHost FPPolicy).
-    public static var debugHooks: [String: ([String: Any]) -> Void] = [:]
+    /// step, and its steps of the same names; contract 15.3), by name, each given the step and answering the fields of
+    /// its probe event (never a typed text, a comment or a secret): "policy" writes a local policy file and fetches it
+    /// (FPHost FPPolicy); "openURL" opens a URL through the App delegate's `application(_:open:options:)`, a real open's
+    /// path (the URL parked, then `.trovoDeepLink`); "openURLOnActive" arms the same for when the scene next enters the
+    /// foreground, as a widget tap delivers it; "share" writes the App Group's `pendingShare.jpg` and
+    /// `pendingShareComment` as the share extension does, opening nothing; "sceneCycle" replays the scene's connection
+    /// (the closure `StoreProbe.sceneReplay` runs).
+    public static var debugHooks: [String: ([String: Any]) -> [String: Any]] = [:]
+
+    /// Debug builds: an event in the shell probe's log, while one runs (a hook of the App's that acts after its step,
+    /// `openURLOnActive`'s open).
+    public static func probeEvent(_ ev: String, _ fields: [String: Any] = [:]) {
+        ShellProbe.shared?.event(ev, fields)
+    }
     #endif
 
     /// `binary`: the pieces this binary has (tests that model build 60 pass `["coach"]`); `linkConfig`: every link's
@@ -366,6 +378,7 @@ public final class ShellBridge: NSObject {
         for s in ShellProbe.shared?.documentStartScripts ?? [] {
             ucc.addUserScript(WKUserScript(source: s, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         }
+        relayScreensToProbe(screens, webView: webView)
         #endif
         // the root (contract 2.2): the tab root iff the scene allows one and the bar's own checks pass for this page build,
         // read after this launch's markers reached the book (a `tabs@` verdict gives the classic root)
@@ -418,8 +431,59 @@ public final class ShellBridge: NSObject {
             held: { [weak root] in root?.held ?? false },
             releaseHold: { [weak root] in root?.releaseHold() }))
         root.hooks = rootHooks(b, root)
+        #if DEBUG
+        relayToProbe(root)
+        #endif
         Self.log.info("shell: the tab root is adopted (\(root.selected, privacy: .public) selected, Coach \(root.coachMode.rawValue, privacy: .public), room \(root.firstRoom, privacy: .public))")
     }
+
+    #if DEBUG
+    /// The probe's view of the tab root (contract 15.3; 11-shell.md H11), while a probe runs (the tests set their own): a
+    /// `funnel` event per funnel run, the root's Debug `onFunnelRun` (the runs it made before this adoption, the first
+    /// frame's among them, logged here once, marked `atAdopt`), and a `screenChanged` event per VoiceOver screen change it
+    /// posts (8.1 step 7, the root's Debug `onScreenChanged`): `seq` the funnel run whose post it is (null for the Coach
+    /// tab's mode and the fallback, which no run made), `why`, and the root's own `rootSeq`, selection and Coach mode then.
+    @available(iOS 26.0, *)
+    private func relayToProbe(_ root: RootTabController) {
+        guard let probe = ShellProbe.shared else { return }
+        for run in root.funnelRuns { probe.event("funnel", run.json.merging(["atAdopt": true]) { a, _ in a }) }
+        root.onFunnelRun = { run in ShellProbe.shared?.event("funnel", run.json) }
+        root.onScreenChanged = { [weak root] argument, run, why in
+            var o = Self.probeScreenChange(argument, web: root?.webView, root: root)
+            o["by"] = "root"
+            o["seq"] = run ?? NSNull()
+            o["why"] = why
+            ShellProbe.shared?.event("screenChanged", o)
+        }
+    }
+
+    /// What a `screenChanged` event says of a post: its target (`web`, `native`, `none`) and the tab root's state then.
+    @available(iOS 26.0, *)
+    private static func probeScreenChange(_ argument: Any?, web: WKWebView?, root: RootTabController?) -> [String: Any] {
+        var target = "native"
+        if argument == nil { target = "none" } else if let w = web, (argument as AnyObject?) === w { target = "web" }
+        return ["target": target, "selected": root?.selected ?? NSNull(), "rootSeq": root?.seq ?? NSNull(),
+                "coachMode": root?.coachMode.rawValue ?? NSNull()]
+    }
+
+    /// ScreenHost's own VoiceOver screen changes (a native screen up or down, the stack's new top after a push or pop, the
+    /// chat that ended a hold), while a probe runs: `screenChanged` events `by: "screens"`, with no run of the funnel.
+    private func relayScreensToProbe(_ screens: ScreenHost, webView: WKWebView) {
+        guard ShellProbe.shared != nil else { return }
+        let post = screens.postScreenChanged
+        screens.postScreenChanged = { [weak self, weak webView] argument in
+            post(argument)
+            var o: [String: Any] = ["target": argument == nil ? "none" : "native"]
+            if #available(iOS 26.0, *) {
+                o = Self.probeScreenChange(argument, web: webView, root: self?.binding?.tabRoot as? RootTabController)
+            }
+            o["by"] = "screens"
+            o["seq"] = NSNull()
+            o["why"] = "screens"
+            ShellProbe.shared?.event("screenChanged", o)
+        }
+    }
+    #endif
 
     /// The root's hooks (contract 8.1, 8.4, 10.2): each captures the bridge, the binding and the root weakly, as `wire`'s do.
     @available(iOS 26.0, *)
@@ -603,6 +667,22 @@ public final class ShellBridge: NSObject {
             return
         }
         let now = Date()
+        #if DEBUG
+        // the probe hears every message the shell handled, with the moment it came in (contract 15.3), at its answer: a
+        // message answered later (`status {refresh}`, after the forced fetch) when that answer goes, and a refusal as
+        // `pageRefused` whenever it comes, so `page` events are the messages the shell took
+        var heard = false
+        let answer = done
+        let done: (Result<[String: Any], Error>) -> Void = { r in
+            if !heard {
+                heard = true
+                var refused: Error?
+                if case .failure(let e) = r { refused = e }
+                ShellProbe.shared?.pageMessage(method, message, received: now, refused: refused)
+            }
+            answer(r)
+        }
+        #endif
         switch message {
         case .hello(let h):
             let (reply, after) = hello(h, b, at: now)
@@ -737,9 +817,6 @@ public final class ShellBridge: NSObject {
             if !on { apply(b.link.fallBack(.switch), b) }
             done(.success(status(b)))
         }
-        #if DEBUG
-        ShellProbe.shared?.pageMessage(method, message)
-        #endif
     }
 
     /// The page's hello (contract 3.2). The link negotiates from the pieces' own checks for the hello's page build and
@@ -1059,12 +1136,33 @@ public final class ShellBridge: NSObject {
             default: break
             }
         }
-        wv.callAsyncJavaScript(Self.trovoOpenSource, arguments: ["url": url.absoluteString], in: nil, in: .page) { result in
+        wv.callAsyncJavaScript(Self.trovoOpenSource, arguments: ["url": url.absoluteString], in: nil, in: .page) { [weak self] result in
             if case .failure(let e) = result {
                 Self.log.error("shell: _trovoOpen failed: \(String(describing: e), privacy: .public)")
             }
+            #if DEBUG
+            self?.probeTrovoOpen(url, result)
+            #endif
         }
     }
+
+    #if DEBUG
+    /// The probe's `trovoOpen` event (contract 15.3): the page's `_trovoOpen` evaluation returned (the start of the bounds a
+    /// share scenario sets, 8.1), whether the page had the handler, and the tab root's selection, seq and hold then.
+    private func probeTrovoOpen(_ url: URL, _ result: Result<Any, Error>) {
+        guard let probe = ShellProbe.shared else { return }
+        var o: [String: Any] = ["url": "\(url.scheme ?? "")://\(url.host ?? "")\(url.path)"]
+        switch result {
+        case .success(let v): o["handled"] = (v as? Bool) ?? NSNull()
+        case .failure(let e): o["error"] = String(describing: e)
+        }
+        if #available(iOS 26.0, *), let b = binding, let root = b.tabRoot as? RootTabController {
+            o["root"] = ["selected": root.selected, "seq": root.seq, "held": root.held, "coachMode": root.coachMode.rawValue,
+                         "fellBack": root.fellBack != nil] as [String: Any]
+        }
+        probe.event("trovoOpen", o)
+    }
+    #endif
 
     /// The owner took a screen down: the page hears coach.back. If it stays on the screen (Back refused, the bridge
     /// failed), the screen goes up again over its placeholder.
@@ -1133,6 +1231,9 @@ public final class ShellBridge: NSObject {
                 // went, none linked) is told apart, so the next hold can ask again
                 let boot = b.link.link?.boot
                 send(.ping, b) { [weak b] outcome in
+                    #if DEBUG
+                    ShellProbe.shared?.event("ping", ["confirming": true, "outcome": outcome.word])
+                    #endif
                     guard let b, let boot else { return }
                     if case .answered = outcome { return }
                     b.link.pingLost(boot: boot)
@@ -1350,6 +1451,7 @@ public final class ShellBridge: NSObject {
         let page = b.link.pageBuild ?? b.pageBuild
         var launch = launchCounts
         launch.leftWindow = ShellWebView.leftWindowWhileActive
+        launch.leftAny = ShellWebView.leftWindowAny
         var own: [String: Bool] = [:]
         for p in ShellSwitches.pieces where shell.screens.contains(p) { own[p] = switches.isOn(p) }
         let json = ScreenStatus.json(shell: shell.shell, page: page, binary: shell.screens,
@@ -1376,6 +1478,13 @@ public final class ShellBridge: NSObject {
     /// ShellWebView left its window while the app was active (counted there for this launch): kept in the totals.
     func noteLeftWindow(at now: Date = Date()) {
         counters.leftWindow.add(at: now)
+        saveCounters()
+    }
+
+    /// ShellWebView left its window in any app state outside a scene's teardown (counted there for this launch, G23):
+    /// kept in the totals (`counters.leftAny`).
+    func noteLeftAny(at now: Date = Date()) {
+        counters.leftAny.add(at: now)
         saveCounters()
     }
 
@@ -1484,7 +1593,7 @@ public final class ShellBridge: NSObject {
             "negotiated": b.link.link?.screens ?? [], "live": b.link.liveScreens, "pageBuild": b.link.pageBuild ?? NSNull(),
             "documents": b.documents, "bootDones": b.bootDones, "pending": b.pageLink.pending,
             "book": Self.bookJSON(b.link.book), "screens": b.screens.describe(), "markersFound": markersFound,
-            "leftWindow": ShellWebView.leftWindowWhileActive,
+            "leftWindow": ShellWebView.leftWindowWhileActive, "leftWindowAny": ShellWebView.leftWindowAny,
             "gate": gate(page: b.link.pageBuild ?? b.pageBuild, book: b.link.book, tabsRoot: b.link.tabsRoot).on,
             "status": status(b), "root": describeRoot(b),
         ]
@@ -1553,10 +1662,15 @@ public struct ShellInstall: Equatable, Sendable {
 // MARK: - The web view
 
 /// The shell's WKWebView (`SuperoViewController.webView(with:configuration:)`): it counts every time it leaves its
-/// window while the app is active, which nothing in the shell does by design (a native screen goes over it, never in
-/// its place; decision.md section 4), and says so in the log.
+/// window, which nothing in the shell does by design (a native screen goes over it, never in its place; decision.md
+/// section 4; contract 11 I1), and says so in the log. Two counts, this launch's here and in all in Settings > About's
+/// counters: while the app is active (`leftWindowWhileActive`, build 60's), and in any app state (`leftWindowAny`,
+/// build 61's: a move while the app is inactive or in the background, a deep link that foregrounds it included, G23).
+/// A scene's teardown letting the page go counts in neither.
 public final class ShellWebView: WKWebView {
     public private(set) static var leftWindowWhileActive = 0
+    /// Every move out of its window this launch, whatever the app's state, outside a scene's teardown.
+    public private(set) static var leftWindowAny = 0
     /// A scene's teardown is under way (SceneDelegate's `sceneDidDisconnect`, and the Debug replay of a reconnect, which
     /// runs while the app is active): the web view leaving its window then is the teardown letting the page go, never a
     /// fault. SceneDelegate sets it before it lets go of the window and the page, and clears it as the next connection's
@@ -1567,12 +1681,21 @@ public final class ShellWebView: WKWebView {
     /// Where a counted move goes besides this launch's count: Settings > About's totals, across launches (tests set their
     /// own, so the shared bridge's counters and their UserDefaults copy stay as they were).
     static var noteLeftWindow: () -> Void = { ShellBridge.shared.noteLeftWindow() }
+    /// Where a move counted in any app state goes besides this launch's count: About's `leftAny` totals (tests set their
+    /// own, as for `noteLeftWindow`).
+    static var noteLeftAny: () -> Void = { ShellBridge.shared.noteLeftAny() }
 
     public override func willMove(toWindow newWindow: UIWindow?) {
-        if newWindow == nil, window != nil, !Self.sceneEnding, Self.appActive() {
-            Self.leftWindowWhileActive += 1
-            ShellBridge.log.fault("shell: the web view left its window while the app was active (\(Self.leftWindowWhileActive) this launch)")
-            Self.noteLeftWindow()   // Settings > About counts it (in all, across launches)
+        if newWindow == nil, window != nil, !Self.sceneEnding {
+            Self.leftWindowAny += 1
+            Self.noteLeftAny()   // Settings > About counts it (in all, across launches)
+            if Self.appActive() {
+                Self.leftWindowWhileActive += 1
+                ShellBridge.log.fault("shell: the web view left its window while the app was active (\(Self.leftWindowWhileActive) this launch)")
+                Self.noteLeftWindow()
+            } else {
+                ShellBridge.log.fault("shell: the web view left its window while the app was not active (\(Self.leftWindowAny) in any state this launch)")
+            }
         }
         super.willMove(toWindow: newWindow)
     }
