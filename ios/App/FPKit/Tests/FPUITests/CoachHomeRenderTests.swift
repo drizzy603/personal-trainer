@@ -391,7 +391,8 @@ final class CoachHomeRenderTests: XCTestCase {
         let words = model.meta.label.split(whereSeparator: { " \t\n\r\u{0C}".contains($0) }).joined(separator: " ")
         XCTAssertEqual(layout.lines.joined(separator: " "), t.flavor == .paper ? words.uppercased() : words,
                        "\(what): the label's lines are the label, word for word", file: file, line: line)
-        // another label, of other letters, breaking where this one does and leaving the tile as wide as it can
+        // another label, of other letters, breaking where this one does and moving the tile least (Lime's face is
+        // monospaced: not at all)
         var other: (model: CoachHomeModel, layout: HomeMetaRow.Layout)?
         for shift in 1...25 {
             let json2 = Self.with(label: Self.turned(model.meta.label, by: shift), json)
