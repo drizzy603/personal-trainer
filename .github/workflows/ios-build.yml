@@ -27,10 +27,27 @@ concurrency:
   group: ios-build-${{ github.ref }}
   cancel-in-progress: true
 
+# The two Xcodes, each named once (.github/scripts/select-xcode.sh selects /Applications/Xcode_<version>.app, which on
+# GitHub's images follows that version's newest patch, and checks that it is that Xcode).
+env:
+  # The Xcode the app ships with: the owner's Mac archives with Xcode 27.1 (27A9275); this moves when that Mac's does.
+  # GitHub has Xcode 27 only on the xcode-27 label, a public preview (runner-images issue 14404: no SLA, and queueing
+  # while capacity grows). Its image of 2026-10-26 has macOS 27, Xcode 27.0, 27.1 (27A9275, the default) and 27.2 RC,
+  # and the iOS 27.0 and 27.1 runtimes, none of 26.x. macos-latest is macos-26 (image of 2026-10-26: Xcode 26.0.1 to
+  # 26.6, the iOS 26.2, 26.4.1 and 26.5 runtimes, no Xcode 27); both checked in runner-images on 2026-11-02. The app
+  # build, fpkit-mac and fpkit-ios' iOS 27 parts run on xcode-27 with this Xcode; when GitHub gives Xcode 27 a GA label
+  # (or drops the preview's), move their runs-on there.
+  XCODE_SHIP: '27.1'
+  # The newest Xcode on macos-26, the only image with iOS 26.x runtimes: fpkit-ios' iOS 26 parts (that job's comment).
+  XCODE_FLOOR: '26.6'
+
 jobs:
+  # The App target as it ships: built by the Xcode the archive is made with (signing is the archive's business). A
+  # build with macos-latest's Xcode 26.6 proved a compiler and SDK the app is never built with, and could pass where
+  # 27.1 fails.
   build:
     name: Build (unsigned)
-    runs-on: macos-latest
+    runs-on: xcode-27
     timeout-minutes: 20
 
     steps:
@@ -48,8 +65,8 @@ jobs:
       - name: Sync web assets into iOS bundle
         run: npm run sync
 
-      - name: Select latest stable Xcode
-        run: sudo xcode-select -s /Applications/Xcode.app
+      - name: Select the Xcode the app ships with
+        run: bash .github/scripts/select-xcode.sh "$XCODE_SHIP"
 
       - name: Build (no signing)
         working-directory: ios/App
@@ -65,17 +82,18 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             build
 
-  # FPKit (ios/App/FPKit), the native half of the move to SwiftUI. FPCore and FPStore run on the Mac.
+  # FPKit (ios/App/FPKit), the native half of the move to SwiftUI. FPCore and FPStore run on the Mac, compiled by the
+  # Xcode the app ships with, on macOS 27 like the owner's Mac.
   fpkit-mac:
     name: FPKit tests on macOS (FPCore, FPStore)
-    runs-on: macos-latest
+    runs-on: xcode-27
     timeout-minutes: 20
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Select latest stable Xcode
-        run: sudo xcode-select -s /Applications/Xcode.app
+      - name: Select the Xcode the app ships with
+        run: bash .github/scripts/select-xcode.sh "$XCODE_SHIP"
 
       - name: Toolchain
         run: |
@@ -97,26 +115,56 @@ jobs:
   # FPHost and FPUI keep every source inside #if os(iOS), so swift test on the Mac never compiles them.
   # This job builds every FPKit target for the iOS Simulator, then runs every FPKit test target on a
   # simulator: FPCoreTests, FPStoreTests (KillTests is macOS only), FPHostTests and FPUITests, all in the
-  # FPKit-Package scheme. The warm-up lint runs first: every test class that loads a web view warms WebKit
-  # (.github/scripts/fpkit-lint.sh).
+  # FPKit-Package scheme. Two checks run first, in seconds: the warm-up lint (every test class that loads a web view
+  # warms WebKit: .github/scripts/fpkit-lint.sh) and the split's check (below).
   #
-  # Time budget (the split rule): the test step prints its minutes as a notice; past 22 of the job's 30
-  # minutes it warns, and the job is split again. Build 61's drain (ee0557a) took the single job past 30
-  # minutes (FPUITests about 19-24 minutes on a calm Mac, CI slower), so it runs as three parts, each on its
-  # own runner and simulator: `renders` and `tabs` run the classes named in RENDERS and TABS, `rest` runs
-  # everything else (it skips exactly those names, so a new test class always runs somewhere). A named class
-  # that no longer exists fails the job, and so does a part that executes no test.
+  # Toolchains and runtimes. Every part runs on an iPhone 17 Pro, the model of every local run
+  # (.github/scripts/fpkit-sim.py makes one when the runtime has none). renders, tabs, stack and rest run on xcode-27,
+  # built by Xcode 27.1 as the app is, on the newest iOS 27.x there that runs that model (27.1 on the image of
+  # 2026-10-26; the Mac's gates run 27.0). The tab root and the native Coach tab support iOS 26 and later (delta 14) and
+  # xcode-27 has no iOS 26 runtime, so tabs-26 and stack-26 run tabs' and stack's classes, the ones that drive UIKit's
+  # tab bar and the Coach tab's navigation stack, again on macos-26's newest iOS 26.x (26.5), built by Xcode 26.6. That
+  # is the floor's own UIKit and SwiftUI, which go by the runtime; Xcode 26.6 links against the iOS 26.5 SDK, the
+  # runtime's own, so every linked-on-or-after check the runtime makes reads as it does for the app (linked against
+  # 27.1): only the compiler is older than the app's. (The four cases that failed at 16ee484 under Xcode 26.6 on iOS
+  # 26.5 fail line for line under Xcode 27.1 on iOS 26.5 on the owner's Mac, and pass there on 27.0.) So FPKit must keep
+  # compiling with Xcode 26.6: an API only the iOS 27 SDK declares does not compile there even behind #available. Should
+  # FPKit need one, those two parts move to xcode-27 and download the iOS 26.5 runtime on each run (gigabytes from
+  # Apple). CI leaves to a Mac Xcode 27.1's own build on iOS 26.x, and every other class on iOS 26.x.
+  #
+  # Parts, each on its own runner and simulator; .github/scripts/fpkit-parts.sh is the one place that names their
+  # classes and each part's iOS major. renders, tabs and stack run the classes named there, rest runs everything else
+  # (it skips exactly those, so a new test class always runs somewhere). A named class that no longer exists, a matrix
+  # that leaves out a part, runs one the script does not know or puts one on another iOS major, a part that executes no
+  # test, or a named class that ran nothing fails the job.
+  #
+  # Time budget (the split rule): the test step prints its minutes as a notice; past 22 minutes it warns, and the parts
+  # are rebalanced or split again. At 16ee484 (three parts on macos-26, Xcode 26.6, iOS 26.5) the test steps took 12.0
+  # minutes (CoachHomeRenderTests and CoachRenderTests), 7.5 (ShellBridgeTabsTests, 34 tests) and 20.6 (every other
+  # class, three failures' waits included): about 2.3 minutes of building the tests plus 2.8 times a calm Mac's seconds
+  # for the same classes (its whole run of those tests on 27.0: renders 205 s, ShellBridgeTabsTests 110), the failures
+  # adding about 5 minutes to the last. Another 8 to 9 minutes went outside the test steps (the first simulator boot 5.5
+  # to 6.8), hence 40 minutes for the job, so the warning comes well before the job is cut off. With H10's and H11's
+  # tests (ShellBridgeTabsTests 52, ScreenHostTests 61) a calm Mac takes about 200 s for renders, 230 for tabs, 200 for
+  # stack and 95 for rest: about 12, 13, 12 and 7 minutes a test step by that rule, rest being the part every new class
+  # joins, and a failing case's waits on top. xcode-27's runners are not measured yet.
+  #
+  # A run takes eight macOS runners (build, fpkit-mac and six parts), and GitHub runs at most five macOS jobs at once
+  # below its Enterprise plan: the last parts can wait for a runner (time queued is not counted in timeout-minutes).
   fpkit-ios:
     name: FPKit on an iOS simulator (${{ matrix.part }})
-    runs-on: macos-latest
-    timeout-minutes: 30
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
-        part: [renders, tabs, rest]
-    env:
-      RENDERS: FPUITests/CoachHomeRenderTests FPUITests/CoachRenderTests
-      TABS: FPUITests/ShellBridgeTabsTests
+        include:
+          - { part: renders, runner: xcode-27, xcode: ship, ios: 27 }
+          - { part: tabs, runner: xcode-27, xcode: ship, ios: 27 }
+          - { part: stack, runner: xcode-27, xcode: ship, ios: 27 }
+          - { part: rest, runner: xcode-27, xcode: ship, ios: 27 }
+          - { part: tabs-26, runner: macos-26, xcode: floor, ios: 26 }
+          - { part: stack-26, runner: macos-26, xcode: floor, ios: 26 }
 
     steps:
       - uses: actions/checkout@v4
@@ -125,63 +173,40 @@ jobs:
       - name: WebKit warm-up lint
         run: bash .github/scripts/fpkit-lint.sh
 
-      - name: Select latest stable Xcode
-        run: sudo xcode-select -s /Applications/Xcode.app
+      # Every class the split names must exist, and the matrix must run every part on its iOS major, or tests would
+      # quietly run nowhere (rest skips the named classes) or on one runtime only: checked before the toolchain and the
+      # simulator, so a slip fails in seconds (the image's own Ruby reads the matrix).
+      - name: Check the split
+        run: bash .github/scripts/fpkit-parts.sh check
+
+      - name: Select Xcode (${{ matrix.xcode }})
+        run: |
+          case "${{ matrix.xcode }}" in
+            ship) v=$XCODE_SHIP ;;
+            floor) v=$XCODE_FLOOR ;;
+            *) echo "::error title=fpkit-ios matrix::xcode '${{ matrix.xcode }}' is neither ship nor floor"; exit 1 ;;
+          esac
+          bash .github/scripts/select-xcode.sh "$v"
 
       - name: Build every FPKit target for the iOS Simulator
         working-directory: ios/App/FPKit
         run: |
           set -o pipefail
-          xcodebuild -version
           xcodebuild \
             -scheme FPKit-Package \
             -destination 'generic/platform=iOS Simulator' \
             build 2>&1 | tee "$RUNNER_TEMP/build.log"
 
-      # The newest iOS runtime's first available iPhone; device names change with every Xcode.
       - name: Pick an iPhone simulator
         id: sim
         run: |
-          xcrun simctl list devices available --json > "$RUNNER_TEMP/sims.json"
-          udid=$(python3 - "$RUNNER_TEMP/sims.json" <<'PY'
-          import json, sys
-          devices = json.load(open(sys.argv[1]))["devices"]
-          best = None
-          for runtime, items in devices.items():
-              tail = runtime.rsplit(".", 1)[-1]          # iOS-26-5
-              if not tail.startswith("iOS-"):
-                  continue
-              version = tuple(int(p) for p in tail[4:].split("-"))
-              for d in items:
-                  if d.get("isAvailable", True) and d["name"].startswith("iPhone"):
-                      if best is None or version > best[0]:
-                          best = (version, d["udid"], d["name"])
-          if best is None:
-              sys.exit("no available iPhone simulator")
-          print("simulator: %s, iOS %s" % (best[2], ".".join(map(str, best[0]))), file=sys.stderr)
-          print(best[1])
-          print("%s, iOS %s" % (best[2], ".".join(map(str, best[0]))))
-          PY
-          )
-          echo "udid=$(echo "$udid" | sed -n 1p)" >> "$GITHUB_OUTPUT"
-          echo "name=$(echo "$udid" | sed -n 2p)" >> "$GITHUB_OUTPUT"
+          out=$(python3 .github/scripts/fpkit-sim.py "${{ matrix.ios }}") || { echo "$out"; exit 1; }
+          echo "$out" >> "$GITHUB_OUTPUT"
 
       # A fresh runner's simulator spends minutes on its first boot; booting it before the tests keeps that wait out of
       # the first test that starts WebKit (KTUIProxyTests' first page load gave up after 362 s on a cold device).
       - name: Boot the simulator
         run: xcrun simctl bootstatus "${{ steps.sim.outputs.udid }}" -b
-
-      # Every class the split names must exist, or its tests would quietly run nowhere but `rest`.
-      - name: Check the split's class names
-        working-directory: ios/App/FPKit/Tests
-        run: |
-          for t in $RENDERS $TABS; do
-            target=${t%%/*}; cls=${t#*/}
-            if ! grep -rqE "class ${cls}[: ]" "$target"; then
-              echo "::error title=fpkit-ios split::$t is named in the job's split but no such class exists in Tests/$target"
-              exit 1
-            fi
-          done
 
       # TEST_RUNNER_CI reaches the simulator's test process as CI (the speed bounds loosen on shared runners).
       - name: Test on the simulator (${{ matrix.part }})
@@ -190,12 +215,9 @@ jobs:
           TEST_RUNNER_CI: 'true'
         run: |
           set -o pipefail
-          case "${{ matrix.part }}" in
-            renders) args=$(for t in $RENDERS; do printf -- '-only-testing:%s ' "$t"; done) ;;
-            tabs) args=$(for t in $TABS; do printf -- '-only-testing:%s ' "$t"; done) ;;
-            rest) args=$(for t in $RENDERS $TABS; do printf -- '-skip-testing:%s ' "$t"; done) ;;
-          esac
-          echo "part ${{ matrix.part }}: $args"
+          parts="$GITHUB_WORKSPACE/.github/scripts/fpkit-parts.sh"
+          args=$(bash "$parts" args "${{ matrix.part }}") || { echo "$args"; exit 1; }
+          echo "part ${{ matrix.part }} on ${{ steps.sim.outputs.name }}: $args"
           start=$(date +%s)
           status=0
           xcodebuild \
@@ -206,12 +228,11 @@ jobs:
             test 2>&1 | tee "$RUNNER_TEMP/test.log" || status=$?
           secs=$(( $(date +%s) - start ))
           mins=$(awk -v s="$secs" 'BEGIN { printf "%.1f", s / 60 }')
-          echo "::notice title=fpkit-ios test minutes (${{ matrix.part }})::the test step took $mins minutes (split again past 22 of 30: see the job's comment)"
+          echo "::notice title=fpkit-ios test minutes (${{ matrix.part }})::the test step took $mins minutes on ${{ steps.sim.outputs.name }} (rebalance or split the parts past 22: see the job's comment)"
           if [ "$secs" -gt $(( 22 * 60 )) ]; then
-            echo "::warning title=fpkit-ios time budget (${{ matrix.part }})::the test step took $mins minutes, past 22: split the job again (the job's comment)"
+            echo "::warning title=fpkit-ios time budget (${{ matrix.part }})::the test step took $mins minutes, past 22: rebalance or split the parts (the job's comment)"
           fi
-          if [ "$status" -eq 0 ] && ! grep -qE "Executed [1-9][0-9]* tests?," "$RUNNER_TEMP/test.log"; then
-            echo "::error title=fpkit-ios split::part ${{ matrix.part }} executed no test"
+          if [ "$status" -eq 0 ] && ! bash "$parts" executed "${{ matrix.part }}" "$RUNNER_TEMP/test.log"; then
             status=1
           fi
           exit $status
