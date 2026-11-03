@@ -94,7 +94,8 @@ order and glyphs are the shell's; compiled per-room defaults for the first frame
 the Coach tab's root (the hub or the connect screen, `resume` for the shell's hold, meta, hero, the connect block, the
 hub's groups of rows, the room's tokens with the hub's `home*` sizes; never the key). Their fixtures are in
 `Fixtures/tabs` and `Fixtures/coachHome`: the page-built ones from `node tests/golden/dump-coach-home.js`, the hand-made
-ones from `Tools/tabs-fixtures.js` and `Tools/coach-home-fixtures.js` (see `Tests/FPCoreTests/Fixtures/README.md`).
+ones from `Tools/tabs-fixtures.js` and `Tools/coach-home-fixtures.js` (see `Tests/FPCoreTests/Fixtures/README.md`). The
+hub's meta row as the page lays it out is `Fixtures/layout/meta-row.json`, from `node tests/golden/dump-meta-row.js`.
 
 `CoachHomeModelTests` reads both kinds. Each page-built `Fixtures/coachHome` file (P6) is read as the page's whole
 model, contract 6.2's keys in their JSON types (rev, boot, room, paper, dynTypeOn, route and resume as sent; meta, hero,
@@ -396,13 +397,14 @@ unread, and the page shows its web Coach under the native bar.
 
 Tests (FPUITests): `CoachHomeViewTests` (every coachHome fixture laid out in both rooms, VoiceOver's order and traits,
 the key field secure, autocorrecting nothing and taking no focus by itself, one action per press, a typed canary leaving
-no trace), `CoachHomeStoreTests` (models in rev order, a document going, the presses as intents, the key sent once,
-`describe()`, CoachHomeRoot in a window and as a Coach stack's root) and `CoachHomeRenderTests`, which draws every
-`Fixtures/coachHome` file and the `built-connect` variant in both rooms, light and dark, at `.large`, `.xLarge` and
-`.xxLarge`, on 390 × 844 and 320 × 568 over the 83 pt bar, and holds Larger Text's growth and cap, the column's exact
-end, and every string the model shows read back off the render by Vision (`DrawnText`; the avatar by its tile). With
-`TEST_RUNNER_FPUI_SHOTS` it writes `native/home/<fixture>/...`, from which no contact sheet is made yet
-(`Tools/chat-contact/run.sh` runs CoachRenderTests alone).
+no trace, the meta row's lines and avatar tile as the page lays them out: `Fixtures/layout/meta-row.json`, from
+`node tests/golden/dump-meta-row.js`), `CoachHomeStoreTests` (models in rev order, a document going, the presses as
+intents, the key sent once, `describe()`, CoachHomeRoot in a window and as a Coach stack's root) and
+`CoachHomeRenderTests`, which draws every `Fixtures/coachHome` file and the `built-connect` variant in both rooms, light
+and dark, at `.large`, `.xLarge` and `.xxLarge`, on 390 × 844 and 320 × 568 over the 83 pt bar, and holds Larger Text's
+growth and cap, the column's exact end, and every string the model shows read back off the render by Vision
+(`DrawnText`; the avatar by its tile). With `TEST_RUNNER_FPUI_SHOTS` it writes `native/home/<fixture>/...`, from which
+no contact sheet is made yet (`Tools/chat-contact/run.sh` runs CoachRenderTests alone).
 
 ## FPStore: the native store
 

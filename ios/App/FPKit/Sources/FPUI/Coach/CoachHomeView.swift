@@ -242,7 +242,7 @@ public struct CoachHomeView: View {
     /// (CSS letter-spacing, after every letter). The view stacks the lines one per text, so a wrapped part keeps the
     /// CSS line pitch (SwiftUI cannot set a line spacing below the face's own line). The web's `text-wrap: balance`
     /// (1516) changes nothing for the one- and two-word parts the page writes, so the break here is the greedy one. The
-    /// meta label breaks so too (`HomeMetaRow.labelLines`).
+    /// meta label breaks so too (`HomeMetaRow.layout`).
     static func headlineLines(_ text: String, font: UIFont, tracking: CGFloat, width: CGFloat) -> [String] {
         // CSS white space (space, tab, line feed, carriage return, form feed) collapses to one space
         let collapsed = text.split(whereSeparator: { " \t\n\r\u{0C}".contains($0) }).joined(separator: " ")
@@ -346,11 +346,12 @@ public struct CoachHomeView: View {
 
 // MARK: The meta row and the headline
 
-/// The meta row (`.kt-meta-row`, `index.html:1504-1511`): the room's dot and the label ("COACH · WK 06 / 12 ·
-/// STRENGTH": Lime's JetBrains Mono at .14em, Heavyweight's Archivo caps at .1em), the owner's initial on the right
-/// (hidden from VoiceOver). The row is the web's `justify-content: space-between` with no gap of its own: the label
-/// takes the room up to the avatar's tile and breaks its lines there as the browser does (`labelLines`). It publishes
-/// its bottom for the host's toast (`HubHeaderBottomKey`), 0 once it has scrolled under the status bar.
+/// The meta row (`.kt-meta-row`, `index.html:769-771`, `1599-1606`): the room's dot and the label ("COACH · WK 06 / 12
+/// · STRENGTH": Lime's JetBrains Mono at .14em, Heavyweight's Archivo caps at .1em), the owner's initial on the right
+/// (hidden from VoiceOver). The row is the web's flexbox, `justify-content: space-between` with no gap of its own: the
+/// label takes the room up to the avatar's tile, the tile gives way to a label too wide for its room as the web's does,
+/// and the label breaks its lines where the browser does (`layout`). It publishes its bottom for the host's toast
+/// (`HubHeaderBottomKey`), 0 once it has scrolled under the status bar.
 struct HomeMetaRow: View {
     let meta: CoachHomeModel.Meta
     /// The screen's width (the label's room reads it, as the headline's size does).
@@ -360,31 +361,74 @@ struct HomeMetaRow: View {
     @Environment(\.roomTheme) private var t
 
     /// The label's face: `homeMeta`, 700, `lite`; Lime's JetBrains Mono tracked .14em, Heavyweight's Archivo caps
-    /// with tabular figures tracked .1em (`index.html:1505`, `1922`).
+    /// with tabular figures tracked .1em (`index.html:1600`, `1987`, `2015-2018`).
     static func labelStyle(_ t: RoomTheme) -> InlineStyle {
         let size = t.home(.homeMeta)
         return InlineStyle(face: .eyebrow, size: size, weight: 700, color: .lite,
                            tracking: (t.flavor == .paper ? 0.1 : 0.14) * size, tabular: t.flavor == .paper)
     }
 
-    /// The label's lines as the browser lays out `.kt-meta-label`'s text (`white-space: normal`): broken at a space
-    /// where the next word would pass the label's room, the separator that ends a line kept on it ("COACH · WK 06 / 12
-    /// ·" over "BUILD"), never carried down with the next word as SwiftUI's own breaker does to keep a word from
-    /// standing alone on the last line ("COACH · WK 06 / 12" over "· BUILD"). The room is the column (the screen less
-    /// its two gutters) less the avatar's 38 px tile when there is one, the dot's 7 px and its 9 px gap: the web's row
-    /// has no gap between the label and the tile, so a label the web draws on one line is one line here (the web's
-    /// tile gives way a few px to a label that wraps, `flex-shrink: 1`; the native tile keeps its 38 px). A word wider
-    /// than the room alone breaks between its letters, where the web's would run under the tile. Measured in the face
-    /// drawn, caps in Heavyweight (`CoachHomeView.headlineLines`).
-    static func labelLines(_ meta: CoachHomeModel.Meta, _ t: RoomTheme, width: CGFloat) -> [String] {
+    /// The row as laid out: the label's lines and the avatar tile's width in points (its height stays 38 px).
+    struct Layout: Equatable {
+        let lines: [String]
+        let tile: CGFloat
+    }
+
+    /// The row as the browser's flexbox lays it out. Its two items are the label (`.kt-meta-label`: its 7 px ::before,
+    /// a 9 px gap, the text) and the tile (`.kt-meta-ava`: 38 px, border-box, Lime's 1 px border inside), both
+    /// `flex-shrink: 1`. When the label on one line and the tile pass the column (the screen less its two gutters),
+    /// each gives way by the overflow in proportion to its inner flex base size (the label's one-line width, the tile's
+    /// 38 px less its border: CSS Flexbox's scaled shrink factors), neither below its min-content (the label's widest
+    /// word, the tile's letter and border); so the tile narrows (an ellipse in Heavyweight) and the label wraps in the
+    /// room left, "COACH · WK 03 / 12 · FOUNDATION" over "PHASE" with the tile at 36.4 of its 42.6 pt at 320 pt
+    /// .xLarge. Otherwise the label is one line and the tile 38 px. The text breaks as `.kt-meta-label`'s does
+    /// (`white-space: normal`): greedily at a space where the next word would pass the room, the separator that ends a
+    /// line kept on it ("COACH · WK 06 / 12 ·" over "BUILD"), never carried down with the next word as SwiftUI's own
+    /// breaker does to keep a word from standing alone ("· BUILD"); a word wider than the room alone (the label at its
+    /// min-content in a column narrower than its widest word) breaks between its letters, where the web's would run
+    /// past the row. Measured in the face drawn, with its tracking after every letter, caps in Heavyweight
+    /// (`CoachHomeView.headlineLines`). tests/golden/dump-meta-row.js reads the page's own row in every room, at five
+    /// phone widths and three text sizes, and CoachHomeViewTests holds this to it.
+    static func layout(_ meta: CoachHomeModel.Meta, _ t: RoomTheme, width: CGFloat) -> Layout {
         let style = labelStyle(t)
+        let font = CoachInline.baseFont(style, theme: t)
+        let tracking = t.px(style.tracking ?? 0)
+        // CSS white space collapses to one space, as headlineLines collapses it
+        let label = meta.label.split(whereSeparator: { " \t\n\r\u{0C}".contains($0) }).joined(separator: " ")
+        let text = t.flavor == .paper ? label.uppercased() : label
+        func measured(_ s: String) -> CGFloat {
+            var attributes: [NSAttributedString.Key: Any] = [.font: font]
+            if tracking != 0 { attributes[.kern] = tracking }
+            return CGFloat(CTLineGetTypographicBounds(CTLineCreateWithAttributedString(NSAttributedString(string: s, attributes: attributes)),
+                                                      nil, nil, nil))
+        }
         let column = width - 2 * CoachHomeView.gutter(t, width: width)
-        let room = column - (meta.avatar != nil ? t.px(38) : 0) - t.px(7) - t.px(9)
-        return CoachHomeView.headlineLines(t.flavor == .paper ? meta.label.uppercased() : meta.label,
-                                           font: CoachInline.baseFont(style, theme: t), tracking: t.px(style.tracking ?? 0), width: room)
+        let mark = t.px(7) + t.px(9)
+        let tileBase = meta.avatar != nil ? t.px(38) : 0
+        // Lime's border is a 1 pt hairline at every size, as HomeAvatar draws it (and as the browser snaps it)
+        let border: CGFloat = meta.avatar != nil && t.flavor != .paper ? 2 : 0
+        let labelBase = mark + measured(text)
+        var tile = tileBase
+        var room = column - tileBase - mark
+        if labelBase + tileBase > column {
+            let over = labelBase + tileBase - column, inner = tileBase - border
+            var labelSize = labelBase - over * labelBase / (labelBase + inner)
+            tile = tileBase - over * inner / (labelBase + inner)
+            let labelMin = mark + (text.split(separator: " ").map { measured(String($0)) }.max() ?? 0)
+            let tileMin = meta.avatar.map { min(tileBase, border + HomeAvatar.width(of: $0, t)) } ?? 0
+            switch (labelSize < labelMin, tile < tileMin) {
+            case (true, true): labelSize = labelMin; tile = tileMin
+            case (true, false): labelSize = labelMin; tile = max(tileMin, column - labelMin)
+            case (false, true): tile = tileMin; labelSize = max(labelMin, column - tileMin)
+            case (false, false): break
+            }
+            room = labelSize - mark
+        }
+        return Layout(lines: CoachHomeView.headlineLines(text, font: font, tracking: tracking, width: room), tile: tile)
     }
 
     var body: some View {
+        let layout = Self.layout(meta, t, width: width)
         HStack(alignment: .center, spacing: 0) {
             if !meta.label.isEmpty {
                 HStack(alignment: .center, spacing: t.px(9)) {
@@ -393,7 +437,7 @@ struct HomeMetaRow: View {
                         .fill(t.color(t.flavor == .paper ? .accent : .muted))
                         .frame(width: t.px(7), height: t.px(7))
                     VStack(alignment: .leading, spacing: 0) {
-                        ForEach(Array(Self.labelLines(meta, t, width: width).enumerated()), id: \.offset) { _, line in
+                        ForEach(Array(layout.lines.enumerated()), id: \.offset) { _, line in
                             // its own width: the break above is the line, never re-wrapped or cut
                             PlainText(text: line, style: Self.labelStyle(t))
                                 .fixedSize()
@@ -405,7 +449,7 @@ struct HomeMetaRow: View {
             }
             Spacer(minLength: 0)
             if let avatar = meta.avatar {
-                HomeAvatar(initial: avatar)
+                HomeAvatar(initial: avatar, width: layout.tile)
             }
         }
         .padding(.top, t.px(17))
@@ -418,19 +462,33 @@ struct HomeMetaRow: View {
 }
 
 /// The owner's initial on the meta row (`.kt-meta-ava`): a 38 px tile, Heavyweight's blue disc, Lime's grey tile on a
-/// hairline. Decorative: hidden from VoiceOver.
+/// hairline; narrower, never shorter, where the row's flexbox gives the label its room (`HomeMetaRow.layout`): the
+/// disc an ellipse (`border-radius: 50%`), Lime's corners no rounder than half the width (as CSS scales radii that do
+/// not fit). Decorative: hidden from VoiceOver.
 struct HomeAvatar: View {
     let initial: String
+    /// The tile's width in points (`HomeMetaRow.Layout.tile`).
+    let width: CGFloat
     @Environment(\.roomTheme) private var t
+
+    /// The initial's face: `homeAvatar`, 700, the room's body face (`index.html:771`).
+    static func style(_ t: RoomTheme) -> InlineStyle {
+        InlineStyle(size: t.home(.homeAvatar), weight: 700, color: t.flavor == .paper ? .onAccent : .text)
+    }
+
+    /// The initial's width in its face: the tile's min-content, less its border.
+    static func width(of initial: String, _ t: RoomTheme) -> CGFloat {
+        let text = NSAttributedString(string: initial, attributes: [.font: CoachInline.baseFont(style(t), theme: t)])
+        return CGFloat(CTLineGetTypographicBounds(CTLineCreateWithAttributedString(text), nil, nil, nil))
+    }
 
     var body: some View {
         let side = t.px(38)
-        PlainText(text: initial, style: InlineStyle(size: t.home(.homeAvatar), weight: 700, color: t.flavor == .paper ? .onAccent : .text),
-                  lineLimit: 1)
-            .frame(width: side, height: side)
+        PlainText(text: initial, style: Self.style(t), lineLimit: 1)
+            .frame(width: width, height: side)
             .background {
                 if t.flavor == .paper {
-                    Circle().fill(t.color(.accent))
+                    Ellipse().fill(t.color(.accent))
                 } else {
                     RoundedRectangle(cornerRadius: t.px(13), style: .circular).fill(t.color(.card2))
                         .overlay(RoundedRectangle(cornerRadius: t.px(13), style: .circular).strokeBorder(t.color(.border), lineWidth: 1))

@@ -332,8 +332,10 @@ final class CoachHomeRenderTests: XCTestCase {
     }
 
     /// The avatar is drawn from the model, in its tile at the meta row's end: the column drawn again with another
-    /// letter differs from `drawn` (the model's own) inside the tile alone (38 px at the column's right gutter, under
-    /// the row's 17 px), and whatever the recognizer read inside the tile is the model's letter.
+    /// letter differs from `drawn` (the model's own) inside the tile alone (at the column's right gutter, under the
+    /// row's 17 px, as wide as the row's layout makes it: `HomeMetaRow.layout`, 38 px unless the label needs its room)
+    /// and centred in it, so a tile drawn wider or narrower than the web's moves the letter off its middle; and whatever
+    /// the recognizer read inside the tile is the model's letter.
     private func checkAvatar(_ avatar: String, of json: JSONValue, in room: Room?, drawn: UIImage, read: [DrawnText.Line], screen: Screen,
                              size: DynamicTypeSize, _ what: String, file: StaticString = #filePath, line: UInt = #line) throws {
         let other = DrawnText.normalize(avatar).map(DrawnText.fold) == ["w"] ? "K" : "W"
@@ -344,11 +346,14 @@ final class CoachHomeRenderTests: XCTestCase {
         XCTAssertEqual(again.size, drawn.size, "\(what): another avatar letter leaves the column's size as it is", file: file, line: line)
         let t = RoomTheme(home: model, system: size)
         let side = t.px(38)
+        let width = HomeMetaRow.layout(model.meta, t, width: screen.size.width).tile
         let right = screen.size.width - CoachHomeView.gutter(t, width: screen.size.width)
-        let tile = CGRect(x: right - side, y: screen.top + t.px(17), width: side, height: 2 * side).insetBy(dx: -1, dy: -1)
+        let tile = CGRect(x: right - width, y: screen.top + t.px(17), width: width, height: 2 * side).insetBy(dx: -1, dy: -1)
         let changed = try XCTUnwrap(Self.differingBox(drawn, again), "\(what): another avatar draws another letter: the avatar is drawn",
                                     file: file, line: line)
         XCTAssertTrue(tile.contains(changed), "\(what): the avatar is drawn in its tile (\(changed) in \(tile))", file: file, line: line)
+        XCTAssertEqual(changed.midX, right - width / 2, accuracy: 1,
+                       "\(what): the letter sits in the middle of a tile \(width) pt wide (\(changed))", file: file, line: line)
         for l in read where tile.contains(CGPoint(x: l.box.midX, y: l.box.midY)) {
             XCTAssertEqual(DrawnText.normalize(l.text).map(DrawnText.fold), DrawnText.normalize(avatar).map(DrawnText.fold),
                            "\(what): read \(l.text.debugDescription) in the avatar's tile, which shows \(avatar.debugDescription)",
@@ -358,10 +363,19 @@ final class CoachHomeRenderTests: XCTestCase {
 
     /// A source's JSON with its meta row's avatar replaced.
     static func with(avatar: String, _ json: JSONValue) -> JSONValue {
+        with(meta: "avatar", .string(avatar), json)
+    }
+
+    /// A source's JSON with its meta row's label replaced.
+    static func with(label: String, _ json: JSONValue) -> JSONValue {
+        with(meta: "label", .string(label), json)
+    }
+
+    private static func with(meta key: String, _ value: JSONValue, _ json: JSONValue) -> JSONValue {
         guard case .object(var o) = json else { return json }
         var meta: [String: JSONValue] = [:]
         if case .object(let m)? = o["meta"] { meta = m }
-        meta["avatar"] = .string(avatar)
+        meta[key] = value
         o["meta"] = .object(meta)
         return .object(o)
     }

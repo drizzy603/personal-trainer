@@ -981,42 +981,40 @@ final class CoachHomeViewTests: XCTestCase {
         XCTAssertEqual(lines("your coach.", plain - 10, tracking: -2.6, font: inter), ["your coach."], "11 letters at -2.6 make room")
     }
 
-    /// The meta label breaks where the web's does. The lines below are the page's own: `.kt-meta-label` as renderCoach
-    /// draws the hub in each room with each fixture's label (Chromium, each letter's line read off its client rect) at
-    /// 320 and 390 pt and the root zoom of each text size (1, 1.12, 1.24). The label is one line wherever the web draws
-    /// one, as the row keeps no gap of its own between the label and the avatar's tile (Lime's "… · BUILD" at 320 pt
-    /// .xLarge and "… · STRENGTH" at 390 pt .xxLarge, which a 12 px gap wrapped); where it wraps, the separator ends
-    /// the first line ("COACH · WK 06 / 12 ·" over "BUILD"), never leads the second ("· BUILD", as SwiftUI's own
-    /// breaker had it, to keep a word from standing alone). Laid out, the label (the dot, its gap and the lines: one
-    /// element for VoiceOver) is as tall as its lines and as wide as the widest, so the view draws those lines and no
-    /// others.
+    /// The meta row lays out as the web's does: every case of Fixtures/layout/meta-row.json, the page's own
+    /// `.kt-meta-row` drawn by renderCoach in Chromium in both rooms, at 320, 375, 390, 402 and 440 pt and the root zoom
+    /// of each text size (1, 1.12, 1.24), with the fixtures' labels and three multi-word block names a coach may write
+    /// (tests/golden/dump-meta-row.js; tests/golden/check.sh fails when the page changes it), comes out of
+    /// `HomeMetaRow.layout` in the page's lines with the page's tile width. So the label is one line wherever the web
+    /// draws one (the row keeps no gap of its own); where it wraps, the separator ends a line ("COACH · WK 06 / 12 ·"
+    /// over "BUILD"), never leads the next ("· BUILD", SwiftUI's own breaker); and the tile gives the label the room the
+    /// web's flexbox gives it ("… · FOUNDATION" over "PHASE" with the tile at 36.4 of its 42.6 pt in Heavyweight at
+    /// 320 pt .xLarge, where a tile kept at 38 px broke "… ·" over "FOUNDATION PHASE"), its width the web's within a
+    /// tenth of a point. Laid out (every case at 320 and 390 pt), the label (the dot, its gap and the lines: one element
+    /// for VoiceOver) starts at the gutter, as tall as its lines and as wide as the widest, so the view draws those
+    /// lines and no others (CoachHomeRenderTests holds the drawn tile's width by its letter's place).
     func testTheMetaLabelBreaksWhereTheWebsDoes() throws {
-        let build = "COACH \u{00B7} WK 06 / 12 \u{00B7} BUILD", strength = "COACH \u{00B7} WK 06 / 12 \u{00B7} STRENGTH"
-        let first = "COACH \u{00B7} WK 06 / 12 \u{00B7}"
-        let cases: [(fixture: String, room: Room, width: CGFloat, size: DynamicTypeSize, web: [String])] = [
-            ("hub-empty", .lime, 390, .large, [build]),
-            ("hub-empty", .lime, 320, .xLarge, [build]),
-            ("hub-empty", .lime, 390, .xxLarge, [build]),
-            ("hub-empty", .lime, 320, .xxLarge, [first, "BUILD"]),
-            ("hub-empty", .heavyweight, 320, .xxLarge, [build]),
-            ("lone-surrogates", .lime, 320, .large, [strength]),
-            ("lone-surrogates", .lime, 390, .xxLarge, [strength]),
-            ("lone-surrogates", .lime, 320, .xLarge, [first, "STRENGTH"]),
-            ("lone-surrogates", .lime, 320, .xxLarge, [first, "STRENGTH"]),
-            ("lone-surrogates", .heavyweight, 390, .xxLarge, [strength]),
-            ("lone-surrogates", .heavyweight, 320, .xLarge, [strength]),
-            ("lone-surrogates", .heavyweight, 320, .xxLarge, [first, "STRENGTH"]),
-            ("hub-programme", .lime, 320, .xxLarge, ["COACH \u{00B7} WK 06 / 12"]),
-        ]
-        for c in cases {
-            let what = "\(c.fixture) \(c.room.id) at \(Int(c.width)) pt, \(c.size)"
-            let m = try CoachHomeFixtures.model(c.fixture, in: c.room)
-            let t = RoomTheme(home: m, system: c.size)
-            XCTAssertEqual(HomeMetaRow.labelLines(m.meta, t, width: c.width), c.web, "\(what): the web's lines")
-            let hosted = Hosted(Phone(model: m, host: Recorder().host(), size: c.size, unscrolledWidth: c.width),
-                                size: CGSize(width: c.width, height: 844))
-            let label = try XCTUnwrap(hosted.elements.first { $0.label == m.meta.label }, "\(what): the meta label")
-            hosted.close()
+        let file = try LayoutFixtures.metaRow()
+        let sizes = Dictionary(uniqueKeysWithValues: CoachRenderTests.sizes)
+        let hub = try CoachHomeFixtures.json("hub-empty")
+        var wrapped = 0, narrowed = 0, hosted = 0
+        XCTAssertGreaterThanOrEqual(file.cases.count, 180, "every room, width, size and label")
+        for c in file.cases {
+            let what = "\(c.label.debugDescription) in \(c.room.id) at \(Int(c.width)) pt, \(c.size)"
+            let size = try XCTUnwrap(sizes[c.size], "\(what): a text size the hub draws at")
+            let json = CoachHomeRenderTests.with(label: c.label, CoachHomeRenderTests.with(avatar: file.avatar, hub))
+            let m = try CoachHomeFixtures.model(json, in: c.room)
+            let t = RoomTheme(home: m, system: size)
+            let layout = HomeMetaRow.layout(m.meta, t, width: c.width)
+            XCTAssertEqual(layout.lines, c.lines, "\(what): the web's lines")
+            XCTAssertEqual(layout.tile, c.tile, accuracy: 0.1, "\(what): the web's tile width")
+            if c.lines.count > 1 { wrapped += 1 }
+            if c.tile < t.px(38) - 0.5 { narrowed += 1 }
+            guard c.width == 320 || c.width == 390 else { continue }
+            let phone = Hosted(Phone(model: m, host: Recorder().host(), size: size, unscrolledWidth: c.width),
+                               size: CGSize(width: c.width, height: 844))
+            let label = try XCTUnwrap(phone.elements.first { $0.label == CoachHomeSpeech.meta(m.meta) }, "\(what): the meta label")
+            phone.close()
             let style = HomeMetaRow.labelStyle(t)
             let face = CoachInline.baseFont(style, theme: t)
             // a line's drawn width: its letters in the face, each tracked, the space it may end on hanging
@@ -1025,13 +1023,17 @@ final class CoachHomeViewTests: XCTestCase {
                 let line = CTLineCreateWithAttributedString(text)
                 return CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil) - CTLineGetTrailingWhitespaceWidth(line))
             }
-            let widest = c.web.map(drawn).max() ?? 0
+            let widest = c.lines.map(drawn).max() ?? 0
             XCTAssertEqual(label.frame.minX, CoachHomeView.gutter(t, width: c.width), accuracy: 0.5, "\(what): at the gutter")
-            XCTAssertEqual(label.frame.height, CGFloat(c.web.count) * face.lineHeight, accuracy: 1,
-                           "\(what): \(c.web.count) line(s) of the face (\(label.frame))")
+            XCTAssertEqual(label.frame.height, CGFloat(c.lines.count) * face.lineHeight, accuracy: 1,
+                           "\(what): \(c.lines.count) line(s) of the face (\(label.frame))")
             XCTAssertEqual(label.frame.width, t.px(7) + t.px(9) + widest, accuracy: 2,
-                           "\(what): the dot, its gap and the widest of \(c.web) (\(label.frame))")
+                           "\(what): the dot, its gap and the widest of \(c.lines) (\(label.frame))")
+            hosted += 1
         }
+        XCTAssertGreaterThan(wrapped, 0, "some label wraps")
+        XCTAssertGreaterThan(narrowed, 0, "some tile gives way")
+        XCTAssertGreaterThan(hosted, 0, "some layouts were drawn")
     }
 
     /// The help is one element whose two paragraphs draw as two lines (its "\n" a line break, as the web's <br>).
