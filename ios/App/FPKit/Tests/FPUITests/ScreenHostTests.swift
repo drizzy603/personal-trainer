@@ -837,8 +837,17 @@ final class ScreenHostTests: XCTestCase {
 
     /// A transition over the tab root under way in this turn, as the chat's photo picker or a share sheet makes, going up
     /// or down: UIKit's transition coordinator reaches the Coach stack while it runs. (This host has no window scene, so
-    /// a presentation never ends and the first one stays under way; where one ends, its dismissal is the next.)
-    private func transitionOverTheRoot(_ r: StackRig, line: UInt = #line) {
+    /// a presentation never ends and the first one stays under way; where one ends, its dismissal is the next.) The
+    /// stack's own push or pop still running is no such transition: on a loaded machine ScreenHost can take an animated
+    /// push as done (`stackOpTimeout`) while UIKit still runs it, and standing in with its coordinator made the case
+    /// test an op asked during the stack's own transition instead (an animated pop, rightly: iOS 27.0 at load ~200). So
+    /// it ends first, and the coordinator left is one over the tab.
+    private func transitionOverTheRoot(_ r: StackRig, line: UInt = #line) async throws {
+        func overTheTab(_ c: any UIViewControllerTransitionCoordinator) -> Bool {
+            c.presentationStyle != .none || c.viewController(forKey: .to)?.parent !== r.nav
+        }
+        let ownOver = try await until { r.nav.transitionCoordinator.map(overTheTab) ?? true }
+        XCTAssertTrue(ownOver, "the stack's own push or pop over before the transition over the tab", line: line)
         if r.nav.transitionCoordinator == nil {
             if let shown = r.container.presentedViewController {
                 shown.dismiss(animated: true)
@@ -846,7 +855,9 @@ final class ScreenHostTests: XCTestCase {
                 r.container.present(UIViewController(), animated: true)
             }
         }
-        XCTAssertNotNil(r.nav.transitionCoordinator, "a transition under way over the Coach tab", line: line)
+        let c = r.nav.transitionCoordinator
+        XCTAssertNotNil(c, "a transition under way over the Coach tab", line: line)
+        XCTAssertTrue(c.map(overTheTab) ?? false, "a transition over the tab, not the stack's own", line: line)
     }
 
     /// How many accessibility elements in the window carry each label, SwiftUI's own included (the probe's accessibility
@@ -1944,7 +1955,7 @@ final class ScreenHostTests: XCTestCase {
         host.update("coach", model: try model())
         host.present("coach")
         try await idle()
-        transitionOverTheRoot(r)
+        try await transitionOverTheRoot(r)
         host.dismiss("coach")   // the page's
         XCTAssertEqual(r.nav.log.last, "pop still")
         XCTAssertEqual(r.nav.viewControllers.count, 1, "the chat off the stack at once")
@@ -1952,7 +1963,7 @@ final class ScreenHostTests: XCTestCase {
         XCTAssertFalse(host.isUp("coach"))
         XCTAssertEqual(markerLines(), [])
         XCTAssertEqual(owner, [])
-        transitionOverTheRoot(r)
+        try await transitionOverTheRoot(r)
         XCTAssertTrue(host.present("coach"))
         XCTAssertEqual(r.nav.log.last, "push still")
         XCTAssertTrue(r.nav.topViewController is ScreenHostingController, "pushed at once")
@@ -1961,7 +1972,7 @@ final class ScreenHostTests: XCTestCase {
         XCTAssertEqual(owner, [], "nobody pressed Back")
         XCTAssertEqual(failedScreens, [])
         XCTAssertEqual(markerLines(), ["presenting coach@P1 shell 61"])
-        transitionOverTheRoot(r)
+        try await transitionOverTheRoot(r)
         host.coach.handle(.coachBack)   // the chat's own Back
         XCTAssertEqual(r.nav.log.last, "pop still")
         try await idle()
