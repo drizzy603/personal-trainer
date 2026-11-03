@@ -1,4 +1,5 @@
 #if os(iOS)
+import Combine
 import Foundation
 import UIKit
 import WebKit
@@ -18,7 +19,8 @@ final class TabsScene {
     let webView: RecordingWebView
     let web: StandInWebController
     let window: UIWindow
-    /// The hub's stand-in (H10 gives N's): `setHome` turns the Coach tab NATIVE on it.
+    /// A stand-in home the cases about the root's own behaviour put on it (`setHome` turns the Coach tab NATIVE on it);
+    /// the page's `present coachHome` puts N's hub there instead (H10, test 34 on).
     let home = UIViewController()
     var installed = ShellInstall(screens: [], tabsRoot: false)
     var root: RootTabController?
@@ -66,12 +68,22 @@ private final class Weak {
 /// intent and answers as each case sets (`window.__how`), and whose `window._trovoOpen` records its argument
 /// (PageLinkTests' page is the model). The root decision, `selectTab` and its funnel (no echo, I3), the owner's taps,
 /// re-taps and strays (one `tabs.select` each), the refusals, `sheets` per document, `tabs.select` and `tabs.bar` as
-/// state (restated once the link is idle, never resent), the TabsModel and the interim `coachHome` drop, deep links (the
-/// URL an argument, never source), covered, the breaker's attribution, a hidden page on a web tab, the teardown that
-/// frees the root and the web view, VoiceOver's screen change after the page's answer, and a busy page against a dead
-/// one (held timeouts, contract 4.4). From test 14 on, 11-shell.md H8 (contract 1.4, 2.3, 3.2, 3.5, 3.6, 3.10, 4.2, 10.1,
-/// 10.3, 10.5, D17, D21, D32, I13, I14): hello with `tabs` and the declines, the fallback and each of its triggers, the
-/// Coach tab's modes per scene, the shell's switch, the status, the composer's words handed over, `status {refresh}`.
+/// state (restated once the link is idle, never resent), the TabsModel, deep links (the URL an argument, never source),
+/// covered, the breaker's attribution, a hidden page on a web tab, the teardown that frees the root and the web view,
+/// VoiceOver's screen change after the page's answer, and a busy page against a dead one (held timeouts, contract 4.4).
+/// From test 14 on, 11-shell.md H8 (contract 1.4, 2.3, 3.2, 3.5, 3.6, 3.10, 4.2, 10.1, 10.3, 10.5, D17, D21, D32, I13,
+/// I14): hello with `tabs` and the declines, the fallback and each of its triggers, the Coach tab's modes per scene, the
+/// shell's switch, the status, the composer's words handed over, `status {refresh}`. Most of those cases put a stand-in
+/// home on the root themselves (`root.setHome`); from test 34 on, 11-shell.md H10 (contract 1.4, 3.2, 3.6, 3.7, 5, 8.1,
+/// 8.3, 8.4, 10.2, 15.2, I13): the page's `present coachHome` puts N's hub (ScreenHost's home on its CoachHomeStore) at
+/// the Coach stack's root, its models decode inside `model coachHome@`, a reload keeps it on its last model until the
+/// snapshot, undecodable ones trip it with the chat, `resume` holds a tap, the chat goes over it and comes back to it
+/// with the markers and the toast anchor following, the drop and the teardown empty its store, and the key field's text
+/// is in no report. Tests 42-43 (delta 17.13): the probe's hub press is an error under the shell's confirm, and the
+/// probe hears the root's mode change and fallback under no funnel run. Test 44: the hub's ground takes the first
+/// frame's room (contract 6.1). Test 45: the page's one pass from a WEB Coach tab pushes the chat over the hub. Test
+/// 46 (H10's review): a hub model and the resync's snapshot are applied inside `model coachHome@`. A read that says the
+/// page heard nothing waits for the link to go idle first (`linkIdle`).
 @available(iOS 26.0, *)
 @MainActor
 final class ShellBridgeTabsTests: XCTestCase {
@@ -91,10 +103,12 @@ final class ShellBridgeTabsTests: XCTestCase {
     /// is kept in `window.__pending`: WebKit fails a call whose promise the page's garbage collector took ("Completion
     /// handler for function call is no longer reachable", a script error), where a page that does not answer must time
     /// out. `throw` throws (a script error); `window.__took` makes `screens.off` with a `draft` answer `took: true`, as
-    /// the page does once it holds the words durably. `_trovoOpen` records its argument in `window.__opened`.
+    /// the page does once it holds the words durably; `window.__json[name]` (a string) is answered as `{ok: true, json}`,
+    /// as the page answers a snapshot. `_trovoOpen` records its argument in `window.__opened`.
     static let page = """
         <!doctype html><meta charset="utf-8"><title>fp</title><script>
         window.__got = []; window.__opened = []; window.__how = {}; window.__silent = false; window.__pending = []; window.__took = false;
+        window.__json = {};
         window.__never = function () { var p = new Promise(function () {}); window.__pending.push(p); return p; };
         window.__tab = 'log'; window.__seq = 0;
         window.FPScreens = { v: 1, call: function (name, args) {
@@ -107,7 +121,8 @@ final class ShellBridgeTabsTests: XCTestCase {
           var plan = window.__how[name], how = 'ok';
           if (Array.isArray(plan)) { how = plan.length ? plan.shift() : 'ok'; } else if (typeof plan === 'string') { how = plan; }
           var reply = name === 'tabs.select' ? { ok: true, tab: window.__tab } : name === 'ping' ? { ok: true, v: 1 }
-            : name === 'screens.off' && args.draft != null && window.__took ? { ok: true, took: true } : { ok: true };
+            : name === 'screens.off' && args.draft != null && window.__took ? { ok: true, took: true }
+            : typeof window.__json[name] === 'string' ? { ok: true, json: window.__json[name] } : { ok: true };
           if (how === 'never') return window.__never();
           if (how === 'throw') throw new Error('thrown by the stand-in page');
           if (how.indexOf('fail:') === 0) return Promise.resolve({ ok: false, error: how.slice(5) });
@@ -178,9 +193,10 @@ final class ShellBridgeTabsTests: XCTestCase {
     }
 
     /// A scene as SceneDelegate builds it (H9), its page loaded and, unless `hello` is nil, linked with those screens.
-    /// `flag`: the App's `window.__FP_SHELL` script goes in after the install, as `capacitorDidLoad` adds it.
+    /// `flag`: the App's `window.__FP_SHELL` script goes in after the install, as `capacitorDidLoad` adds it. `room`: the
+    /// first frame's (the root's look before any TabsModel, contract 6.1).
     private func scene(first: String = "log", allowed: Bool = true, hello screens: [String]? = ShellBridgeTabsTests.all,
-                       bridge: ShellBridge? = nil, flag: Bool = false) async throws -> TabsScene {
+                       bridge: ShellBridge? = nil, flag: Bool = false, room: Room = .heavyweight) async throws -> TabsScene {
         let s = TabsScene(bridge: bridge ?? makeBridge())
         scenes.append(s)
         let launch = ShellLaunch(tabRootAllowed: allowed, first: first, barGuess: RootTabController.predicted(screen: s.window.bounds.size))
@@ -192,7 +208,7 @@ final class ShellBridgeTabsTests: XCTestCase {
         }
         if s.installed.tabsRoot {
             s.bridge.section("tabs") {
-                let root = RootTabController(web: s.web, webView: s.webView, first: first, look: TabsModel.defaults(for: .heavyweight))
+                let root = RootTabController(web: s.web, webView: s.webView, first: first, look: TabsModel.defaults(for: room))
                 root.postScreenChanged = { [weak s, weak root] arg in s?.post(arg, root: root) }
                 s.root = root
                 s.bridge.adopt(root: root)
@@ -337,6 +353,46 @@ final class ShellBridgeTabsTests: XCTestCase {
         return String(decoding: try JSONSerialization.data(withJSONObject: o), as: UTF8.self)
     }
 
+    /// A CoachHomeModel as the page builds it (contract 6.2): the hub, or the connect screen, with this boot, rev and
+    /// `resume`.
+    private func homeJSON(boot: String = "b1", rev: Int, resume: Bool = false, connect: Bool = false) throws -> String {
+        let base = connect ? CoachHomeViewTests.connectJSON() : CoachHomeViewTests.hubJSON()
+        var o = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(base.utf8)) as? [String: Any])
+        o["boot"] = boot
+        o["rev"] = rev
+        o["resume"] = resume
+        return String(decoding: try JSONSerialization.data(withJSONObject: o), as: UTF8.self)
+    }
+
+    /// The page's declaration of the native Coach tab as `_fpSync` makes it: the hub's model first, then `present
+    /// coachHome`, each answered.
+    private func presentHome(_ s: TabsScene, rev: Int, resume: Bool = false, connect: Bool = false) async throws {
+        let json = try homeJSON(rev: rev, resume: resume, connect: connect)
+        _ = try await message(s, "model", ["screen": "coachHome", "rev": rev, "json": json]).get()
+        _ = try await message(s, "present", ["screen": "coachHome"]).get()
+    }
+
+    /// A marker file's state byte now (`SectionMarker.inside` or `.outside`; nil without the file), by its name.
+    private func markerByte(_ s: TabsScene, _ name: String) -> UInt8? {
+        (try? Data(contentsOf: s.bridge.folder.appendingPathComponent(name)))?.last
+    }
+
+    /// The screens' crash markers on disk now (`presenting.*.marker`), as lines.
+    private func presenting(_ s: TabsScene) -> [String] {
+        let folder = s.bridge.folder
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
+        return names.filter { $0.hasPrefix("presenting.") }.sorted().compactMap {
+            (try? String(contentsOf: folder.appendingPathComponent($0), encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+    }
+
+    /// The first view of `type` under `v`, depth first.
+    private static func find<T: UIView>(_ type: T.Type, in v: UIView) -> T? {
+        if let t = v as? T { return t }
+        for sub in v.subviews { if let t = find(type, in: sub) { return t } }
+        return nil
+    }
+
     /// A TabsModel as the page builds it (contract 6.1).
     private func tabsModelJSON(rev: Int, room: String, paper: Bool, tint: String, idle: String, titles: [String: String]) -> String {
         let items: [[String: Any]] = ShellTabs.ids.map { id in
@@ -362,6 +418,16 @@ final class ShellBridgeTabsTests: XCTestCase {
         let done = try await until(timeout, ok)
         if !done { XCTFail("never: " + what(), file: file, line: line) }
         return done
+    }
+
+    /// Before a read that says the page heard nothing (more): the link idle (nothing queued for the page and none on its
+    /// way: PageLink sends one intent at a time, so one queued behind a slow one could reach the page after the read) and
+    /// ScreenHost's queue idle. The fixed sleep in front of it stays as a lower bound for what is sent a turn later.
+    private func linkIdle(_ s: TabsScene, file: StaticString = #filePath, line: UInt = #line) async throws {
+        let b = try XCTUnwrap(s.binding, "a binding", file: file, line: line)
+        try await expect("the link idle", within: 10, file: file, line: line) {
+            b.pageLink.pending == 0 && b.screens.describe()["busy"] as? Bool == false
+        }
     }
 
     // MARK: 0. The root decision
@@ -498,9 +564,10 @@ final class ShellBridgeTabsTests: XCTestCase {
     // MARK: 3. Refusals
 
     /// Contract 3.1, 3.6: every refusal new in 61 reads `<code>: <words>`: `off` with no live tab root, `bad-tab`,
-    /// `not-presentable` for the bar and (without a live root, and in the interim before H10 with one) the Coach tab,
-    /// `not-native` for the chat off a NATIVE Coach tab (WAITING or WEB); build 60's words for a piece not live; `dismiss
-    /// tabs` answered under a classic root (under a live one it is the fallback: test 19).
+    /// `not-presentable` for the bar and (without a live root) the Coach tab, `not-native` for the chat off a NATIVE Coach
+    /// tab (WAITING or WEB); build 60's words for a piece not live and for a present with no model (the Coach tab's under a
+    /// live root, H10: its model goes first); `dismiss tabs` answered under a classic root (under a live one it is the
+    /// fallback: test 19).
     func test03RefusalsCarryTheirCode() async throws {
         // a classic root
         let c = try await scene(allowed: false, hello: ["coach"])
@@ -525,7 +592,8 @@ final class ShellBridgeTabsTests: XCTestCase {
         why = await refusal(s, "present", ["screen": "tabs"])
         XCTAssertEqual(why, "not-presentable: tabs is never presented")
         why = await refusal(s, "present", ["screen": "coachHome"])
-        XCTAssertEqual(code(why), "not-presentable", "the interim before H10 (contract 15.2): \(why ?? "answered")")
+        XCTAssertEqual(why, "no coachHome model to open on", "a live root: build 60's check, the model first (contract 3.6)")
+        XCTAssertEqual(root.coachMode, .waiting, "nothing presented")
         _ = try await message(s, "model", ["screen": "coach", "rev": 1, "json": try coachModelJSON(rev: 1)]).get()
         XCTAssertEqual(root.coachMode, .waiting)
         why = await refusal(s, "present", ["screen": "coach"])
@@ -757,9 +825,9 @@ final class ShellBridgeTabsTests: XCTestCase {
 
     // MARK: 6. TabsModel
 
-    /// Contract 3.7, 6.1, 15.2: a TabsModel repaints the bar (tint, idle, titles, labels, style) inside `model tabs@`;
-    /// a stale rev is dropped; `coachHome` models are dropped unread and uncounted until H10, whatever their number; three
-    /// that do not decode trip `tabs` for the page build, and the scene falls back (`failures`).
+    /// Contract 3.7, 6.1: a TabsModel repaints the bar (tint, idle, titles, labels, style) inside `model tabs@`; a stale
+    /// rev is dropped; three that do not decode trip `tabs` for the page build, and the scene falls back (`failures`).
+    /// (The hub's models: test 36.)
     func test06ATabsModelRepaintsTheBarAndUndecodableOnesTripTheBar() async throws {
         let s = try await scene(first: "log")
         let root = try XCTUnwrap(s.root)
@@ -786,13 +854,6 @@ final class ShellBridgeTabsTests: XCTestCase {
         XCTAssertEqual(root.tabBar.overrideUserInterfaceStyle, .dark)
         XCTAssertEqual(root.coachSlot.nav.overrideUserInterfaceStyle, .dark)
         XCTAssertEqual(root.tabBar.items?.map(\.title), ["Log", "Progress", "Coach", "Settings"])
-        // coachHome models: dropped unread and uncounted
-        for rev in 10..<16 {
-            _ = try await message(s, "model", ["screen": "coachHome", "rev": rev, "json": "not a model"]).get()
-        }
-        XCTAssertNil(b.link.book.screens["coachHome"], "nothing counted")
-        XCTAssertTrue(b.link.isLive("coachHome"))
-        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.appendingPathComponent("model.coachHome.marker").path), "unread")
         XCTAssertEqual(b.link.book.screens["tabs"]?.modelFailures ?? 0, 0)
         // three that do not decode: the bar trips for the page build
         for rev in 20..<23 {
@@ -934,10 +995,10 @@ final class ShellBridgeTabsTests: XCTestCase {
 
     // MARK: 11. Teardown
 
-    /// H7's weak references (maps/lessons.md:29): after the adoption, a few funnel runs, a pushed chat, `detachStack()` and
-    /// `sceneDisconnected(webView:)`, nothing the bridge keeps (the binding, ScreenHost, the stack state, the root's hooks)
-    /// holds the root, its slots, the web controller or the web view: they go once the window lets them go, while the
-    /// bridge itself lives on (the app's is a singleton).
+    /// H7's weak references (maps/lessons.md:29): after the adoption, a few funnel runs, N's hub at the Coach stack's root
+    /// (H10), a pushed chat, `detachStack()` and `sceneDisconnected(webView:)`, nothing the bridge keeps (the binding,
+    /// ScreenHost, the stack state, the root's hooks) holds the root, its slots, the hub's controller, the web controller or
+    /// the web view: they go once the window lets them go, while the bridge itself lives on (the app's is a singleton).
     func test11ATeardownFreesTheRootItsSlotsTheWebControllerAndTheWebView() async throws {
         let bridge = makeBridge()
         let refs = try await sceneTornDown(bridge)
@@ -950,13 +1011,14 @@ final class ShellBridgeTabsTests: XCTestCase {
     private func sceneTornDown(_ bridge: ShellBridge) async throws -> [(String, Weak)] {
         let s = try await scene(first: "log", bridge: bridge)
         let root = try XCTUnwrap(s.root)
-        let refs: [(String, Weak)] = [("root", Weak(root)), ("nav", Weak(root.coachSlot.nav))]
+        var refs: [(String, Weak)] = [("root", Weak(root)), ("nav", Weak(root.coachSlot.nav))]
             + root.slots.enumerated().map { ("slot \($0.offset)", Weak($0.element)) }
             + [("web controller", Weak(s.web)), ("web view", Weak(s.webView)), ("home", Weak(s.home))]
         tap(s, "progress")
         _ = try await message(s, "selectTab", ["tab": "settings"]).get()
         root.selectedIndex = 0   // a stray
-        root.setHome(s.home)
+        try await presentHome(s, rev: 1)   // NATIVE on N's hub (H10)
+        refs.append(("hub", Weak(root.coachSlot.nav.viewControllers.first)))
         _ = try await message(s, "model", ["screen": "coach", "rev": 1, "json": try coachModelJSON(rev: 1)]).get()
         _ = try await message(s, "selectTab", ["tab": "coach"]).get()
         _ = try await message(s, "present", ["screen": "coach"]).get()
@@ -977,7 +1039,8 @@ final class ShellBridgeTabsTests: XCTestCase {
 
     /// The same holds while the binding lives on: a window that lets the root go before any `sceneDisconnected` (nothing
     /// tore the stack down or reset the root's hooks) frees the root, its slots, the web controller and the web view,
-    /// so no strong capture in the stack state or the root's hooks (a cycle with the root) can hide behind the teardown.
+    /// so no strong capture in the stack state or the root's hooks (a cycle with the root) can hide behind the teardown,
+    /// nor ScreenHost's hold on the hub's controller (H10), which was the Coach stack's root.
     func test11bWithTheBindingAliveNothingTheBridgeKeepsHoldsTheRoot() async throws {
         let bridge = makeBridge()
         let refs = try await sceneLetGoWithoutTeardown(bridge)
@@ -997,7 +1060,7 @@ final class ShellBridgeTabsTests: XCTestCase {
             + root.slots.enumerated().map { ("slot \($0.offset)", Weak($0.element)) }
             + [("web controller", Weak(s.web)), ("web view", Weak(s.webView))]
         tap(s, "progress")
-        root.setHome(s.home)
+        try await presentHome(s, rev: 1)   // NATIVE on N's hub (H10): ScreenHost keeps its controller
         _ = try await message(s, "model", ["screen": "coach", "rev": 1, "json": try coachModelJSON(rev: 1)]).get()
         _ = try await message(s, "selectTab", ["tab": "coach"]).get()
         _ = try await message(s, "present", ["screen": "coach"]).get()
@@ -2033,6 +2096,500 @@ final class ShellBridgeTabsTests: XCTestCase {
         check("the hub is covered: the chat is pushed over it")
     }
     #endif
+
+    // MARK: 34-40. The native Coach tab wired (11-shell.md H10)
+
+    /// H10 (contract 1.4, 3.6, 3.7, 8.4, 15.2): a `present coachHome` with no model is refused (build 60's words) and
+    /// changes nothing, and a model alone declares nothing; on the store's model the present puts ScreenHost's home (N's
+    /// root on its CoachHomeStore) at the Coach stack's root and turns the tab NATIVE: the web view hidden, the WAITING net
+    /// gone, `describe().root.coach.root` the home's route, VoiceOver on the hub, and covered on once more from the root
+    /// while Coach is selected (none of the bridge's own). `dismiss coachHome` turns it WEB: the web view shown, covered
+    /// off. A present from WEB turns it NATIVE again on the same home; while Coach is not selected neither sends covered.
+    func test34PresentCoachHomeTurnsTheTabNativeOnTheStoresModelAndDismissTurnsItWeb() async throws {
+        let s = try await scene(first: "coach")
+        let root = try XCTUnwrap(s.root)
+        let b = try XCTUnwrap(s.binding)
+        XCTAssertEqual(root.coachMode, .waiting)
+        try await expect("covered on after the hello (WAITING)") { await self.calls(s, "shell.covered").map(\.on) == [true] }
+        let why = await refusal(s, "present", ["screen": "coachHome"])
+        XCTAssertEqual(why, "no coachHome model to open on")
+        XCTAssertEqual(root.coachMode, .waiting, "no model: nothing presented")
+        XCTAssertNotNil(b.coachNet, "still on its net")
+        _ = try await message(s, "model", ["screen": "coachHome", "rev": 2, "json": try homeJSON(rev: 2)]).get()
+        XCTAssertEqual(b.screens.home.model?.rev, 2, "the store holds the page's model")
+        XCTAssertEqual(String(decoding: try Data(contentsOf: s.bridge.folder.appendingPathComponent("model.coachHome.marker")), as: UTF8.self),
+                       "model coachHome@P1 shell 61\n0", "its section's line names the page build and the shell, and it ended (test 46: inside it)")
+        XCTAssertEqual(root.coachMode, .waiting, "a model alone declares nothing")
+        s.posts = []
+        _ = try await message(s, "present", ["screen": "coachHome"]).get()
+        XCTAssertEqual(root.coachMode, .native)
+        let home = try XCTUnwrap(root.coachSlot.nav.viewControllers.first)
+        XCTAssertTrue(home is ScreenHostingController, "ScreenHost's own controller of N's root")
+        XCTAssertTrue(root.coachSlot.home === home, "the root's home")
+        XCTAssertTrue(b.screens.hostView("coachHome") === home.view)
+        XCTAssertTrue(s.webView.isHidden)
+        XCTAssertTrue(s.webView.accessibilityElementsHidden)
+        XCTAssertNil(b.coachNet, "declared: the net went")
+        XCTAssertEqual(s.posts, ["top"], "VoiceOver hears the hub")
+        XCTAssertEqual(b.screens.shown, ["coachHome"])
+        var coach = try XCTUnwrap((s.bridge.describe()["root"] as? [String: Any])?["coach"] as? [String: Any])
+        XCTAssertEqual(coach["root"] as? String, "hub")
+        XCTAssertEqual(coach["mode"] as? String, "native")
+        // contract 15.3: ScreenHost's report gives each screen up its host, coachHome's too
+        let entry = try XCTUnwrap((b.screens.describe()["screens"] as? [String: Any])?["coachHome"] as? [String: Any])
+        XCTAssertEqual(entry["host"] as? String, "stack")
+        XCTAssertEqual(entry["presented"] as? Bool, true)
+        XCTAssertEqual(entry["inWindow"] as? Bool, true)
+        XCTAssertEqual(entry["route"] as? String, "hub")
+        XCTAssertEqual(entry["rev"] as? Int, 2)
+        XCTAssertEqual(entry["boot"] as? String, "b1")
+        try await expect("covered on again, from the root") { await self.calls(s, "shell.covered").map(\.on) == [true, true] }
+        _ = try await message(s, "dismiss", ["screen": "coachHome"]).get()
+        XCTAssertEqual(root.coachMode, .web)
+        XCTAssertFalse(s.webView.isHidden)
+        XCTAssertFalse(s.webView.accessibilityElementsHidden)
+        XCTAssertEqual(b.screens.shown, [])
+        XCTAssertNil((b.screens.describe()["screens"] as? [String: Any])?["coachHome"], "not up: no entry")
+        coach = try XCTUnwrap((s.bridge.describe()["root"] as? [String: Any])?["coach"] as? [String: Any])
+        XCTAssertEqual(coach["mode"] as? String, "web")
+        try await expect("covered off") { await self.calls(s, "shell.covered").map(\.on) == [true, true, false] }
+        _ = try await message(s, "present", ["screen": "coachHome"]).get()
+        XCTAssertEqual(root.coachMode, .native, "WEB turns NATIVE again on a present")
+        XCTAssertTrue(root.coachSlot.nav.viewControllers.first === home, "on the same home")
+        try await expect("covered on: WEB to NATIVE with Coach selected") {
+            await self.calls(s, "shell.covered").map(\.on) == [true, true, false, true]
+        }
+        tap(s, "log")
+        try await expect("covered off: Coach left") { await self.calls(s, "shell.covered").map(\.on) == [true, true, false, true, false] }
+        _ = try await message(s, "dismiss", ["screen": "coachHome"]).get()
+        XCTAssertEqual(root.coachMode, .web)
+        _ = try await message(s, "present", ["screen": "coachHome"]).get()
+        XCTAssertEqual(root.coachMode, .native)
+        try await sleep(0.3)
+        try await linkIdle(s)
+        let covered = await calls(s, "shell.covered")
+        XCTAssertEqual(covered.map(\.on), [true, true, false, true, false], "Coach not selected: no covered either way")
+        XCTAssertEqual(RecordingWebView.nilMovesWhileLive(of: s.webView), 0)
+    }
+
+    /// H10 (contract 1.4, 3.2, 8.3, I13): a reload under the NATIVE Coach tab keeps it NATIVE on its last model
+    /// (`documentGone(keep: true)`); hello's `up` names `coachHome`, and the resync asks for `coachHome.snapshot` and
+    /// applies the new document's model (another boot, whatever its rev), with covered on and no `tabs.select`. A
+    /// snapshot that does not decode counts against `coachHome` and leaves the model drawn.
+    func test35AReloadKeepsTheNativeTabOnItsLastModelUntilTheSnapshot() async throws {
+        let s = try await scene(first: "coach")
+        let root = try XCTUnwrap(s.root)
+        let b = try XCTUnwrap(s.binding)
+        try await presentHome(s, rev: 7)
+        XCTAssertEqual(root.coachMode, .native)
+        try await load(s)
+        XCTAssertEqual(root.coachMode, .native, "a document start changes no mode")
+        XCTAssertEqual(b.screens.home.model?.rev, 7, "the last model stays drawn")
+        XCTAssertEqual(b.screens.home.model?.boot, "b1")
+        XCTAssertTrue(b.screens.isUp("coachHome"))
+        let snapshot = try homeJSON(boot: "b2", rev: 1, connect: true)
+        _ = await js(s, "window.__json['coachHome.snapshot'] = \(Self.jsString(snapshot)); 0")
+        let h = try await hello(s, Self.all, boot: "b2")
+        XCTAssertEqual(h["up"] as? [String], ["coachHome"], "the NATIVE tab named in up: the new document takes it over")
+        try await expect("the snapshot applied") { b.screens.home.model?.boot == "b2" }
+        XCTAssertEqual(b.screens.home.model?.rev, 1, "the new document's, whatever its rev")
+        XCTAssertEqual(b.screens.homeRoute, "connect")
+        XCTAssertEqual(root.coachMode, .native)
+        XCTAssertNil(b.coachNet, "taken over: no net")
+        let snapshots = await calls(s, "coachHome.snapshot")
+        XCTAssertEqual(snapshots.count, 1)
+        let covered = await calls(s, "shell.covered")
+        XCTAssertEqual(covered.map(\.on), [true])
+        let selects = await calls(s, "tabs.select")
+        XCTAssertEqual(selects.count, 0, "never tabs.select at the resync")
+        // a reload whose snapshot does not decode: counted, the model stays drawn
+        try await load(s)
+        _ = await js(s, "window.__json['coachHome.snapshot'] = 'not a model'; 0")
+        try await hello(s, Self.all, boot: "b3")
+        try await expect("the undecodable snapshot counted") { b.link.book.screens["coachHome"]?.modelFailures == 1 }
+        XCTAssertEqual(b.screens.home.model?.boot, "b2", "drawn until a model that decodes")
+        XCTAssertEqual(root.coachMode, .native)
+    }
+
+    /// H10 (contract 3.7, 4.4, 8.3, 10.1, 10.2, I12): three hub models in a row that do not decode (each read in its own
+    /// `model coachHome@` section, which ends; test 46 shows a model applied inside it) trip `coachHome` for the page
+    /// build, and `coach` goes with it (`needs`): the Coach tab turns WEB at once, the pushed
+    /// chat comes off (never as the owner's Back), the page hears `screens.off` for both and covered off (Coach was
+    /// selected); the bar stays, and a later `present coachHome` is build 60's "not on".
+    func test36ThreeUndecodableHubModelsTripCoachHomeAndTheChatGoesWithIt() async throws {
+        let s = try await scene(first: "coach")
+        let root = try XCTUnwrap(s.root)
+        let b = try XCTUnwrap(s.binding)
+        try await presentHome(s, rev: 2)
+        _ = try await message(s, "model", ["screen": "coach", "rev": 3, "json": try coachModelJSON(rev: 3)]).get()
+        _ = try await message(s, "present", ["screen": "coach"]).get()
+        try await expect("the chat pushed over the hub", within: 10) { root.coachSlot.nav.viewControllers.count == 2 }
+        try await expect("the link idle", within: 10) { b.pageLink.pending == 0 && b.screens.describe()["busy"] as? Bool == false }
+        _ = await js(s, "window.__got = []; 0")
+        let marker = s.bridge.folder.appendingPathComponent("model.coachHome.marker")
+        for rev in 4..<7 {
+            _ = try await message(s, "model", ["screen": "coachHome", "rev": rev, "json": "not a model"]).get()
+            XCTAssertEqual((try? Data(contentsOf: marker))?.last, SectionMarker.outside, "its section ended, the model counted (test 46: inside it)")
+            if rev < 6 { XCTAssertTrue(b.link.isLive("coachHome"), "not yet at rev \(rev)") }
+        }
+        let trip = try XCTUnwrap(b.link.book.trip(screen: "coachHome", pageBuild: "P1"))
+        XCTAssertEqual(trip.reason, .failures)
+        XCTAssertFalse(b.link.isLive("coachHome"))
+        XCTAssertFalse(b.link.isLive("coach"), "joint: the chat goes with it")
+        XCTAssertTrue(b.link.isLive("tabs"), "the bar stays")
+        XCTAssertNil(root.fellBack)
+        XCTAssertEqual(root.coachMode, .web, "WEB at once")
+        XCTAssertFalse(s.webView.isHidden)
+        XCTAssertEqual(b.screens.home.model?.rev, 2, "nothing undecodable applied")
+        try await expect("the chat came off", within: 10) { root.coachSlot.nav.viewControllers.count == 1 && b.screens.shown.isEmpty }
+        try await expect("the page told and uncovered") {
+            let offs = await self.calls(s, "screens.off").count
+            let covered = await self.calls(s, "shell.covered").count
+            return offs == 2 && covered == 1
+        }
+        let offs = await calls(s, "screens.off")
+        XCTAssertEqual(offs.map { $0.args["screen"] as? String }, ["coach", "coachHome"])
+        XCTAssertEqual(offs.map { $0.args["why"] as? String }, ["needs", "failures"])
+        let covered = await calls(s, "shell.covered")
+        XCTAssertEqual(covered.map(\.on), [false])
+        let backs = await calls(s, "coach.back")
+        XCTAssertEqual(backs.count, 0, "the shell's pop, not the owner's Back")
+        let why = await refusal(s, "present", ["screen": "coachHome"])
+        XCTAssertEqual(why, "the coachHome screen is not on for this document")
+    }
+
+    /// H10 (contract 6.2, 8.1, D34): `resume: true` in the newest hub model holds the owner's tap into the NATIVE Coach tab
+    /// (the home blank for the chat's push on its way, shown at the hold's end); `resume: false` does not, and a newer
+    /// model's `resume` replaces an older one's. A present while Coach is not selected covers nothing.
+    func test37ResumeInTheNewestModelHoldsATapIntoCoach() async throws {
+        let s = try await scene(first: "log")
+        let root = try XCTUnwrap(s.root)
+        try await presentHome(s, rev: 2, resume: false)
+        XCTAssertEqual(root.coachMode, .native)
+        XCTAssertFalse(root.coachResume)
+        try await sleep(0.2)
+        try await linkIdle(s)
+        let none = await calls(s, "shell.covered")
+        XCTAssertEqual(none.count, 0, "Coach not selected: the present covers nothing")
+        tap(s, "coach")
+        XCTAssertFalse(root.held, "resume false: the hub at once")
+        XCTAssertEqual(s.posts.last, "top")
+        tap(s, "log")
+        _ = try await message(s, "model", ["screen": "coachHome", "rev": 3, "json": try homeJSON(rev: 3, resume: true)]).get()
+        XCTAssertTrue(root.coachResume, "the newest model says the chat comes back")
+        tap(s, "coach")
+        XCTAssertTrue(root.held, "the owner's tap held")
+        XCTAssertEqual(root.coachSlot.nav.viewControllers.first?.view.alpha, 0, "the home blank")
+        try await expect("the hold ends by its time") { !root.held }
+        XCTAssertEqual(root.coachSlot.nav.viewControllers.first?.view.alpha, 1, "then the hub shows")
+        tap(s, "log")
+        _ = try await message(s, "model", ["screen": "coachHome", "rev": 4, "json": try homeJSON(rev: 4, resume: false)]).get()
+        XCTAssertFalse(root.coachResume)
+        tap(s, "coach")
+        XCTAssertFalse(root.held)
+    }
+
+    /// H10 (contract 3.6, 8.3, 10.2, D20): the chat pushed over the hub and popped back to it by the owner's Back (the page
+    /// hears `coach.back`), the home staying at the stack's root: one Coach-tab marker for what is on top (`coachHome`,
+    /// then `coach`, then `coachHome`; never both; none with Coach unselected), and the toast anchor under the hub's meta
+    /// row, then the chat's header, then the hub's again.
+    func test38TheChatGoesOverTheHubAndComesBackWithTheMarkerAndTheAnchor() async throws {
+        FPFonts.register()
+        let s = try await scene(first: "coach")
+        let root = try XCTUnwrap(s.root)
+        let b = try XCTUnwrap(s.binding)
+        b.screens.isActive = { true }   // the app in use (a test host's own state varies)
+        try await presentHome(s, rev: 2)
+        let home = try XCTUnwrap(root.coachSlot.nav.viewControllers.first)
+        XCTAssertEqual(presenting(s), ["presenting coachHome@P1 shell 61"], "the hub on top of the selected NATIVE tab")
+        root.view.layoutIfNeeded()
+        try await expect("the hub's meta row reported", within: 6) { b.screens.overlay.anchor != nil }
+        let hub = try XCTUnwrap(b.screens.overlay.anchor)
+        XCTAssertGreaterThan(hub, 0)
+        _ = try await message(s, "model", ["screen": "coach", "rev": 3, "json": try coachModelJSON(rev: 3)]).get()
+        _ = try await message(s, "present", ["screen": "coach"]).get()
+        try await expect("the chat pushed over the hub", within: 10) { root.coachSlot.nav.viewControllers.count == 2 }
+        try await expect("the link idle", within: 10) { b.pageLink.pending == 0 && b.screens.describe()["busy"] as? Bool == false }
+        XCTAssertTrue(root.coachSlot.nav.viewControllers.first === home, "over the hub")
+        XCTAssertEqual(presenting(s), ["presenting coach@P1 shell 61"], "the chat on top: never both")
+        try await expect("under the chat's header", within: 6) {
+            b.screens.overlay.anchor != nil && b.screens.overlay.anchor != hub
+        }
+        b.screens.userBack("coach")   // the chat's Back
+        try await expect("popped back to the hub", within: 10) { root.coachSlot.nav.viewControllers.count == 1 }
+        try await expect("the page heard coach.back") { await self.calls(s, "coach.back").count == 1 }
+        XCTAssertTrue(root.coachSlot.nav.topViewController === home)
+        XCTAssertEqual(root.coachMode, .native)
+        XCTAssertEqual(presenting(s), ["presenting coachHome@P1 shell 61"], "the hub on top again")
+        XCTAssertEqual(b.screens.overlay.anchor, hub, "under the hub's meta row again")
+        tap(s, "log")
+        XCTAssertEqual(presenting(s), [], "Coach not selected: none")
+        XCTAssertNil(b.screens.overlay.anchor)
+        tap(s, "coach")
+        XCTAssertEqual(presenting(s), ["presenting coachHome@P1 shell 61"])
+        XCTAssertEqual(b.screens.overlay.anchor, hub)
+        XCTAssertEqual(RecordingWebView.nilMovesWhileLive(of: s.webView), 0)
+    }
+
+    /// H10 (contract 10.3, 15.2): the fallback's drop empties the home's store (the hidden home draws the ground, and no
+    /// present is taken: no live root), and so does the teardown at the scene's end.
+    func test39TheDropAndTheTeardownEmptyTheHomesStore() async throws {
+        let s = try await scene(first: "coach")
+        let root = try XCTUnwrap(s.root)
+        let b = try XCTUnwrap(s.binding)
+        try await presentHome(s, rev: 2)
+        XCTAssertNotNil(b.screens.home.model)
+        _ = try await message(s, "dismiss", ["screen": "tabs"]).get()   // the page left tabs mode: the fallback
+        XCTAssertEqual(root.fellBack?.why, .page)
+        XCTAssertNil(b.screens.home.model, "dropped with the stack")
+        XCTAssertEqual(root.coachMode, .web)
+        XCTAssertFalse(b.screens.stackAttached)
+        XCTAssertFalse(b.screens.isUp("coachHome"))
+        let coach = try XCTUnwrap((s.bridge.describe()["root"] as? [String: Any])?["coach"] as? [String: Any])
+        XCTAssertEqual(coach["root"] as? String, "ground", "the hidden home draws the ground")
+        let why = await refusal(s, "present", ["screen": "coachHome"])
+        XCTAssertEqual(why, "not-presentable: coachHome needs a live tab root")
+
+        let t = try await scene(first: "coach")
+        try await presentHome(t, rev: 2)
+        let store = try XCTUnwrap(t.binding?.screens.home)
+        XCTAssertNotNil(store.model)
+        t.bridge.sceneDisconnected(webView: t.webView)
+        XCTAssertNil(t.binding)
+        XCTAssertNil(store.model, "torn down with the binding")
+    }
+
+    /// H10 (contract 5 K1-K4): with a canary typed into the connect screen's key field through its UITextField (the field
+    /// the probe's `type` and `nativeFocus` find), the field's flag says `typed`, and the serialised `describe()` (the
+    /// bridge's whole report: ScreenHost, the home's store, the root, the status) holds no 6-character piece of it.
+    func test40TheKeyFieldsTextIsInNoReport() async throws {
+        FPFonts.register()
+        let s = try await scene(first: "coach")
+        let root = try XCTUnwrap(s.root)
+        let b = try XCTUnwrap(s.binding)
+        try await presentHome(s, rev: 4, connect: true)
+        root.view.layoutIfNeeded()
+        var field: UITextField?
+        try await expect("the connect screen's key field", within: 6) {
+            field = b.screens.hostView("coachHome").flatMap { Self.find(UITextField.self, in: $0) }
+            return field != nil
+        }
+        let tf = try XCTUnwrap(field)
+        XCTAssertTrue(b.screens.firstTextInput() === tf, "the top screen's first text input")
+        let key = CoachHomeViewTests.canary()
+        _ = tf.becomeFirstResponder()
+        tf.insertText(key)
+        CoachHomeViewTests.send(.editingChanged, from: tf)
+        try await expect("the field says it holds text") { b.screens.home.keyFieldTyped }
+        let stack = try XCTUnwrap(b.screens.describe()["stack"] as? [String: Any])
+        XCTAssertEqual(stack["keyField"] as? String, "typed")
+        let text = String(decoding: try JSONSerialization.data(withJSONObject: s.bridge.describe()), as: UTF8.self)
+        XCTAssertEqual(CoachHomeViewTests.pieces(key).filter { text.contains($0) }, [], "no piece of the key in describe()")
+        _ = tf.resignFirstResponder()
+    }
+
+    /// H10 (contract 3.6; delta 15.2): the page's one pass (`_fpSync`: the hub's model, `present coachHome`, the chat's
+    /// model, `present coach`, handed over back to back in one turn) puts the hub at the Coach stack's root and pushes the
+    /// chat over it, never refused (no `screens.off`, the page keeps the native chat): UIKit drops an animated push asked
+    /// in the turn of the hub's still install, so ScreenHost's queue waits a turn after it.
+    func test41ThePagesOnePassPutsTheHubAndPushesTheChatOverIt() async throws {
+        let s = try await scene(first: "coach")
+        let root = try XCTUnwrap(s.root)
+        let b = try XCTUnwrap(s.binding)
+        let pass: [(String, [String: Any])] = [
+            ("model", ["screen": "coachHome", "rev": 2, "json": try homeJSON(rev: 2)]),
+            ("present", ["screen": "coachHome"]),
+            ("model", ["screen": "coach", "rev": 3, "json": try coachModelJSON(rev: 3)]),
+            ("present", ["screen": "coach"]),
+        ]
+        var answered: [Bool] = []
+        for (method, options) in pass {
+            s.bridge.pageMessage(method, options: options, webView: s.webView) { r in
+                if case .success = r { answered.append(true) } else { answered.append(false) }
+            }
+        }
+        XCTAssertEqual(answered, [true, true, true, true], "each answered in the turn")
+        XCTAssertEqual(root.coachMode, .native)
+        try await expect("the chat pushed over the hub", within: 10) { root.coachSlot.nav.viewControllers.count == 2 }
+        try await expect("the link idle", within: 10) { b.pageLink.pending == 0 && b.screens.describe()["busy"] as? Bool == false }
+        XCTAssertTrue(root.coachSlot.nav.viewControllers.first === root.coachSlot.home, "over the hub")
+        XCTAssertEqual(b.screens.transitions, ["present coach"], "never refused")
+        XCTAssertEqual(b.screens.shown, ["coach", "coachHome"])
+        try await sleep(0.3)
+        try await linkIdle(s)
+        let offs = await calls(s, "screens.off")
+        XCTAssertEqual(offs.count, 0, "the page keeps the native chat")
+        XCTAssertTrue(b.link.isLive("coach"))
+    }
+
+    #if DEBUG
+    // MARK: 42-43. The probe on N's hub (delta 17.13)
+
+    /// `press {label, where: hub}` through the probe's own step with N's hub on top of the selected NATIVE Coach tab
+    /// (delta 17.13): while the shell's confirm, which the page forwards while the Coach tab covers it, is open over the
+    /// hub, the step is an error event that presses nothing, said before the accessibility runtime is touched, and the
+    /// page hears no row's intent. Answered (the toast window's Cancel), the confirm is gone and the hub is the probe's to
+    /// press again. (A press that lands is the app's to show: SwiftUI vends no element inside the hub's scroll view to a
+    /// test host with no accessibility client, CoachHomeOptions.)
+    func test42TheProbesHubPressIsAnErrorUnderTheShellsConfirm() async throws {
+        let (bridge, probe, heard) = probed()
+        let s = try await scene(first: "coach", bridge: bridge)
+        let root = try XCTUnwrap(s.root)
+        let b = try XCTUnwrap(s.binding)
+        try await presentHome(s, rev: 2)
+        root.view.layoutIfNeeded()
+        let hub = try XCTUnwrap(b.screens.hostView("coachHome"))
+        XCTAssertTrue(ShellProbe.hubCheck(root, hosted: hub).view === hub, "the hub on screen, no confirm")
+        _ = try await message(s, "confirm", ["id": "c1.b1", "title": "Clear chat history?", "confirm": "Clear"]).get()
+        XCTAssertEqual(b.screens.openConfirm, "c1.b1")
+        _ = await js(s, "window.__got = []; 0")
+        let words = "the hub is covered: the shell's confirm is open"
+        await runSteps(probe, [["op": "press", "label": "Open Chat", "where": "hub"]])
+        let refused = try XCTUnwrap(heard.last("press"))
+        XCTAssertEqual(refused["pressed"] as? Bool, false)
+        XCTAssertEqual(refused["error"] as? String, words)
+        XCTAssertEqual(refused["why"] as? String, words)
+        XCTAssertEqual(refused["where"] as? String, "hub")
+        XCTAssertEqual(refused["control"] as? String, "Open Chat")
+        XCTAssertEqual(refused["matches"] as? Int, 0, "no element looked for")
+        try await sleep(0.3)
+        try await linkIdle(s)
+        let sent = await calls(s, "coachHome.openChat")
+        XCTAssertEqual(sent.count, 0, "nothing reached the page")
+        XCTAssertEqual(b.screens.openConfirm, "c1.b1", "the confirm untouched")
+
+        XCTAssertTrue(b.screens.overlay.tapConfirm(false), "the confirm answered: Cancel")
+        try await expect("the page heard the answer") { await self.calls(s, "confirm").map { $0.args["yes"] as? Bool } == [false] }
+        XCTAssertNil(b.screens.openConfirm)
+        let again = ShellProbe.hubCheck(root, hosted: b.screens.hostView("coachHome"), confirmOpen: b.screens.openConfirm != nil)
+        XCTAssertNil(again.why)
+        XCTAssertTrue(again.view === hub, "the hub is the probe's to press again")
+    }
+
+    /// The probe hears the root's screen changes that no funnel run made (delta 17.13's info; contract 15.3): the Coach
+    /// tab turning NATIVE while Coach is selected (the page's `present coachHome`: `why: mode`, the hub heard) and the
+    /// fallback (`why: fallback`, the web view heard), each `by: root` with `seq: null` beside the root's own seq then.
+    func test43TheProbeHearsAModeChangeAndTheFallbackUnderNoRun() async throws {
+        let (bridge, _, heard) = probed()
+        let s = try await scene(first: "coach", bridge: bridge)
+        let root = try XCTUnwrap(s.root)
+        try await presentHome(s, rev: 2)
+        let mode = try XCTUnwrap(heard.all("screenChanged").last { $0["why"] as? String == "mode" },
+                                 "the mode change heard: \(heard.all("screenChanged"))")
+        XCTAssertTrue(mode["seq"] is NSNull, "no funnel run made it")
+        XCTAssertEqual(mode["by"] as? String, "root")
+        XCTAssertEqual(mode["target"] as? String, "native", "the hub")
+        XCTAssertEqual(mode["coachMode"] as? String, "native")
+        XCTAssertEqual(mode["selected"] as? String, "coach")
+        XCTAssertEqual(mode["rootSeq"] as? Int, root.seq)
+        _ = try await message(s, "dismiss", ["screen": "tabs"]).get()   // the page leaves tabs mode: the fallback
+        XCTAssertNotNil(root.fellBack)
+        let fallback = try XCTUnwrap(heard.all("screenChanged").last { $0["why"] as? String == "fallback" },
+                                     "the fallback heard: \(heard.all("screenChanged"))")
+        XCTAssertTrue(fallback["seq"] is NSNull, "no funnel run made it")
+        XCTAssertEqual(fallback["by"] as? String, "root")
+        XCTAssertEqual(fallback["target"] as? String, "web", "the page")
+        XCTAssertEqual(fallback["coachMode"] as? String, "web")
+    }
+    #endif
+
+    /// H10 (contract 6.1, 15.2): the hub's ground is drawn in the first frame's room, the root's look before any
+    /// TabsModel (read at the adoption, inside SceneDelegate's build), whatever room the hub's own models draw in: a Lime
+    /// first frame gives N's root Lime's ground under a Heavyweight hub model, and a later TabsModel changes nothing there
+    /// (the controller is made once). Heavyweight's own first frame: test 34's scene, asserted here too.
+    func test44TheHubsGroundTakesTheFirstFramesRoom() async throws {
+        func ground(_ s: TabsScene) -> [String: Any]? {
+            ((s.binding?.screens.describe()["stack"] as? [String: Any])?["homeGround"]) as? [String: Any]
+        }
+        let s = try await scene(first: "coach", room: .lime)
+        let root = try XCTUnwrap(s.root)
+        XCTAssertEqual(root.firstRoom, "dark")
+        XCTAssertTrue((s.binding?.screens.describe()["stack"] as? [String: Any])?["homeGround"] is NSNull, "no home made yet")
+        try await presentHome(s, rev: 2)   // the hub's model is Heavyweight's
+        XCTAssertEqual(root.coachMode, .native)
+        XCTAssertEqual(ground(s)?["room"] as? String, "dark", "the first frame's room, not the model's")
+        XCTAssertEqual(ground(s)?["paper"] as? Bool, false)
+        _ = try await message(s, "model", ["screen": "tabs", "rev": 3, "json": tabsModelJSON(rev: 3, room: "heavyweight", paper: true,
+            tint: "#0a43f5", idle: "#6b6b6b", titles: [:])]).get()
+        XCTAssertEqual(ground(s)?["room"] as? String, "dark", "made once: a later TabsModel changes no ground")
+
+        let t = try await scene(first: "coach")
+        try await presentHome(t, rev: 2)
+        XCTAssertEqual(ground(t)?["room"] as? String, "heavyweight")
+        XCTAssertEqual(ground(t)?["paper"] as? Bool, true)
+    }
+
+    /// H10 (contract 1.4, 3.6): the page's one pass from a WEB Coach tab while Coach is selected (a document that
+    /// declares the tab again: its hub's model, `present coachHome`, the chat's model, `present coach`, back to back in
+    /// one turn). The home is already the stack's root, so nothing at the stack's bottom changes and ScreenHost's queue
+    /// waits no turn: the root shows the stack again and the chat is pushed over the hub, never dropped by UIKit
+    /// (refused) and shown.
+    func test45ThePagesOnePassFromAWebTabPushesTheChatOverTheHub() async throws {
+        let s = try await scene(first: "coach")
+        let root = try XCTUnwrap(s.root)
+        let b = try XCTUnwrap(s.binding)
+        try await presentHome(s, rev: 2)
+        let home = try XCTUnwrap(root.coachSlot.home)
+        _ = try await message(s, "dismiss", ["screen": "coachHome"]).get()
+        XCTAssertEqual(root.coachMode, .web)
+        XCTAssertTrue(root.coachSlot.nav.view.isHidden, "WEB hides the stack")
+        try await sleep(0.3)
+        try await linkIdle(s)
+        let pass: [(String, [String: Any])] = [
+            ("model", ["screen": "coachHome", "rev": 3, "json": try homeJSON(rev: 3)]),
+            ("present", ["screen": "coachHome"]),
+            ("model", ["screen": "coach", "rev": 4, "json": try coachModelJSON(rev: 4)]),
+            ("present", ["screen": "coach"]),
+        ]
+        var answered: [Bool] = []
+        for (method, options) in pass {
+            s.bridge.pageMessage(method, options: options, webView: s.webView) { r in
+                if case .success = r { answered.append(true) } else { answered.append(false) }
+            }
+        }
+        XCTAssertEqual(answered, [true, true, true, true], "each answered in the turn")
+        XCTAssertEqual(root.coachMode, .native)
+        XCTAssertFalse(root.coachSlot.nav.view.isHidden)
+        try await expect("the chat pushed over the hub", within: 10) { root.coachSlot.nav.viewControllers.count == 2 }
+        try await expect("the link idle", within: 10) { b.pageLink.pending == 0 && b.screens.describe()["busy"] as? Bool == false }
+        XCTAssertTrue(root.coachSlot.nav.viewControllers.first === home, "over the same hub")
+        XCTAssertEqual(b.screens.transitions, ["present coach"], "never refused")
+        XCTAssertEqual(b.screens.shown, ["coach", "coachHome"])
+        XCTAssertEqual((b.screens.describe()["screens"] as? [String: Any]).flatMap { ($0["coach"] as? [String: Any])?["presented"] as? Bool },
+                       true, "UIKit showed it")
+        try await sleep(0.3)
+        try await linkIdle(s)
+        let offs = await calls(s, "screens.off")
+        XCTAssertEqual(offs.count, 0, "the page keeps the native chat")
+    }
+
+    /// H10 (contract 3.7, 10.2; 11-shell.md H10): every hub model is decoded by N's decoder and applied to the home's store
+    /// while `model coachHome@` holds 1, a pushed one and the resync's `coachHome.snapshot` alike (H6's chat cases,
+    /// ShellBridgeTests, check the chat's the same way): a crash there leaves the file at 1, a verdict for `coachHome`
+    /// alone at the next launch, where a decode or apply run outside the section would leave none and crash every launch.
+    func test46TheHubsModelAndItsSnapshotAreAppliedInsideTheirSection() async throws {
+        let s = try await scene(first: "coach")
+        let b = try XCTUnwrap(s.binding)
+        let marker = "model.coachHome.marker"
+        var during: [UInt8?] = []
+        let watch = b.screens.home.$model.dropFirst().sink { m in
+            if m != nil { during.append(self.markerByte(s, marker)) }
+        }
+        defer { watch.cancel() }
+        try await presentHome(s, rev: 7)
+        XCTAssertEqual(b.screens.home.model?.rev, 7)
+        XCTAssertEqual(during, [SectionMarker.inside], "the pushed model applied inside its section")
+        XCTAssertEqual(markerByte(s, marker), SectionMarker.outside, "which ended")
+        during = []
+        try await load(s)   // a reload under the NATIVE tab: the model stays drawn, published again only by the snapshot
+        let snapshot = try homeJSON(boot: "b2", rev: 1, connect: true)
+        _ = await js(s, "window.__json['coachHome.snapshot'] = \(Self.jsString(snapshot)); 0")
+        try await hello(s, Self.all, boot: "b2")
+        try await expect("the snapshot applied") { b.screens.home.model?.boot == "b2" }
+        XCTAssertEqual(during, [SectionMarker.inside], "the resync's snapshot applied inside its section")
+        XCTAssertEqual(markerByte(s, marker), SectionMarker.outside, "which ended")
+    }
+
 }
 
 /// The stand-in page never came up: the case fails there, saying so.

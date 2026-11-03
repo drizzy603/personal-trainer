@@ -277,6 +277,11 @@ final class StackRig {
     var popDelegateBefore: AnyObject?
     /// Whether iOS 26's content pop was on before ScreenHost turned it off (nil below iOS 26).
     var contentPopBefore: Bool?
+    /// The homes ScreenHost put at the stack's bottom (H10: the root's `setHome`), the times it turned the tab WEB, and
+    /// every `resume` it handed the root's hold, in order.
+    var homes: [UIViewController] = []
+    var webs = 0
+    var resumes: [Bool] = []
 
     init() {
         web.view = webView
@@ -309,7 +314,10 @@ final class StackRig {
     }
 
     /// What the root answers: Coach selected, the tab NATIVE, the hold, its release (which posts nothing to VoiceOver:
-    /// StackState's rule for a hold a push ends).
+    /// StackState's rule for a hold a push ends); and what it does for the home (H10): `setHome` puts the home at the
+    /// stack's bottom in place of the stand-in, keeping what is pushed on it, and turns the tab NATIVE (as
+    /// `RootTabController.setHome` does); `setWeb` turns it WEB; `setResume` is recorded. The first frame's room is
+    /// Heavyweight.
     var state: StackState {
         StackState(selected: { [weak self] in self?.tabs.selectedIndex == 1 },
                    native: { [weak self] in self?.native ?? false },
@@ -318,7 +326,22 @@ final class StackRig {
                        self?.releases += 1
                        self?.held = false
                        self?.topAtRelease = self?.nav.topViewController
-                   })
+                   },
+                   setHome: { [weak self] home in
+                       guard let self else { return }
+                       self.homes.append(home)
+                       let stack = self.nav.viewControllers
+                       if stack.first !== home {
+                           self.nav.setViewControllers([home] + stack.dropFirst().filter { $0 !== home }, animated: false)
+                       }
+                       self.native = true
+                   },
+                   setWeb: { [weak self] in
+                       self?.webs += 1
+                       self?.native = false
+                   },
+                   setResume: { [weak self] on in self?.resumes.append(on) },
+                   room: .heavyweight, paper: true)
     }
 }
 
@@ -336,6 +359,12 @@ final class StackRig {
 /// stood in (`StandInCoordinator`) on a stack out of the window, where UIKit adds no word of its own. What this host
 /// cannot make is stood in on the stack (`StackRecordingNav`): a presentation that has ended (none ends here), UIKit
 /// dropping an op, and UIKit holding ops asked while the stack is away. Bounds on time stretch on CI (`slack`).
+///
+/// The home's cases (`testHome...`, 11-shell.md H10) run on the same rig, whose StackState puts ScreenHost's home at the
+/// stack's bottom as the root's `setHome` does: the present on the store's model (the controller made once), `dismiss`
+/// turning the tab WEB before the chat's still pop, the marker and the toast anchor per top (the hub's meta row drawn by
+/// N's real root), a document going, the drop and the teardown, the hub's presses and toast, and the toast strip measured
+/// once as the hub's anchor moves.
 @MainActor
 final class ScreenHostTests: XCTestCase {
     private var window: UIWindow!
@@ -2412,6 +2441,322 @@ final class ScreenHostTests: XCTestCase {
         try await settle()
         XCTAssertEqual(r.webView.leftWindow, 0, "the page's web view never left its window")
         XCTAssertNotNil(r.webView.window)
+    }
+
+    // MARK: - The native Coach tab's home (build 61): N's hub as the Coach stack's root (11-shell.md H10)
+
+    /// The hub (or any page-built home JSON) as the page sends it, with this boot, rev and `resume`.
+    private func homeModel(_ json: String? = nil, boot: String = "b1", rev: Int, resume: Bool = false) throws -> CoachHomeModel {
+        let text = json ?? CoachHomeViewTests.hubJSON()
+        var o = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any])
+        o["boot"] = boot
+        o["rev"] = rev
+        o["resume"] = resume
+        return try CoachHomeModel.decode(String(decoding: try JSONSerialization.data(withJSONObject: o), as: UTF8.self))
+    }
+
+    /// H10 (contract 1.4, 3.6, 15.2): `present("coachHome")` needs the Coach tab's stack and the home's model (false
+    /// without either, nothing set); with both, ScreenHost's controller of N's root goes at the stack's bottom through the
+    /// root's `setHome` (the tab NATIVE), made once and reused, never presented, with no covered of ScreenHost's own (the
+    /// root covers the page). `coachHome` is then up, `hostView("coachHome")` is the stack's root view, the marker names
+    /// it, `describe()` says its route, rev, `connecting` and the key field's flag, and each applied model hands the root
+    /// its `resume` and the controller and the overlay its room (a stale one hands nothing).
+    func testHomePresentNeedsTheStackAndAModelAndTurnsTheTabNative() async throws {
+        host.update("coachHome", model: try homeModel(rev: 2))
+        XCTAssertFalse(host.present("coachHome"), "no stack (a classic root): the bridge words it not-presentable")
+        let r = try await makeStack()
+        r.native = false   // WAITING
+        XCTAssertFalse(host.present("coachHome"), "no model yet")
+        XCTAssertEqual(r.homes.count, 0)
+        XCTAssertFalse(host.isUp("coachHome"))
+        XCTAssertNil(host.hostView("coachHome"))
+        XCTAssertNil((host.describe()["screens"] as? [String: Any])?["coachHome"], "not up: no screen entry")
+        XCTAssertEqual(host.homeRoute, "home", "the stand-in is the stack's bottom")
+        host.update("coachHome", model: try homeModel(rev: 13, resume: true))
+        XCTAssertEqual(r.resumes, [true], "the root's hold follows the model")
+        XCTAssertTrue(host.present("coachHome"))
+        let home = try XCTUnwrap(r.homes.first as? ScreenHostingController, "ScreenHost's own controller")
+        XCTAssertTrue(r.nav.viewControllers.first === home, "the stack's root")
+        XCTAssertEqual(r.nav.viewControllers.count, 1)
+        XCTAssertTrue(r.native, "NATIVE through the root")
+        XCTAssertTrue(host.isUp("coachHome"))
+        XCTAssertEqual(host.shown, ["coachHome"], "hello's up names it")
+        XCTAssertTrue(host.hostView("coachHome") === home.view)
+        XCTAssertEqual(host.homeRoute, "hub")
+        XCTAssertEqual(stand.log, [], "never presented")
+        XCTAssertNil(home.presentingViewController)
+        XCTAssertEqual(covered, [], "the root covers the page, not ScreenHost")
+        XCTAssertEqual(markerLines(), ["presenting coachHome@P1 shell 61"])
+        XCTAssertEqual(home.overrideUserInterfaceStyle, .light, "Heavyweight is paper")
+        XCTAssertEqual(home.preferredStatusBarStyle, .darkContent)
+        XCTAssertFalse(home.hidesBottomBarWhenPushed)
+        let s = try XCTUnwrap(host.describe()["stack"] as? [String: Any])
+        XCTAssertEqual(s["top"] as? String, "coachHome")
+        XCTAssertEqual(s["homeRoute"] as? String, "hub")
+        XCTAssertEqual(s["homeRev"] as? Int, 13)
+        XCTAssertEqual(s["connecting"] as? Bool, false)
+        XCTAssertEqual(s["keyField"] as? String, "empty")
+        let ground = try XCTUnwrap(s["homeGround"] as? [String: Any], "the room N's root draws the ground in")
+        XCTAssertEqual(ground["room"] as? String, "heavyweight", "the first frame's (the rig's StackState)")
+        XCTAssertEqual(ground["paper"] as? Bool, true)
+        XCTAssertEqual((host.describe()["home"] as? [String: Any])?["rev"] as? Int, 13, "the store's own report")
+        let entry = try XCTUnwrap((host.describe()["screens"] as? [String: Any])?["coachHome"] as? [String: Any],
+                                  "up: a screen entry (contract 15.3: each screen's host)")
+        XCTAssertEqual(entry["host"] as? String, "stack")
+        XCTAssertEqual(entry["presented"] as? Bool, true)
+        XCTAssertEqual(entry["route"] as? String, "hub")
+        XCTAssertEqual(entry["rev"] as? Int, 13)
+        XCTAssertNil(entry["draft"], "nothing of a field's text")
+        // again: the same controller, nothing replaced
+        XCTAssertTrue(host.present("coachHome"))
+        XCTAssertEqual(r.homes.count, 2)
+        XCTAssertTrue(r.homes[1] === home, "made once, reused")
+        XCTAssertEqual(r.nav.log.filter { $0.hasPrefix("set") }, ["set still"], "put at the bottom once, without animation")
+        // a Lime model: the controller and the overlay take its room; a stale one changes nothing
+        host.update("coachHome", model: try homeModel(CoachHomeViewTests.hubJSON(room: .lime), rev: 14))
+        XCTAssertEqual(home.overrideUserInterfaceStyle, .dark)
+        XCTAssertEqual(home.preferredStatusBarStyle, .lightContent)
+        XCTAssertEqual(host.overlay.theme.interfaceStyle, .dark, "a toast over the hub draws in its room")
+        XCTAssertEqual(r.resumes, [true, false])
+        host.update("coachHome", model: try homeModel(rev: 14, resume: true))
+        XCTAssertEqual(r.resumes, [true, false], "stale: not applied, nothing handed on")
+        XCTAssertEqual(home.overrideUserInterfaceStyle, .dark)
+        XCTAssertEqual(r.webView.leftWindow, 0)
+    }
+
+    /// H10 (contract 3.6, 8.3): the chat the page presents in the same pass as the home (one turn: `_fpSync` sends both) is
+    /// pushed over it, animated on the selected tab: the queue waits a turn after the home's still install, where UIKit
+    /// would drop it. `dismiss("coachHome")` then turns the tab WEB through the root and pops the chat without animation
+    /// (the stack is hidden by then): never the owner's Back, no VoiceOver post of ScreenHost's, no marker; the page's own
+    /// dismiss of the chat after it finds it gone; the home stays at the bottom, and a later present turns the tab NATIVE
+    /// again on the same controller.
+    func testHomeDismissTurnsTheTabWebThenPopsTheChatWithoutAnimation() async throws {
+        let r = try await makeStack()
+        r.native = false
+        host.update("coachHome", model: try homeModel(rev: 2))
+        host.update("coach", model: try model())
+        XCTAssertTrue(host.present("coachHome"))
+        XCTAssertTrue(host.present("coach"))   // the same turn
+        XCTAssertTrue(busy(), "the queue waits a turn after the home's still install")
+        try await idle()
+        let home = try XCTUnwrap(r.homes.first)
+        XCTAssertEqual(r.nav.viewControllers.count, 2, "the chat pushed over the home")
+        XCTAssertTrue(r.nav.viewControllers.first === home)
+        XCTAssertEqual(r.nav.log, ["set still", "push animated"], "the home without animation, the chat with it")
+        XCTAssertEqual(host.transitions, ["present coach"], "never refused")
+        XCTAssertEqual(failedScreens, [])
+        XCTAssertEqual(host.shown, ["coach", "coachHome"])
+        let screens = try XCTUnwrap(host.describe()["screens"] as? [String: Any])
+        XCTAssertEqual(screens.keys.sorted(), ["coach", "coachHome"], "each screen up has its entry")
+        XCTAssertEqual((screens["coachHome"] as? [String: Any])?["host"] as? String, "stack")
+        XCTAssertEqual(markerLines(), ["presenting coach@P1 shell 61"], "the chat on top: its marker alone")
+        posts = []
+        host.dismiss("coachHome")
+        XCTAssertEqual(r.webs, 1, "WEB through the root, at once")
+        XCTAssertFalse(r.native)
+        try await idle()
+        XCTAssertEqual(r.nav.viewControllers.count, 1, "the chat popped")
+        XCTAssertTrue(r.nav.viewControllers.first === home, "the home stays at the bottom")
+        XCTAssertEqual(r.nav.log.last, "pop still", "without animation: the stack is hidden")
+        XCTAssertEqual(host.shown, [])
+        XCTAssertFalse(host.isUp("coachHome"))
+        XCTAssertEqual((host.describe()["screens"] as? [String: Any])?.keys.sorted(), [], "WEB: no screen up, the home none")
+        XCTAssertEqual(owner, [], "the shell's pop, not the owner's Back")
+        XCTAssertEqual(host.latched, [])
+        XCTAssertEqual(markerLines(), [], "none in WEB")
+        XCTAssertEqual(posts.count, 0, "the root tells VoiceOver of the page; ScreenHost says nothing in WEB")
+        XCTAssertEqual(host.transitions, ["present coach", "dismiss coach"])
+        host.dismiss("coach")   // the page's own, after: finds it gone
+        try await idle()
+        XCTAssertEqual(host.transitions, ["present coach", "dismiss coach"])
+        XCTAssertTrue(host.present("coachHome"), "a later present turns the tab NATIVE again")
+        XCTAssertTrue(r.native)
+        XCTAssertTrue(r.homes.last === home, "on the same controller")
+        XCTAssertEqual(r.webView.leftWindow, 0)
+    }
+
+    /// H10 (contract 8.3, 10.2, D20): one Coach-tab marker, for what is on top of a selected NATIVE stack: the home, then
+    /// the chat pushed over it, then the home again (never both); none away, unselected, in WEB or after the teardown. The
+    /// toast's anchor follows the hub's meta row, then the chat's header, then the hub's last report again after the pop
+    /// (the root reports it once per hub), and is under the status bar while held, unselected or WEB.
+    func testHomeMarkerAndToastAnchorFollowTheTop() async throws {
+        FPFonts.register()
+        let r = try await makeStack()
+        r.native = false
+        host.update("coachHome", model: try homeModel(rev: 2))
+        XCTAssertTrue(host.present("coachHome"))
+        let home = try XCTUnwrap(r.homes.first)
+        XCTAssertEqual(markerLines(), ["presenting coachHome@P1 shell 61"])
+        try await layOut(home)
+        let reported = try await until { self.host.overlay.anchor != nil }
+        XCTAssertTrue(reported, "the hub's meta row reports where it ends")
+        let hub = try XCTUnwrap(host.overlay.anchor)
+        XCTAssertGreaterThan(hub, 0)
+        host.update("coach", model: try model())
+        XCTAssertTrue(host.present("coach"))
+        try await idle()
+        let chat = try XCTUnwrap(r.nav.topViewController)
+        XCTAssertFalse(chat === home)
+        XCTAssertEqual(markerLines(), ["presenting coach@P1 shell 61"], "the chat on top: never both")
+        try await layOut(chat)
+        let header = try await until { self.host.overlay.anchor != nil && self.host.overlay.anchor != hub }
+        XCTAssertTrue(header, "under the chat's header now (\(String(describing: host.overlay.anchor)); the hub's was \(hub))")
+        host.dismiss("coach")
+        try await idle()
+        XCTAssertEqual(markerLines(), ["presenting coachHome@P1 shell 61"], "the home on top again")
+        XCTAssertEqual(host.overlay.anchor, hub, "the hub's meta row again: its last report, kept")
+        select(coach: false)
+        XCTAssertNil(host.overlay.anchor, "Coach not selected: under the status bar")
+        XCTAssertEqual(markerLines(), [])
+        select(coach: true)
+        XCTAssertEqual(host.overlay.anchor, hub)
+        XCTAssertEqual(markerLines(), ["presenting coachHome@P1 shell 61"])
+        r.held = true
+        host.selectionChanged()
+        XCTAssertNil(host.overlay.anchor, "held: under the status bar")
+        r.held = false
+        host.selectionChanged()
+        XCTAssertEqual(host.overlay.anchor, hub)
+        NotificationCenter.default.post(name: UIApplication.willResignActiveNotification, object: nil)
+        XCTAssertEqual(markerLines(), [], "away: none")
+        NotificationCenter.default.post(name: UIApplication.didBecomeActiveNotification, object: nil)
+        XCTAssertEqual(markerLines(), ["presenting coachHome@P1 shell 61"])
+        host.dismiss("coachHome")
+        XCTAssertEqual(markerLines(), [], "WEB: none")
+        XCTAssertNil(host.overlay.anchor)
+        XCTAssertTrue(host.present("coachHome"))
+        XCTAssertEqual(markerLines(), ["presenting coachHome@P1 shell 61"])
+        XCTAssertEqual(host.overlay.anchor, hub)
+        host.tearDown()
+        XCTAssertEqual(markerLines(), [])
+        XCTAssertNil(host.overlay.anchor)
+        XCTAssertEqual(r.webView.leftWindow, 0)
+    }
+
+    /// H10 (contract 1.4, 8.3, I13): a document going keeps the home's model while `coachHome` is up (the tab NATIVE, until
+    /// the next document's takeover and snapshot) and lets it go otherwise, with the hold's `resume`; the next document's
+    /// model replaces the kept one whatever its rev.
+    func testHomeADocumentGoingKeepsItsModelOnlyWhileUp() async throws {
+        let r = try await makeStack()
+        r.native = false
+        host.update("coachHome", model: try homeModel(rev: 5, resume: true))
+        host.forgetModels(exceptUp: true)   // a reload while the tab is WAITING
+        XCTAssertNil(host.home.model, "not up: it goes with its document")
+        XCTAssertEqual(r.resumes, [true, false])
+        XCTAssertFalse(host.present("coachHome"), "nothing to open on")
+        host.update("coachHome", model: try homeModel(rev: 6, resume: true))
+        XCTAssertTrue(host.present("coachHome"))
+        host.forgetModels(exceptUp: true)   // a reload under the NATIVE tab
+        XCTAssertEqual(host.home.model?.rev, 6, "drawn until the next document's")
+        XCTAssertTrue(host.isUp("coachHome"))
+        XCTAssertEqual(r.resumes, [true, false, true], "the hold keeps its resume")
+        host.update("coachHome", model: try homeModel(boot: "b2", rev: 1))
+        XCTAssertEqual(host.home.model?.boot, "b2", "the next document's model, whatever its rev")
+        XCTAssertEqual(r.resumes.last, false)
+        r.native = false   // the tab turned WEB (the root's own word)
+        host.selectionChanged()
+        XCTAssertFalse(host.isUp("coachHome"))
+        host.forgetModels(exceptUp: true)
+        XCTAssertNil(host.home.model)
+        XCTAssertEqual(r.resumes.last, false)
+        XCTAssertEqual(host.homeRoute, "ground", "the home draws the ground")
+    }
+
+    /// H10 (contract 15.2): the fallback's drop and the teardown empty the home's store (its model, a key on its way: its
+    /// answer is ignored, no toast); after the drop the home draws the ground and no present is taken (no stack).
+    func testHomeTheDropAndTheTeardownEmptyTheStore() async throws {
+        let r = try await makeStack()
+        host.update("coachHome", model: try homeModel(CoachHomeViewTests.connectJSON(), rev: 4))
+        XCTAssertTrue(host.present("coachHome"))
+        host.home.handle(.connect(secret: "sk-ant-test-abcdefgh"))
+        XCTAssertTrue(host.home.connecting)
+        XCTAssertEqual(asked.last?.name, "coachHome.setKey", "the key through ScreenHost's ask")
+        host.detachStack()
+        XCTAssertNil(host.home.model)
+        XCTAssertFalse(host.home.connecting)
+        XCTAssertFalse(host.isUp("coachHome"))
+        XCTAssertEqual(host.homeRoute, "ground", "the hidden home draws the ground")
+        host.update("coachHome", model: try homeModel(rev: 9))
+        XCTAssertFalse(host.present("coachHome"), "no stack after the drop")
+        answers.last?(.notLinked)   // the key's answer, after the drop
+        XCTAssertNil(host.shownToast, "ignored: no toast")
+        XCTAssertEqual(r.webView.leftWindow, 0)
+        let r2 = try await makeStack()   // a new rig in the window (the first one's web view leaves with it)
+        host.update("coachHome", model: try homeModel(rev: 2))
+        XCTAssertTrue(host.present("coachHome"))
+        host.tearDown()
+        XCTAssertNil(host.home.model)
+        XCTAssertEqual(markerLines(), [])
+        XCTAssertEqual(r2.webView.leftWindow, 0)
+    }
+
+    /// H10 (contract 15.2): the hub's presses go through ScreenHost's `ask` as the chat's do, and the store's own toast (a
+    /// key that never reached the page) shows in the overlay window, in the hub's room.
+    func testTheHomesPressesGoThroughAskAndItsToastToTheOverlay() async throws {
+        _ = try await makeStack()
+        host.update("coachHome", model: try homeModel(CoachHomeViewTests.connectJSON(room: .lime), rev: 4))
+        XCTAssertTrue(host.present("coachHome"))
+        host.home.handle(.starter)
+        XCTAssertEqual(asked, [.coachHomeOpenStarter])
+        host.home.handle(.connect(secret: "sk-ant-test-qrstuvwx"))
+        XCTAssertEqual(asked.count, 2)
+        answers.last?(.notLinked)
+        XCTAssertEqual(host.shownToast?.text, CoachHomeStore.notSaved, "the store's toast, in the overlay window")
+        XCTAssertEqual(host.overlay.theme.interfaceStyle, .dark, "in the hub's room")
+    }
+
+    /// The hub's meta row moves as the hub scrolls, each step a new anchor (N7's review): the toast's strip is measured
+    /// again only for another toast, room or width (the strip's height, everywhere), and the window's frame, which
+    /// `layout()` sets from `frame(screen:statusBottom:)` (read here: this host has no window scene, so no window is
+    /// made), moves 8 px under each anchor with the strip measured once; a confirm takes the whole screen.
+    func testTheToastStripIsMeasuredOncePerToastAsTheAnchorMoves() throws {
+        let overlay = ShellOverlay()
+        let saved = ToastRequest(text: "Saved", style: nil, undo: nil)
+        let h = overlay.stripHeight(saved, width: 390)
+        XCTAssertGreaterThan(h, 40)
+        XCTAssertEqual(overlay.stripHeight(saved, width: 390), h)
+        XCTAssertEqual(overlay.stripHeight(ToastRequest(text: "Saved", style: nil, undo: nil), width: 390), h, "the same toast again")
+        XCTAssertEqual(overlay.measures, 1, "measured once")
+        let long = ToastRequest(text: String(repeating: "A longer forwarded toast ", count: 6), style: "err", undo: nil)
+        XCTAssertGreaterThan(overlay.stripHeight(long, width: 390), h + 30)
+        XCTAssertEqual(overlay.measures, 2, "another toast")
+        _ = overlay.stripHeight(long, width: 320)
+        XCTAssertEqual(overlay.measures, 3, "another width")
+        overlay.setRoom(RoomTheme.defaults(.lime, textSize: .xxLarge))
+        _ = overlay.stripHeight(long, width: 320)
+        XCTAssertEqual(overlay.measures, 4, "another room")
+        _ = overlay.stripHeight(long, width: 320)
+        XCTAssertEqual(overlay.measures, 4)
+
+        // the window's frame as layout() sets it, through the overlay's own toast (with a window scene layout() reads the
+        // same frame first, measuring no more)
+        let shown = ShellOverlay()
+        let screen = CGRect(x: 0, y: 0, width: 390, height: 844)
+        shown.show(toast: saved)
+        let gap = shown.theme.px(8)
+        let bare = shown.frame(screen: screen, statusBottom: 47)
+        XCTAssertEqual(bare, CGRect(x: 0, y: 47 + gap, width: 390, height: h), "under the status bar with no anchor: the strip")
+        XCTAssertEqual(shown.measures, 1)
+        var heard = 0
+        for y in stride(from: 100.0, through: 140.0, by: 4.0) {
+            shown.setAnchor(CGFloat(y))
+            let f = shown.frame(screen: screen, statusBottom: { () -> CGFloat in heard += 1; return 47 }())
+            XCTAssertEqual(f.minY, CGFloat(y) + gap, accuracy: 0.5, "8 px under the anchor")
+            XCTAssertEqual(f.height, h)
+        }
+        XCTAssertEqual(shown.measures, 1, "the strip moved with each anchor, measured once")
+        XCTAssertEqual(heard, 0, "the status bar is read only without an anchor")
+        shown.show(toast: long)
+        XCTAssertGreaterThan(shown.frame(screen: screen, statusBottom: 47).height, h + 30)
+        XCTAssertEqual(shown.measures, 2, "another toast: measured")
+        shown.setRoom(RoomTheme.defaults(.lime))
+        _ = shown.frame(screen: screen, statusBottom: 47)
+        XCTAssertEqual(shown.measures, 3, "another room: measured")
+        shown.show(confirm: ConfirmRequest(id: "c1", title: "Sure?", body: nil, confirm: nil, cancel: nil, tone: nil))
+        XCTAssertEqual(shown.frame(screen: screen, statusBottom: 47), screen, "a confirm: the whole screen")
+        XCTAssertEqual(shown.measures, 3)
+        shown.show(confirm: nil)
+        shown.show(toast: nil)
     }
 }
 #endif

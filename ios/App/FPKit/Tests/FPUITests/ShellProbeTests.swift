@@ -11,7 +11,7 @@ import FPCore
 /// title, then the one a finger at their centre lands in), whose `.touchUpInside` runs the funnel once from a tap and, on
 /// the selected tab, says `again`, and none while no finger could tap the bar (hidden, covered in its window or by a
 /// window over it, as the shell's confirm covers it); the hub a `press
-/// {where: hub}` may press (only while the owner sees it); `type`'s rule (keys only into a field that holds them, never
+/// {where: hub}` may press (only while the owner sees it: never under the shell's confirm); `type`'s rule (keys only into a field that holds them, never
 /// a draft for the key field, never the text in the event); the text input's report (its kind, whether it holds the
 /// keys and text, the label VoiceOver reads, never its text); `axFindAll` (each element once, its first `axFind`'s);
 /// and the page-state script's tabs-mode fields. The steps themselves run through the bridge in ShellBridgeTabsTests
@@ -229,6 +229,45 @@ final class ShellProbeTests: XCTestCase {
         XCTAssertEqual(ShellProbe.hubCheck(r.root, hosted: nil).why, "no hub: the Coach tab is web, not native")
         r.root.fallBack(why: .page, at: Date())
         XCTAssertEqual(ShellProbe.hubCheck(r.root, hosted: nil).why, "no hub: the tab root fell back")
+    }
+
+    /// `press {where: hub}` on a hub the owner would otherwise see (delta 17.13): not while the shell's confirm is open
+    /// over it (the toast window fills the screen and ScreenHost hides the stack from VoiceOver, so neither a finger nor
+    /// VoiceOver reaches it, though the accessibility walk would); not while any view up to the window is hidden or
+    /// transparent (the walk goes past the hub's own view: the stack's, the slot's); not out of its window. Each says why;
+    /// with none of them the hub is pressed again.
+    func testTheHubIsPressedNeitherUnderTheShellsConfirmNorHiddenNorOutOfItsWindow() throws {
+        guard #available(iOS 26.0, *) else { throw XCTSkip("the tab root exists only on iOS 26 and later (D39)") }
+        let r = RootRig(first: "coach", look: TabsModel.defaults(for: .heavyweight))
+        defer { r.letGo() }
+        r.root.setHome(r.home)
+        settle(r, 0.3)
+        XCTAssertTrue(ShellProbe.hubCheck(r.root, hosted: nil).view === r.home.view, "the hub, on screen")
+
+        // the shell's confirm over it
+        XCTAssertEqual(ShellProbe.hubCheck(r.root, hosted: nil, confirmOpen: true).why, "the hub is covered: the shell's confirm is open")
+        XCTAssertEqual(ShellProbe.hubCheck(r.root, hosted: r.home.view, confirmOpen: true).why,
+                       "the hub is covered: the shell's confirm is open", "H10's host: the same")
+        XCTAssertTrue(ShellProbe.hubCheck(r.root, hosted: nil, confirmOpen: false).view === r.home.view, "answered: the hub again")
+
+        // an ancestor hidden, then one transparent: the walk reaches past the hub's own view
+        r.nav.view.isHidden = true
+        XCTAssertFalse(r.home.view.isHidden)
+        XCTAssertEqual(ShellProbe.hubCheck(r.root, hosted: nil).why, "the hub is not on screen: hidden", "the stack's view hidden")
+        r.nav.view.isHidden = false
+        r.root.coachSlot.view.alpha = 0
+        XCTAssertEqual(ShellProbe.hubCheck(r.root, hosted: nil).why, "the hub is not on screen: hidden", "the slot transparent")
+        r.root.coachSlot.view.alpha = 1
+        XCTAssertTrue(ShellProbe.hubCheck(r.root, hosted: nil).view === r.home.view)
+
+        // out of its window: the stack's view leaves it, nothing on the way up hidden (the web view stays where it is)
+        let slotView = try XCTUnwrap(r.nav.view.superview)
+        r.nav.view.removeFromSuperview()
+        XCTAssertNil(r.home.view.window)
+        XCTAssertEqual(ShellProbe.hubCheck(r.root, hosted: nil).why, "the hub is not on screen: out of its window")
+        slotView.addSubview(r.nav.view)
+        XCTAssertTrue(ShellProbe.hubCheck(r.root, hosted: nil).view === r.home.view, "back in the window")
+        XCTAssertNotNil(r.webView.window)
     }
 
     /// `type {text}` (contract 5 K4, D47; the H11 review): into the key field only while it holds the keys, through UIKit's

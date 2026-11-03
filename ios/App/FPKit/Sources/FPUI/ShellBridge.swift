@@ -49,6 +49,10 @@ import FPCore
 ///   `coachHome` out, WAITING only before the scene's first declaration with a 3 s net after each hello's answer, a NATIVE
 ///   tab named in `up` and taken over by the new document; `dismiss coachHome` (the declaration's WEB half) and
 ///   `coachHome` going off turn it WEB, the chat popped without animation and the page uncovered while Coach is selected.
+/// - **The native Coach tab** (H10, contract 3.6, 3.7, 15.2): `present coachHome` under a live tab root puts ScreenHost's
+///   home (N's hub or connect screen on its CoachHomeStore) at the Coach stack's root and turns the tab NATIVE, the root
+///   covering the page while Coach is selected; every `coachHome` model decodes as a CoachHomeModel inside `model
+///   coachHome@` (one that does not counts against `coachHome`), and a NATIVE tab's resync asks for `coachHome.snapshot`.
 /// - **The fallback** (contract 10.3, D7, I14), once per scene, on the link's `fellBack`: the root's half, ScreenHost out
 ///   of the Coach tab's stack, `screens.off` for the pieces the tab root's rule had negotiated (`tabs` too unless the page
 ///   itself asked with `dismiss tabs`), `shell.covered {on:false}` when the Coach tab covered the page, `selectTab` and
@@ -110,9 +114,8 @@ public final class ShellBridge: NSObject {
         case badTab(String)
         /// `setSwitch` for a piece this binary keeps no switch for (any but `tabs`).
         case noSwitch(String)
-        /// `present tabs` (never presented), or `present coachHome` without a live tab root; `why` words any other
-        /// reason (the interim before the native Coach tab is wired, contract 15.2).
-        case notPresentable(String, why: String? = nil)
+        /// `present tabs` (never presented), or `present coachHome` without a live tab root.
+        case notPresentable(String)
         /// `present coach` under a live tab root while the Coach tab is not NATIVE.
         case notNative
 
@@ -137,8 +140,7 @@ public final class ShellBridge: NSObject {
             case .off: return "off: no live tab root"
             case .badTab(let t): return "bad-tab: \(t) is not one of " + ShellTabs.ids.joined(separator: ", ")
             case .noSwitch(let s): return "no-switch: this binary keeps no switch for \(s)"
-            case .notPresentable(let s, let why):
-                if let why { return "not-presentable: " + why }
+            case .notPresentable(let s):
                 return s == "tabs" ? "not-presentable: tabs is never presented" : "not-presentable: \(s) needs a live tab root"
             case .notNative: return "not-native: the Coach tab is not native"
             }
@@ -425,11 +427,19 @@ public final class ShellBridge: NSObject {
             return
         }
         b.tabRoot = root
+        // the home's ground takes the first frame's room (contract 6.1): the root's look before any TabsModel, read here,
+        // inside SceneDelegate's build, before the page can link
+        let first = root.look
         b.screens.attachStack(root.coachSlot.nav, state: StackState(
             selected: { [weak root] in root?.selected == "coach" },
             native: { [weak root] in root?.coachMode == .native },
             held: { [weak root] in root?.held ?? false },
-            releaseHold: { [weak root] in root?.releaseHold() }))
+            releaseHold: { [weak root] in root?.releaseHold() },
+            setHome: { [weak root] home in root?.setHome(home) },
+            setWeb: { [weak root] in root?.setCoachMode(.web) },
+            setResume: { [weak root] on in root?.coachResume = on },
+            room: first.room, paper: first.paper))
+        root.homeRoute = { [weak screens = b.screens] in screens?.homeRoute ?? "home" }
         root.hooks = rootHooks(b, root)
         #if DEBUG
         relayToProbe(root)
@@ -535,7 +545,10 @@ public final class ShellBridge: NSObject {
         b.pageLink.setBoot(nil)
         b.screens.tearDown()
         // a root that outlives its binding (a newer web view's scene) tells this bridge nothing more
-        if #available(iOS 26.0, *), let root = b.tabRoot as? RootTabController { root.hooks = RootTabController.Hooks() }
+        if #available(iOS 26.0, *), let root = b.tabRoot as? RootTabController {
+            root.hooks = RootTabController.Hooks()
+            root.homeRoute = { "home" }
+        }
         b.tabRoot = nil
         b.restateSelect = false
         b.restateBar = false
@@ -696,16 +709,10 @@ public final class ShellBridge: NSObject {
             ShellProbe.shared?.bootDone(page: page)
             #endif
         case .present(let s):
-            // contract 3.1, 3.6, in this order: the bar is never presented; the native Coach tab needs a live tab root (and,
-            // until H10 wires N's hub, is refused under one too, contract 15.2: the page declares dismiss and shows its
-            // web Coach under the native bar); then build 60's checks, with the chat pushed only onto a NATIVE Coach tab
-            if s == "tabs" || s == "coachHome" {
-                let refusal: Refusal
-                if s == "coachHome", hasLiveRoot(b) {
-                    refusal = .notPresentable(s, why: "the native Coach tab is not wired in this build yet")
-                } else {
-                    refusal = .notPresentable(s)
-                }
+            // contract 3.1, 3.6, in this order: the bar is never presented; the native Coach tab needs a live tab root;
+            // then build 60's checks (a piece not live, the model first), with the chat pushed only onto a NATIVE Coach tab
+            if s == "tabs" || (s == "coachHome" && !hasLiveRoot(b)) {
+                let refusal = Refusal.notPresentable(s)
                 Self.log.error("shell: present \(s, privacy: .public) refused: \(String(describing: refusal), privacy: .public)")
                 done(.failure(refusal))
                 return
@@ -725,6 +732,14 @@ public final class ShellBridge: NSObject {
                 Self.log.error("shell: present \(s, privacy: .public) refused: no model")
                 done(.failure(Refusal.noModel(s)))
                 return
+            }
+            if s == "coachHome" {
+                // the declaration's NATIVE half (contract 1.4, 3.6, D17): the home is the Coach stack's root and the tab
+                // NATIVE, and a WAITING tab's net goes. The root covered the page itself if Coach is selected (contract 8.4,
+                // RootTabController.setHome), so no covered goes from here.
+                b.coachNet?.cancel()
+                b.coachNet = nil
+                Self.log.info("shell: the Coach tab is native (present coachHome)")
             }
             done(.success([:]))
         case .dismiss(let s):
@@ -853,8 +868,10 @@ public final class ShellBridge: NSObject {
             guard let self, let b, let linked, b.link.link == linked else { return }
             if self.hasLiveRoot(b) {
                 // contract 3.2: covered for the selected tab's mode (a WAITING or NATIVE Coach tab covers the page), the
-                // chat's snapshot when it is pushed; never `tabs.select` (the reply carries the selection)
+                // hub's snapshot when the Coach tab is NATIVE, the chat's when it is pushed; never `tabs.select` (the reply
+                // carries the selection)
                 if self.coachCovers(b) { self.send(.shellCovered(on: true), b) }
+                if up.contains("coachHome") { self.resync("coachHome", b, covered: false) }
                 if up.contains("coach") { self.resync("coach", b, covered: false) }
                 if #available(iOS 26.0, *) { self.announceAfterHello(b) }
             } else {
@@ -896,9 +913,10 @@ public final class ShellBridge: NSObject {
     /// A screen still up from the document before: the page has taken it over; it hears it is covered again (60's overlay;
     /// under a tab root the resync covers the page for the Coach tab's mode instead) and the screen draws this document's
     /// model (a snapshot, decoded and applied inside its model marker, as a push is). Nothing from the document before is
-    /// sent again.
+    /// sent again. `coachHome` (a NATIVE Coach tab, H10): `coachHome.snapshot` (5 s), applied as the chat's is.
     private func resync(_ screen: String, _ b: Binding, covered: Bool = true) {
         if covered { send(.shellCovered(on: true), b) }
+        if screen == "coachHome" { return resyncHome(b) }
         guard screen == "coach" else { return }
         b.pageLink.send(.coachSnapshot) { [weak self, weak b] outcome in
             guard let self, let b else { return }
@@ -915,6 +933,22 @@ public final class ShellBridge: NSObject {
         }
     }
 
+    /// The NATIVE Coach tab's resync (contract 3.2, I13): the new document's hub model, asked for once (the page answers
+    /// only while it has taken the tab over) and decoded and applied inside `model coachHome@`, as a push is; until it
+    /// comes the home keeps drawing the document before's model (`forgetModels`).
+    private func resyncHome(_ b: Binding) {
+        b.pageLink.send(.coachHomeSnapshot) { [weak self, weak b] outcome in
+            guard let self, let b else { return }
+            self.finished(.coachHomeSnapshot, outcome, b)
+            guard case .answered(.done(let reply)) = outcome, let json = reply.value["json"]?.string else { return }
+            let (boot, verdict, fx) = self.modelSection("coachHome", b) {
+                self.homeReceived(json, rev: nil, b, at: Date())
+            }
+            self.apply(fx, b)
+            Self.log.info("shell: coachHome resynced on boot \(boot ?? "?", privacy: .public) (\(String(describing: verdict), privacy: .public))")
+        }
+    }
+
     /// A model the page pushed, decoded and applied inside `model <screen>` (contract 3.7, 10.2): a crash there leaves
     /// the marker at `1` and the next launch turns that piece off for its pair, where build 60 caught none and a model
     /// pushed after every hello would crash every launch. Only this binary's screens: any other can never be live (the
@@ -926,9 +960,7 @@ public final class ShellBridge: NSObject {
         }
         switch push.screen {
         case "coachHome":
-            // until H10 wires N's hub (contract 15.2): unread and uncounted, so a page that names the native Coach tab
-            // shows its web Coach under the native bar and never trips anything for it
-            Self.log.info("shell: a coachHome model (rev \(push.rev)) dropped: the native Coach tab is not wired in this build yet")
+            homeModel(push, b, at: now)
             return
         case "tabs":
             tabsModel(push, b, at: now)
@@ -973,6 +1005,34 @@ public final class ShellBridge: NSObject {
             return fx
         }
         apply(fx, b)
+    }
+
+    /// A CoachHomeModel (contract 3.7, 6.2), decoded by N's decoder and applied inside `model coachHome@<page> shell <n>`
+    /// (N writes no marker, N-G11): the home's store draws it (a newer rev of its boot, or any rev of a new boot, whether
+    /// or not Coach is selected, so a tap opens on a current hub) and the root's hold follows its `resume`. One that does
+    /// not decode counts against `coachHome` (the link's model breaker): enough in a row trip it for the page build, and
+    /// `coach` goes with it (`needs`) while the Coach tab turns WEB (`applyEvent`). A stale or other-boot one is dropped.
+    private func homeModel(_ push: ModelPush, _ b: Binding, at now: Date) {
+        let fx = modelSection(push.screen, b) { () -> [LinkEffect] in
+            homeReceived(push.json, rev: push.rev, b, at: now).effects
+        }
+        apply(fx, b)
+    }
+
+    /// One hub model through the link and into ScreenHost, inside its caller's `model coachHome` section: a push names its
+    /// rev, a snapshot's is its model's own.
+    private func homeReceived(_ json: String, rev: Int?, _ b: Binding, at now: Date) -> (boot: String?, verdict: ModelVerdict, effects: [LinkEffect]) {
+        let decoded: CoachHomeModel?
+        do {
+            decoded = try CoachHomeModel.decode(json)
+        } catch {
+            decoded = nil
+            Self.log.error("shell: coachHome model rev \(rev ?? 0) did not decode: \(String(describing: error), privacy: .public)")
+        }
+        let (verdict, fx) = b.link.modelReceived(screen: "coachHome", rev: rev ?? decoded?.rev ?? 0, boot: decoded?.boot,
+                                                 decoded: decoded != nil, at: now)
+        if verdict == .apply, let decoded { b.screens.update("coachHome", model: decoded) }
+        return (decoded?.boot, verdict, fx)
     }
 
     // MARK: Swift to page
@@ -1312,15 +1372,20 @@ public final class ShellBridge: NSObject {
 
     /// The Coach tab turns WEB (contract 1.4, 3.6, 8.3): the web view shows in the Coach slot, and while Coach is selected
     /// the root uncovers the page (`shell.covered {on:false}`) and VoiceOver hears it. It stays WEB until a `present
-    /// coachHome` (H10). A WAITING tab's net goes. `popChat`: a pushed chat comes off too, without animation (the stack
-    /// is hidden by then). Nothing under a classic or fallen-back root, or when the tab is WEB already.
+    /// coachHome`. A WAITING tab's net goes. `popChat` (the page's `dismiss coachHome`): ScreenHost's `dismiss("coachHome")`
+    /// turns it WEB and then takes a pushed chat off too, without animation (the stack is hidden by then); the other
+    /// reasons leave the chat to their own dismissal (the hello's, the offs'). Nothing under a classic or fallen-back root,
+    /// or when the tab is WEB already.
     private func coachTurnsWeb(_ b: Binding, why: String, popChat: Bool = false) {
         b.coachNet?.cancel()
         b.coachNet = nil
         guard #available(iOS 26.0, *), let root = liveRoot(b), root.coachMode != .web else { return }
         Self.log.info("shell: the Coach tab turns WEB (\(why, privacy: .public))")
-        root.setCoachMode(.web)
-        if popChat, b.screens.isUp("coach") { b.screens.dismiss("coach") }
+        if popChat {
+            b.screens.dismiss("coachHome")
+        } else {
+            root.setCoachMode(.web)
+        }
     }
 
     /// A WAITING Coach tab (only before the scene's first declaration) waits after a hello's answer that negotiated
