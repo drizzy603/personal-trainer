@@ -399,8 +399,9 @@ final class CoachHomeRenderTests: XCTestCase {
     /// there. Probed on iOS 27.0 over the hand-made fixtures, the page-built ones (P6) and the variant, both rooms, at
     /// 390 pt large and at 320 pt .xxLarge: every line was read in the column's order but the avatar's (read beside the
     /// meta label's line or between its two lines, and on Heavyweight's blue disc often not at all), none with more
-    /// than one error. iOS 26.5 reads them within the same allowance but for Lime's meta label at 320 pt .xxLarge,
-    /// whose Latin capitals it reads as the Cyrillic ones drawn like them (`latin`).
+    /// than one error. iOS 26.5 reads them within the same allowance too, but it read Lime's meta label at 320 pt
+    /// .xxLarge, while that broke as "COACH · WK 06 / 12" over "· BUILD", in the Cyrillic capitals drawn like its Latin
+    /// ones (`latin`), and it reads a wrapped label's disc with one of its lines (`ordered`).
     enum DrawnText {
         static let wildcard: Character = "\u{FFFD}"
 
@@ -482,11 +483,15 @@ final class CoachHomeRenderTests: XCTestCase {
 
         /// The Cyrillic letters drawn like a Latin capital (А В Е К М Н О Р С Т У Х, and Ѕ І Ј), lowercased as
         /// `normalize` leaves them, each with the Latin letter it stands for. iOS 26.5's accurate recognizer (revision
-        /// 3; its languages hold ru-RU and uk-UA, and no Greek) reads JetBrains Mono's Latin capitals as these in the
-        /// Lime meta label's wrapped line whatever the request says: probed with revisions 2 and 3, automatic language
-        /// detection off, `recognitionLanguages` en-US, en-GB, en-US and fr-FR, or none, every one read the same
-        /// Cyrillic letters (iOS 27.0's reads Latin). Only these look-alikes are one letter: a Cyrillic П or И is no
-        /// Latin letter, and a Latin letter is never taken for another.
+        /// 3; its languages hold ru-RU and uk-UA, and no Greek) read JetBrains Mono's Latin capitals as these in the
+        /// Lime meta label's first line while the label broke as "COACH · WK 06 / 12" over "· BUILD", whatever the
+        /// request said (probed with revisions 2 and 3, automatic language detection off, `recognitionLanguages` en-US,
+        /// en-GB, en-US and fr-FR, or none: every one read the same Cyrillic letters), in its own render and in two of
+        /// the three iOS 27.0 renders it was given (the two runtimes draw the same lines; only their glyphs' edge
+        /// pixels differ). iOS 27.0's recognizer reads all of them in Latin, and iOS 26.5's reads the label in Latin
+        /// since it breaks as the web's does ("COACH · WK 06 / 12 ·" over "BUILD"): which script a recognizer takes a
+        /// face's capitals for is no part of what is drawn. Only these look-alikes are one letter: a Cyrillic П or И is
+        /// no Latin letter, and a Latin letter is never taken for another.
         static let latin: [Character: Character] = [
             "\u{0430}": "a", "\u{0432}": "b", "\u{0435}": "e", "\u{043A}": "k", "\u{043C}": "m", "\u{043D}": "h",
             "\u{043E}": "o", "\u{0440}": "p", "\u{0441}": "c", "\u{0442}": "t", "\u{0443}": "y", "\u{0445}": "x",
@@ -679,7 +684,8 @@ final class CoachHomeRenderTests: XCTestCase {
         XCTAssertNotEqual(folded("\u{041F}"), folded("N"), "П is drawn like no N")
         XCTAssertNotEqual(folded("\u{0418}"), folded("N"), "nor И")
         XCTAssertNotEqual(folded("\u{0421}"), folded("O"), "С is a C, never an O")
-        // the Lime meta label at 320 pt .xxLarge, wrapped around the avatar, as iOS 26.5 read it (CI and here)
+        // the Lime meta label at 320 pt .xxLarge, wrapped around the avatar, as iOS 26.5 read it (CI's run 40886265725
+        // and here) while it broke as "COACH · WK 06 / 12" over "· BUILD"
         let label = ["COACH \u{00B7} WK 06 / 12 \u{00B7} BUILD", "Hi Kalani."]
         let first = "\u{2022} \u{0421}\u{041E}\u{0410}\u{0421}\u{041D} : W\u{041A} 06 / 12"
         XCTAssertEqual(m([first, "K", "\u{2022} BUILD", "Hi Kalani."], label),
