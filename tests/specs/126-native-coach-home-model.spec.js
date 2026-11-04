@@ -36,7 +36,10 @@
 //   tabs shell is Fixtures/coach (tests/golden/dump-coach-home.js; spec 118 holds the chat's own drift); the Coach
 //   hub's meta row (the label's lines and the avatar tile's width, both rooms, five widths, three text sizes) lays out
 //   as Fixtures/layout/meta-row.json says (tests/golden/dump-meta-row.js), the file CoachHomeViewTests holds the
-//   native row to.
+//   native row to: byte for byte on darwin, where the file is made and where publish.sh runs the suite before every
+//   publish; elsewhere (CI's ubuntu-latest Chromium, whose text goes through FreeType) only what no text rasterizer
+//   decides: the cases in order, the row's computed styles and its boxes with the label empty (the lines and tiles
+//   come from glyph advances; even the Mac's device scale factor 2 moves 35 of the first 180 tiles by 0.01 pt).
 // Every boot names its shell (the mark above): FP_SHELL_INERT runs skip this spec.
 const fs = require('fs');
 const path = require('path');
@@ -526,8 +529,8 @@ serial('golden: the page-built coachHome and tabs fixtures are what the page bui
 
 serial('golden: the Coach hub\'s meta row lays out as Fixtures/layout/meta-row.json says', async () => {
   const meta = require('../golden/dump-meta-row');
-  const now = await meta.pageLayout();
-  assert(fs.existsSync(meta.OUT) && fs.readFileSync(meta.OUT, 'utf8') === now,
-    'the page lays out the meta row otherwise than ' + path.relative(path.join(__dirname, '..', '..'), meta.OUT) +
-    ': run node tests/golden/dump-meta-row.js, then CoachHomeViewTests on a simulator');
+  const bad = meta.drift(await meta.pageLayout());
+  assert(bad.length === 0, 'the page lays out the meta row otherwise than ' +
+    path.relative(path.join(__dirname, '..', '..'), meta.OUT) + ' says (' + meta.holds() + '): ' + bad.join(', ') +
+    ': run node tests/golden/dump-meta-row.js on a Mac, then CoachHomeViewTests on a simulator');
 });

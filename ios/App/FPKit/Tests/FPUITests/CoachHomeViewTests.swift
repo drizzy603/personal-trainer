@@ -984,14 +984,18 @@ final class CoachHomeViewTests: XCTestCase {
 
     /// The meta row lays out as the web's does: every case of Fixtures/layout/meta-row.json, the page's own
     /// `.kt-meta-row` drawn by renderCoach in Chromium in both rooms, at 320, 375, 390, 402 and 440 pt and the root zoom
-    /// of each text size (1, 1.12, 1.24), with the fixtures' labels and three multi-word block names a coach may write
-    /// (tests/golden/dump-meta-row.js; tests/golden/check.sh fails when the page changes it), comes out of
+    /// of each text size (1, 1.12, 1.24), with the fixtures' labels, three multi-word block names a coach may write and
+    /// three whose break the web view's own rules decide (tests/golden/dump-meta-row.js; tests/golden/check.sh and spec
+    /// 126 fail when the page changes it; WebKit lays every case out in the same lines), comes out of
     /// `HomeMetaRow.layout` in the page's lines with the page's tile width. So the label is one line wherever the web
     /// draws one (the row keeps no gap of its own); where it wraps, the separator ends a line ("COACH · WK 06 / 12 ·"
     /// over "BUILD"), never leads the next ("· BUILD", SwiftUI's own breaker); and the tile gives the label the room the
     /// web's flexbox gives it ("… · FOUNDATION" over "PHASE" with the tile at 36.4 of its 42.6 pt in Heavyweight at
     /// 320 pt .xLarge; a tile kept at 38 px broke "… · HYPERTROPHY ACCUMULATION" in three lines at 320 pt .xxLarge, where
-    /// the web draws two), its width the web's within a tenth of a point. Laid out (every case at 320 and 390 pt), the
+    /// the web draws two), its width the web's within a tenth of a point; a slash inside a name never ends a line ("… ·"
+    /// over "HYPERTROPHY/STRENGTH", where CoreText's typesetter broke "HYPERTROPHY/" over "STRENGTH"), a hyphen may
+    /// ("… · STRENGTH-" over "ENDURANCE"), and so may the space before a slash ("… · UPPER" over "/ LOWER" in Lime at
+    /// 320 pt .xLarge: `WebLineBreaks`). Laid out (every case at 320 and 390 pt), the
     /// label (the dot, its gap and the lines: one element
     /// for VoiceOver) starts at the gutter, as tall as its lines and as wide as the widest, so the view draws those
     /// lines and no others (CoachHomeRenderTests holds the drawn tile's width by its letter's place).
@@ -1000,7 +1004,7 @@ final class CoachHomeViewTests: XCTestCase {
         let sizes = Dictionary(uniqueKeysWithValues: CoachRenderTests.sizes)
         let hub = try CoachHomeFixtures.json("hub-empty")
         var wrapped = 0, narrowed = 0, hosted = 0
-        XCTAssertGreaterThanOrEqual(file.cases.count, 180, "every room, width, size and label")
+        XCTAssertGreaterThanOrEqual(file.cases.count, 270, "every room, width, size and label")
         for c in file.cases {
             let what = "\(c.label.debugDescription) in \(c.room.id) at \(Int(c.width)) pt, \(c.size)"
             let size = try XCTUnwrap(sizes[c.size], "\(what): a text size the hub draws at")
