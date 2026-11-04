@@ -323,8 +323,11 @@ hello, so every later launch of that build is classic. Such a bundle is built by
 with `cap copy`, the App scheme built at 61, its `build-id.txt` removed) and run with `--no-build=any`, which runs a
 build of a tree unknown and says so (`--no-build` refuses a build with no `build-id.txt`, another tree's, or one whose
 bundled page is not the page this checkout staged); the tree's own page is staged again after. The build and the run
-share one `sim.lock` hold (`tests/tools/simlock.sh`), since `dd-shell` is the folder every simulator tool of the
-checkout reuses, and no other build of the checkout runs meanwhile: the hand build stages its page in `www/` and
+share one `sim.lock` hold (`tests/tools/simlock.sh`): `dd-shell` is the folder `tests/native-shell.sh` builds into and
+reuses in this checkout, so a run of it in between would build the tree's own page over the hand build, and the
+`--no-build=any` run would then test that build without a word (it is this tree's); every simulator tool takes
+`sim.lock` first and counts a hold of its shell or an ancestor as its own, so one hand hold covers the build and the
+run. No other build of the checkout runs meanwhile either: the hand build stages its page in `www/` and
 `ios/App/App/public` outside fp-build's `build.lock`.
 
 ## The live chat: CoachStore
