@@ -289,8 +289,7 @@ final class CoachHomeRenderTests: XCTestCase {
     /// the model shows is one the source holds, so what is drawn is the page's own words and never a default of the
     /// decoder or the view. The avatar, a lone letter that the recognizer reads in Lime and seldom on Heavyweight's
     /// blue disc, is held by its tile instead (`checkAvatar`). The meta label is held by its pixels as well
-    /// (`checkMetaLabel`), on every runtime, and by its pixels alone where the recognizer cannot be trusted with it
-    /// (`DrawnText.readsTheMetaLabel`: iOS 26.x), its lines read there left out of the match. The view's own marks (the
+    /// (`checkMetaLabel`), on every runtime. The view's own marks (the
     /// meta row's disc, a row's chevron, CONNECT's arrow, the icons) are no letters or digits and are not text.
     func testEveryStringARenderDrawsIsTheFixtures() throws {
         var lines = 0, strings = 0, avatars = 0, labels = 0
@@ -304,14 +303,9 @@ final class CoachHomeRenderTests: XCTestCase {
                     let image = CoachRenderTests.render(Phone(model: model, size: size, screen: screen, unscrolled: true), size: nil,
                                                         phone: .light, width: screen.size.width)
                     let all = try DrawnText.read(image)
-                    var words = Self.shown(model, avatar: false), read = all
-                    if let box = try checkMetaLabel(of: json, in: room, model: model, drawn: image, screen: screen, size: size, what) {
+                    let words = Self.shown(model, avatar: false), read = all
+                    if try checkMetaLabel(of: json, in: room, model: model, drawn: image, screen: screen, size: size, what) != nil {
                         labels += 1
-                        if !DrawnText.readsTheMetaLabel {
-                            // the label is the first string shown; what the recognizer read in its box is left out with it
-                            if words.first == model.meta.label { words.removeFirst() }
-                            read = all.filter { !box.contains(CGPoint(x: $0.box.midX, y: $0.box.midY)) }
-                        }
                     }
                     let match = DrawnText.match(lines: read.map(\.text), strings: words)
                     for (i, line) in read.enumerated() {
@@ -547,25 +541,12 @@ final class CoachHomeRenderTests: XCTestCase {
     /// there. Probed on iOS 27.0 over the hand-made fixtures, the page-built ones (P6) and the variant, both rooms, at
     /// 390 pt large and at 320 pt .xxLarge: every line was read in the column's order but the avatar's (read beside the
     /// meta label's line or between its two lines, and on Heavyweight's blue disc often not at all), none with more
-    /// than one error. iOS 26.5 reads the other lines within the same allowance, and a wrapped label's disc with one of
-    /// its lines (`ordered`), but not the meta label itself: which script it takes the label's capitals for, and
-    /// whether it reads a line of it at all, turns on where the lines fall and on nothing drawn (`readsTheMetaLabel`).
+    /// than one error. iOS 26.5 reads every line within the same allowance, the meta label's included wherever the view
+    /// draws it (probed again 2026-11-03 with Xcode 27.2: every render of testEveryStringARenderDrawsIsTheFixtures), and
+    /// a wrapped label's disc with one of its lines (`ordered`); what it misread were labels drawn wrong, the old break's
+    /// "· BUILD" (CI's run 40886265725) and the lines drawn in the other order, read as Cyrillic or not at all.
     enum DrawnText {
         static let wildcard: Character = "\u{FFFD}"
-
-        /// Whether this runtime's recognizer is held to the meta label's lines: iOS 27 and later, whose recognizer reads
-        /// the label in Latin wherever its lines fall. iOS 26.x's accurate recognizer (26.5, with CI's Xcode 26.6 and
-        /// with Xcode 27.1 alike) reads the label's capitals as Cyrillic letters, look-alikes or not, or drops a line,
-        /// depending on the layout alone: Lime's "COACH · WK 06 / 12 · BUILD" at 320 pt .xxLarge read "• СОАСН : WК 06 /
-        /// 12" while the label broke as "COACH · WK 06 / 12" over "· BUILD" and in Latin once it broke as the web's
-        /// does, and the same correctly drawn first line read "• сЛАСН. wк а6 / 12." and "• сЛАсН. шк лк/1о." (Л for O,
-        /// а for 0, ш for W) with the two lines drawn in the other order, BUILD not at all; one candidate a line, at
-        /// confidence 1, and no better on the render scaled up two or three times. So on 26.x the label is held by its
-        /// pixels alone (`checkMetaLabel`, which every runtime runs), and the lines read in its box are no part of the
-        /// match.
-        static var readsTheMetaLabel: Bool {
-            ProcessInfo.processInfo.isOperatingSystemAtLeast(OperatingSystemVersion(majorVersion: 27, minorVersion: 0, patchVersion: 0))
-        }
 
         /// A line the recognizer read, and its box in the render (points, from the top left).
         struct Line: Equatable {
@@ -651,9 +632,8 @@ final class CoachHomeRenderTests: XCTestCase {
         /// en-GB, en-US and fr-FR, or none: every one read the same Cyrillic letters), in its own render and in two of
         /// the three iOS 27.0 renders it was given (the two runtimes draw the same lines; only their glyphs' edge
         /// pixels differ); iOS 27.0's recognizer reads all of them in Latin. Which script a recognizer takes a face's
-        /// capitals for is no part of what is drawn, and on 26.x it is not even these look-alikes alone, so the meta
-        /// label is not left to the recognizer there (`readsTheMetaLabel`); the fold keeps a look-alike read in any
-        /// other line from counting as a misread letter. Only these look-alikes are one letter: a Cyrillic П or И is
+        /// capitals for is no part of what is drawn: the fold keeps such a look-alike read from counting as a misread
+        /// letter. Only these look-alikes are one letter: a Cyrillic П or И is
         /// no Latin letter, and a Latin letter is never taken for another.
         static let latin: [Character: Character] = [
             "\u{0430}": "a", "\u{0432}": "b", "\u{0435}": "e", "\u{043A}": "k", "\u{043C}": "m", "\u{043D}": "h",

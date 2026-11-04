@@ -407,8 +407,7 @@ intents, the key sent once, `describe()`, CoachHomeRoot in a window and as a Coa
 `CoachHomeRenderTests`, which draws every `Fixtures/coachHome` file and the `built-connect` variant in both rooms, light
 and dark, at `.large`, `.xLarge` and `.xxLarge`, on 390 × 844 and 320 × 568 over the 83 pt bar, and holds Larger Text's
 growth and cap, the column's exact end, and every string the model shows read back off the render by Vision
-(`DrawnText`; the avatar by its tile; the meta label by its pixels too, and by its pixels alone on iOS 26.x, whose
-recognizer reads the label's capitals as Cyrillic or not at all depending on where its lines fall). With
+(`DrawnText`; the avatar by its tile; the meta label by its pixels too, on every runtime). With
 `TEST_RUNNER_FPUI_SHOTS` it writes `native/home/<fixture>/...`, from which no contact sheet is made yet
 (`Tools/chat-contact/run.sh` runs CoachRenderTests alone).
 
