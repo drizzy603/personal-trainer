@@ -237,12 +237,13 @@ public struct CoachHomeView: View {
     }
 
     /// A headline part as the browser lays out the h1's lines (`white-space: normal`, `overflow-wrap: break-word`,
-    /// `index.html:686`): its white space collapsed, broken at a space where the next word would pass `width`, inside
-    /// a word only when that word alone is wider; measured in the face drawn (`font`) with its tracking in points
-    /// (CSS letter-spacing, after every letter). The view stacks the lines one per text, so a wrapped part keeps the
-    /// CSS line pitch (SwiftUI cannot set a line spacing below the face's own line). The web's `text-wrap: balance`
-    /// (1516) changes nothing for the one- and two-word parts the page writes, so the break here is the greedy one. The
-    /// meta label breaks so too (`HomeMetaRow.layout`).
+    /// `index.html:686`): its white space collapsed, ended at the last place the phone's web view may end a line
+    /// (`WebLineBreaks`: at a space, after a hyphen, never after a slash) whose line fits `width`, inside a piece only
+    /// when that piece alone is wider; measured in the face drawn (`font`) with its tracking in points (CSS
+    /// letter-spacing, after every letter), the space a line ends on hanging. The view stacks the lines one per text,
+    /// so a wrapped part keeps the CSS line pitch (SwiftUI cannot set a line spacing below the face's own line). The
+    /// web's `text-wrap: balance` (1516) changes nothing for the one- and two-word parts the page writes, so the break
+    /// here is the greedy one. The meta label breaks so too (`HomeMetaRow.layout`).
     static func headlineLines(_ text: String, font: UIFont, tracking: CGFloat, width: CGFloat) -> [String] {
         // CSS white space (space, tab, line feed, carriage return, form feed) collapses to one space
         let collapsed = text.split(whereSeparator: { " \t\n\r\u{0C}".contains($0) }).joined(separator: " ")
@@ -252,18 +253,27 @@ public struct CoachHomeView: View {
         let setter = CTTypesetterCreateWithAttributedString(NSAttributedString(string: collapsed, attributes: attributes))
         let units = collapsed as NSString
         let room = Double(max(1, width))
+        let ends = WebLineBreaks.breaks(in: collapsed) + [units.length]
+        // a line's width: its letters, each tracked, the space it ends on hanging
+        func drawn(_ from: Int, _ to: Int) -> Double {
+            let line = CTTypesetterCreateLine(setter, CFRange(location: from, length: to - from))
+            return CTLineGetTypographicBounds(line, nil, nil, nil) - CTLineGetTrailingWhitespaceWidth(line)
+        }
         var lines: [String] = []
         var at = 0
         while at < units.length {
-            var take = CTTypesetterSuggestLineBreak(setter, at, room)
-            if take > 0 {
-                // a word alone wider than the column: broken between its letters (overflow-wrap: break-word)
-                let line = CTTypesetterCreateLine(setter, CFRange(location: at, length: take))
-                if CTLineGetTypographicBounds(line, nil, nil, nil) - CTLineGetTrailingWhitespaceWidth(line) > room + 0.5 {
-                    take = CTTypesetterSuggestClusterBreak(setter, at, room)
-                }
+            // the browser's greedy break: the last place a line may end whose line fits
+            var take = 0
+            for end in ends where end > at {
+                guard drawn(at, end) <= room else { break }
+                take = end - at
             }
-            if take <= 0 { take = units.rangeOfComposedCharacterSequence(at: at).length }   // one letter, at the least
+            if take == 0 {
+                // a piece alone wider than the column: broken between its letters (overflow-wrap: break-word)
+                let piece = (ends.first { $0 > at } ?? units.length) - at
+                take = min(piece, CTTypesetterSuggestClusterBreak(setter, at, room))
+                if take <= 0 { take = units.rangeOfComposedCharacterSequence(at: at).length }   // one letter, at the least
+            }
             // the space a line ends on hangs (a no-break space is not white space to CSS: it stays)
             let line = units.substring(with: NSRange(location: at, length: take)).trimmingCharacters(in: Self.cssSpace)
             if !line.isEmpty { lines.append(line) }
@@ -379,13 +389,16 @@ struct HomeMetaRow: View {
     /// `flex-shrink: 1`. When the label on one line and the tile pass the column (the screen less its two gutters),
     /// each gives way by the overflow in proportion to its inner flex base size (the label's one-line width, the tile's
     /// 38 px less its border: CSS Flexbox's scaled shrink factors), neither below its min-content (the label's widest
-    /// word, the tile's letter and border); so the tile narrows (an ellipse in Heavyweight) and the label wraps in the
-    /// room left, "COACH · WK 03 / 12 · FOUNDATION" over "PHASE" with the tile at 36.4 of its 42.6 pt at 320 pt
-    /// .xLarge. Otherwise the label is one line and the tile 38 px. The text breaks as `.kt-meta-label`'s does
-    /// (`white-space: normal`): greedily at a space where the next word would pass the room, the separator that ends a
-    /// line kept on it ("COACH · WK 06 / 12 ·" over "BUILD"), never carried down with the next word as SwiftUI's own
-    /// breaker does to keep a word from standing alone ("· BUILD"); a word wider than the room alone (the label at its
-    /// min-content in a column narrower than its widest word) breaks between its letters, where the web's would run
+    /// piece no break divides, the tile's letter and border); so the tile narrows (an ellipse in Heavyweight) and the
+    /// label wraps in the room left, "COACH · WK 03 / 12 · FOUNDATION" over "PHASE" with the tile at 36.4 of its
+    /// 42.6 pt at 320 pt .xLarge. Otherwise the label is one line and the tile 38 px. The text breaks as
+    /// `.kt-meta-label`'s does in the phone's web view (`white-space: normal`; `WebLineBreaks`): greedily, at the last
+    /// place a line may end whose line fits the room, the separator that ends a line kept on it ("COACH · WK 06 / 12 ·"
+    /// over "BUILD"), never carried down with the next word as SwiftUI's own breaker does to keep a word from standing
+    /// alone ("· BUILD"); after a hyphen ("… · STRENGTH-" over "ENDURANCE") and at a space before a slash ("… · UPPER"
+    /// over "/ LOWER"), never after a slash inside a name ("… ·" over "HYPERTROPHY/STRENGTH", where CoreText's
+    /// typesetter broke "HYPERTROPHY/" over "STRENGTH"); a piece wider than the room alone (the label at its
+    /// min-content in a column narrower than its widest piece) breaks between its letters, where the web's would run
     /// past the row. Measured in the face drawn, with its tracking after every letter, caps in Heavyweight
     /// (`CoachHomeView.headlineLines`). tests/golden/dump-meta-row.js reads the page's own row in every room, at five
     /// phone widths and three text sizes, and CoachHomeViewTests holds this to it.
@@ -414,7 +427,7 @@ struct HomeMetaRow: View {
             let over = labelBase + tileBase - column, inner = tileBase - border
             var labelSize = labelBase - over * labelBase / (labelBase + inner)
             tile = tileBase - over * inner / (labelBase + inner)
-            let labelMin = mark + (text.split(separator: " ").map { measured(String($0)) }.max() ?? 0)
+            let labelMin = mark + (WebLineBreaks.pieces(of: text).map(measured).max() ?? 0)
             let tileMin = meta.avatar.map { min(tileBase, border + HomeAvatar.width(of: $0, t)) } ?? 0
             switch (labelSize < labelMin, tile < tileMin) {
             case (true, true): labelSize = labelMin; tile = tileMin

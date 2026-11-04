@@ -2,6 +2,7 @@
 import CoreText
 import SwiftUI
 import UIKit
+import WebKit
 import XCTest
 @testable import FPUI
 import FPCore
@@ -1035,6 +1036,85 @@ final class CoachHomeViewTests: XCTestCase {
         XCTAssertGreaterThan(wrapped, 0, "some label wraps")
         XCTAssertGreaterThan(narrowed, 0, "some tile gives way")
         XCTAssertGreaterThan(hosted, 0, "some layouts were drawn")
+    }
+
+    /// The meta label and the headline end their lines where the phone's web view does (`WebLineBreaks`, which
+    /// `CoachHomeView.headlineLines` breaks at): laid out in this runtime's own WKWebView in a zero-width box (lang en,
+    /// white-space normal, so every break is taken), every pair of characters from `!` to U+00FF between letters ("A"
+    /// + a + b + "A", 36,100: WebKit's table), each of those and 22 characters past U+00FF after a space, those 22
+    /// (dashes, curly quotes, an ellipsis, letters of other scripts, ideographs and their punctuation, a combining mark,
+    /// symbols, an emoji) before and after every one of them, and block names a coach may write (the golden's labels,
+    /// slashes and hyphens beside letters and digits, dashes, brackets) break at the offsets `WebLineBreaks.breaks`
+    /// gives, string for string. A letter's line is read off its widest client rect: on iOS the bounding rect of a
+    /// letter right after a soft break also spans the line before. CoreText's typesetter breaks 423 of the printable
+    /// ASCII pairs otherwise (after "/", "!" or "|", never at a space before "/" or ")"), so a breaker that is not the
+    /// web view's fails here, on each runtime the tests run on.
+    func testTheTextBreaksWhereThePhonesWebViewDoes() async throws {
+        try await WebKitWarmUp.ensure()
+        let low = (Array(0x21...0x7E) + Array(0xA0...0xFF)).map { String(Character(Unicode.Scalar(UInt8($0)))) }
+        let past = ["\u{2013}", "\u{2014}", "\u{2019}", "\u{2018}", "\u{201C}", "\u{201D}", "\u{2010}", "\u{2011}", "\u{2026}",
+                    "\u{0100}", "\u{0411}", "\u{4E2D}", "\u{3001}", "\u{300C}", "\u{300D}", "\u{0301}", "\u{20AC}", "\u{2122}",
+                    "\u{2022}", "\u{2192}", "\u{1F600}", "\u{00B7}"]
+        var strings: [String] = []
+        for a in low { for b in low { strings.append("A" + a + b + "A") } }
+        for b in low + past { strings.append("A " + b + "A") }
+        for x in past { for b in low + past { strings.append("A" + x + b + "A"); strings.append("A" + b + x + "A") } }
+        strings += try LayoutFixtures.metaRow().cases.map(\.label).reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }
+        strings += ["PUSH/PULL/LEGS", "5/3/1 BBB", "WK 06 / 12", "UPPER / LOWER", "DELOAD + TEST", "BASE (AEROBIC)", "BASE(AEROBIC)",
+                    "PRE-COMPETITION", "RE-ENTRY", "STRENGTH-HYPERTROPHY BLOCK", "A-1", "1-2", "(-1)", "X -1", "A--B", "-A",
+                    "WEEK 3\u{2014}DELOAD", "STRENGTH\u{2013}POWER", "COACH\u{2019}S PICK", "\u{00C9}T\u{00C9}/HIVER",
+                    "\u{00C9}T\u{00C9}-HIVER", "WHAT?NOW", "WHAT?!NOW", "A [B]", "PEAK\u{00A0}WEEK / TEST",
+                    "\u{0416}\u{0418}\u{041C}/\u{0422}\u{042F}\u{0413}\u{0410}", "\u{4E2D}\u{6587}\u{8BAD}\u{7EC3}",
+                    "ATHLETE\u{2019}S/RUNNER", "x\u{2013}!y z\u{2014}(w)"]
+        let view = WKWebView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        view.loadHTMLString("<!doctype html><html lang=\"en\"><body></body></html>", baseURL: URL(string: "https://fp.test/"))
+        let deadline = Date().addingTimeInterval(10)
+        while true {
+            if !view.isLoading, (try? await view.evaluateJavaScript("document.readyState")) as? String == "complete" { break }
+            guard Date() < deadline else { return XCTFail("the probe page did not load") }
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+        let list = try XCTUnwrap(String(data: JSONSerialization.data(withJSONObject: strings), encoding: .utf8))
+        // each string's line starts after the first: a letter whose line is not the one before's (spaces hang)
+        let script = """
+            (function (strings) {
+              var host = document.createElement('div'), all = document.createDocumentFragment(), boxes = [], out = [];
+              host.lang = 'en';
+              host.style.cssText = 'position:absolute;left:0;top:0;width:0;font:16px monospace;white-space:normal;';
+              for (var k = 0; k < strings.length; k++) {
+                var d = document.createElement('div');
+                d.textContent = strings[k]; all.appendChild(d); boxes.push(d);
+              }
+              host.appendChild(all);
+              document.body.appendChild(host);   // laid out once, then only read
+              for (var k = 0; k < strings.length; k++) {
+                var s = strings[k], n = boxes[k].firstChild, r = document.createRange(), last = null, starts = [];
+                for (var i = 0; i < s.length; i++) {
+                  if (s[i] === ' ') continue;
+                  r.setStart(n, i); r.setEnd(n, i + 1);
+                  var rects = r.getClientRects(), box = null;
+                  for (var j = 0; j < rects.length; j++) if (!box || rects[j].width >= box.width) box = rects[j];
+                  var top = Math.round((box || r.getBoundingClientRect()).top);
+                  if (last !== null && top !== last) starts.push(i);
+                  last = top;
+                }
+                out.push(starts);
+              }
+              host.remove();
+              return JSON.stringify(out);
+            })(\(list))
+            """
+        let raw = try await view.evaluateJavaScript(script)
+        let answer = try XCTUnwrap(raw as? String, "the probe's answer")
+        let web = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(answer.utf8)) as? [[Int]], answer.prefix(200).description)
+        XCTAssertEqual(web.count, strings.count, "one answer per string")
+        var wrong: [String] = []
+        for (s, w) in zip(strings, web) {
+            let native = WebLineBreaks.breaks(in: s)
+            if native != w { wrong.append("\(s.debugDescription): web view \(w), native \(native)") }
+        }
+        XCTAssertEqual(wrong.count, 0, "\(wrong.count) of \(strings.count) strings break otherwise than the web view: \(wrong.prefix(24).joined(separator: "; "))")
+        XCTAssertGreaterThan(strings.count, 45_600, "every pair, and the names, were laid out")
     }
 
     /// The help is one element whose two paragraphs draw as two lines (its "\n" a line break, as the web's <br>).
