@@ -129,7 +129,8 @@ flags it models the shell (contract 2-4, 8, 10.3, 15.3):
   funnel and answers `{tab, seq}` (`off`, `bad-tab`); `sheets` answers `{bar}` 16 ms later; `setSwitch`
   (`no-switch` but for `tabs`; off falls back `switch`); `present`/`dismiss` (`coachHome` declares the
   Coach tab, `coach` pushes, `dismiss tabs` falls back `page` with no `screens.off tabs`); `status` adds
-  `root`, `fellBack`, `switches`, `policy`, `counters.strays` and `off` `os`/`device`/`page`/`needs`
+  `root`, `fellBack`, `switches`, `policy`, `counters.strays`, `counters.leftAny` (always 0: the mock's
+  web view never leaves its window) and `off` `os`/`device`/`page`/`needs`
   (each piece's own reason first, then what it needs as FPCore's `Pieces.resolve` names it);
   `status {refresh: true}` stamps the policy check. Refusals read `<code>: <words>`.
 - **Shell to page** messages go through one FIFO queue, one at a time, never resent, each recorded in
