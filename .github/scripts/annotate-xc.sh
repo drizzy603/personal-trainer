@@ -5,10 +5,14 @@
 # fail 7 cases on a Mac and give exactly those ten). First one line for each failed test case, in the order the log
 # meets them (its first failure line, which says where and why; a case with none, lost in a crash or a hang or only
 # listed under "Failing tests:", by the line that names it), then the lines that fail the run outside any case
-# (compile errors, xcodebuild's own, the reasons under "Testing failed:"), then the cases' other failure lines while
-# room is left. Notices are counted apart from errors: one per test log says how many tests ran, failed (with their
-# failure lines) and were skipped, and up to three more name the failed cases with their counts of failure lines
-# (about 35 names fit; the last notice says how many more there are).
+# (compile errors, xcodebuild's own, the reasons under "Testing failed:", SwiftPM's line for a crashed test process),
+# then the cases' other failure lines while room is left. Notices are counted apart from errors: one per test log says
+# how many tests ran, failed (with their failure lines) and were skipped, and up to three more name the failed cases
+# with their counts of failure lines (about 35 names fit; the last notice says how many more there are).
+# A swift test log is read as SwiftPM wrote it: SwiftPM relays the test process's output in 4096-byte pieces and, when
+# that process crashes, writes its own "error: Process '<xctest> <bundle>' exited with unexpected signal code N"
+# between two of them, so in a 2>&1 log that line can start inside another, whose rest is the next line (SwiftPM 6.4.2:
+# "Test Case '-[M.C testB_pa" then its line, and on the next "sses]' passed (0.000 seconds).").
 # Usage: annotate-xc.sh LOG...  (a missing log is skipped; always exits 0)
 # Test: bash .github/scripts/annotate-xc-test.sh
 logs=()
@@ -29,7 +33,7 @@ function key(s,   n, p, sp) {
   return n >= 2 ? p[n - 1] "." p[n] : s
 }
 function mark(k) { if (!(k in seen)) { seen[k] = 1; order[++nc] = k; cfile[k] = file } }
-# Evidence that a case failed: its failed line, xcodebuild's list, a crash's restart line, a failure line naming it.
+# Evidence that a case failed: its failed line, xcodebuild's list, a start with no end, a failure line naming it.
 function failed(k, t) { mark(k); hard[k] = 1; if (!(k in named)) named[k] = t }
 # A failure line of a case; one met inside a case without naming it (a fatal error) counts once the case fails.
 function issue(k, t, definite) {
@@ -44,15 +48,24 @@ function lost(k) {
 }
 function ran(k) { if (!(k in st)) { st[k] = 1; nran[file]++ } }
 function run(t) { if (!(t in rseen)) { rseen[t] = 1; rl[++nr] = t } }
+# Where SwiftPM's crash line starts in s (its last "error: Process '", which runs to the end of s), or 0.
+function spm(s,   i, p) {
+  p = 0
+  while ((i = index(substr(s, p + 1), "error: Process '")) > 0) p += i
+  return (p && substr(s, p) ~ /^error: Process '[^']*' exited with unexpected signal code [0-9]+$/) ? p : 0
+}
 function out(kind, title, text) { print kind US title US text }
 function pl(n, word) { return n " " word (n == 1 ? "" : "s") }
 
 BEGIN { US = sprintf("%c", 31); limit = 10 }
 FNR == 1 {
-  lost(cur); cur = ""; sect = ""
+  lost(cur); cur = ""; sect = ""; held = ""
   file = FILENAME; sub(/.*\//, "", file); fname[++nf] = file
 }
 { gsub(/\r/, "") }
+# SwiftPM's crash line is the run's wherever it lands, and a line it split is read whole.
+held != "" { $0 = held $0; held = "" }
+{ p = spm($0); if (p) { run(substr($0, p)); held = substr($0, 1, p - 1); next } }
 /^Failing tests:[ \t]*$/ { sect = "listed"; tlog[file] = 1; next }
 /^Testing failed:[ \t]*$/ { sect = "reasons"; tlog[file] = 1; next }
 sect != "" && /^[ \t]+[^ \t]/ {
@@ -73,11 +86,12 @@ sect != "" && /^[ \t]+[^ \t]/ {
   if (cur == k) cur = ""
   next
 }
+# A failure line that names no case counts for the case running: a crash's fatal error (xcodebuild prints it twice,
+# the second with a timestamp) and xcodebuild's "Restarting after unexpected exit, crash, or test timeout; summary will
+# include totals from previous launches." after it (Xcode 27.2's names no case: a real crash on iOS 26.5).
 /(^|: )error: |xcodebuild: error|Fatal error|unexpected exit/ {
   if (match($0, /error: -\[[^]]+\]/)) issue(key(substr($0, RSTART + 7, RLENGTH - 7)), $0, 1)
-  else if ($0 ~ /unexpected exit/ && match($0, / in [A-Za-z0-9_.\/]+\(\)/)) {
-    k = key(substr($0, RSTART + 4, RLENGTH - 4)); issue(k, $0, 1); if (cur == k) cur = ""
-  } else if (cur != "") issue(cur, $0, 0)
+  else if (cur != "") issue(cur, $0, 0)
   else run($0)
 }
 END {
