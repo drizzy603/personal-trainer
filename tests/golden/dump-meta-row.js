@@ -26,7 +26,7 @@
 // compare only what no text rasterizer decides: the file's version, notes and avatar, its cases in order (room, width,
 // size, label), the computed styles that lay the row out (`styles`: the row, the label, its ::before, the tile) and
 // the row's boxes with its label empty, which no glyph moves (`boxes`: the row's left and width, the label's left, the
-// tile's width and height). Even on
+// tile's width and height), each length within 0.05 px (the layout's 1/64 px steps through the zoom). Even on
 // the Mac a device scale factor of 2 moves 35 of the first 180 tiles by 0.01 pt, with the same page, faces and engine.
 // FP_META_ROW_PLATFORM=linux runs the other platforms' check on a Mac.
 'use strict';
@@ -83,7 +83,8 @@ async function measure(arg) {
   if (!label() || !ava()) throw new Error('no meta row on the Coach hub in ' + arg.room);
   const faces = arg.room === 'heavyweight' ? ['700 12px Archivo'] : ['700 12px "JetBrains Mono"'];
   const round = (v) => Math.round(v * 100) / 100;
-  const pick = (cs, keys) => Object.fromEntries(keys.map((k) => [k, cs.getPropertyValue(k)]));
+  const pick = (cs, keys) => Object.fromEntries(keys.map((k) => [k,
+    cs.getPropertyValue(k).replace(/(-?\d+(?:\.\d+)?)px/g, (m, n) => round(parseFloat(n)) + 'px')]));
   for (const [size, zoom] of arg.sizes) {
     applyDynamicType(zoom);
     render();
@@ -152,7 +153,7 @@ async function pageLayout() {
       '(38 px x zoom unless the label is wider than its room: both flex-shrink 1, in proportion to their inner flex base sizes).',
       'CoachHomeViewTests.testTheMetaLabelBreaksWhereTheWebsDoes holds HomeMetaRow.layout to every case.',
       'styles (per room and size: the computed styles that lay the row out) and boxes (per room, width and size: the row\'s',
-      'left and width, the label\'s left, the tile\'s width and height, in px), both read with the label empty, are what no',
+      'left and width, the label\'s left, the tile\'s width and height, in px), read with the label empty, are what no',
       'text rasterizer decides: off darwin the check holds those and the cases\' order, not the lines and tiles.',
     ],
     avatar: AVATAR,
@@ -170,7 +171,23 @@ function drift(text, platform = process.env.FP_META_ROW_PLATFORM || process.plat
   let had;
   try { had = JSON.parse(file); } catch (e) { return ['the file (unreadable: ' + e.message + ')']; }
   const now = JSON.parse(text), bad = [];
-  for (const k of ['v', 'about', 'avatar', 'styles', 'boxes']) if (JSON.stringify(had[k]) !== JSON.stringify(now[k])) bad.push(k);
+  // equal, but a length (a number, or a px value in a style) within 0.05 px
+  const px = /-?\d+(?:\.\d+)?(?=px)/g;
+  const close = (a, b) => {
+    if (typeof a === 'number' && typeof b === 'number') return Math.abs(a - b) <= 0.05;
+    if (typeof a === 'string' && typeof b === 'string') {
+      const x = a.match(px) || [], y = b.match(px) || [];
+      return a.replace(px, '#') === b.replace(px, '#') && x.length === y.length && x.every((n, i) => Math.abs(n - y[i]) <= 0.05);
+    }
+    if (Array.isArray(a) && Array.isArray(b)) return a.length === b.length && a.every((v, i) => close(v, b[i]));
+    if (a && b && typeof a === 'object' && typeof b === 'object') {
+      const ka = Object.keys(a), kb = Object.keys(b);
+      return ka.length === kb.length && ka.every((k, i) => k === kb[i] && close(a[k], b[k]));
+    }
+    return a === b;
+  };
+  for (const k of ['v', 'about', 'avatar']) if (JSON.stringify(had[k]) !== JSON.stringify(now[k])) bad.push(k);
+  for (const k of ['styles', 'boxes']) if (!close(had[k], now[k])) bad.push(k);
   const order = (f) => JSON.stringify((f.cases || []).map((c) => [c.room, c.width, c.size, c.label]));
   if (order(had) !== order(now)) bad.push('the cases (room, width, size, label, in order)');
   return bad;
