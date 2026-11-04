@@ -4,33 +4,35 @@ import Foundation
 
 /// Where the phone's web view may end a line of the page's text: WebKit's break opportunities in `white-space: normal`
 /// text that sets no `word-break`, `line-break` or `hyphens` of its own (the Coach hub's meta label, the headline's
-/// h1), found as WebKit 26.5 finds them (BreakablePositions.h's `nextBreakablePosition` with its Normal rules, read
-/// 2026-11-03, as 26.5 had them: see `classify`). A line may end at a space, which hangs (part of neither line); between two characters up to U+00FF
-/// only where WebKit's own table has a break (`table`): after a hyphen ("STRENGTH-" over "ENDURANCE"), after a
-/// question mark, before an opening bracket after other punctuation, never after a slash before a letter or a digit
-/// ("HYPERTROPHY/STRENGTH" is one piece) and never between letters and digits; past U+00FF by WebKit's classes for the
-/// plain cases (letters, ideographs, single quotes, brackets, combining marks) and otherwise by ICU's line breaker over the
-/// whole text (`CFStringTokenizer`), which WebKit then trusts across the letters that follow, up to ICU's next break.
+/// h1), found as the runtime's WebKit finds them (BreakablePositions.h's `nextBreakablePosition` with its Normal rules,
+/// read 2026-11-03; iOS 26's WebKit had them before quotes had sides: `quoteSides`). A line may end at a space, which
+/// hangs (part of neither line); between two characters up to U+00FF only where WebKit's own table has a break
+/// (`table`): after a hyphen ("STRENGTH-" over "ENDURANCE"), after a question mark, before an opening bracket after
+/// other punctuation, never after a slash before a letter or a digit ("HYPERTROPHY/STRENGTH" is one piece) and never
+/// between letters and digits; past U+00FF by WebKit's classes for the plain cases (letters, ideographs, quotes,
+/// brackets, combining marks) and otherwise by ICU's line breaker over the whole text (`CFStringTokenizer`), which
+/// WebKit then trusts across the letters that follow, up to ICU's next break.
 /// CoreText's typesetter breaks by Unicode's rules alone (UAX #14): it broke the meta label after its slash, "… ·
 /// HYPERTROPHY/" over "STRENGTH", where the page breaks before the name, and never at a space before "/", ")", "!"
 /// or "?", where the page may ("UPPER" over "/ LOWER"). Probed 2026-11-03 in a zero-width box: of the 8,836 pairs of
 /// printable ASCII characters WebKit 26.5 (iOS 26.5's own and Playwright's on the Mac, alike) breaks 423 otherwise
 /// than the typesetter, and Chromium (the suite's) agrees with WebKit on all but nine, after a hyphen ("-/", "-)" and
 /// the like); over 45,669 strings (every pair of characters from `!` to U+00FF, each after a space, and 22 characters
-/// past it, from dashes to ideographs and an emoji, beside all of those) this gives WebKit 26.5's breaks, every one.
-/// CoachHomeViewTests holds `breaks` to the web view of the runtime it runs on.
+/// past it, from dashes to ideographs and an emoji, beside all of those) this gives WebKit 26.5's breaks, every one,
+/// and iOS 27.0's web view breaks 320 of them otherwise, all beside a curly quote or a guillemet, as `quoteSides` has
+/// it. CoachHomeViewTests holds `breaks` to the web view of the runtime it runs on.
 enum WebLineBreaks {
     /// Where a line of `text` may end, as the UTF-16 offsets at which the next line starts, in order (never 0 or the
     /// text's length): past a space (the break is before it and the space hangs; white space should be collapsed to
     /// single spaces first) and wherever WebKit has a breakable position.
-    static func breaks(in text: String) -> [Int] {
+    static func breaks(in text: String, quoteSides: Bool = WebLineBreaks.quoteSides) -> [Int] {
         let s = Array(text.utf16)
         guard s.count > 1 else { return [] }
         let icu = ICU(text)
         var out: [Int] = []
         var at = 1   // never before the first character: WebKit's start of the text with no context before it
         while at < s.count {
-            let p = next(s, from: at, icu: icu)
+            let p = next(s, from: at, icu: icu, sides: quoteSides)
             guard p < s.count else { break }
             out.append(isBreakableSpace(s[p]) ? p + 1 : p)
             at = p + 1
@@ -54,7 +56,7 @@ enum WebLineBreaks {
     /// WebKit's next breakable position at or after `start` (1 or more), the text's length when there is none: its
     /// `nextBreakablePosition` for normal line breaking (no break-all, keep-all or breaking no-break spaces). Each call
     /// asks ICU afresh, as each of WebKit's does.
-    private static func next(_ s: [UInt16], from start: Int, icu: ICU) -> Int {
+    private static func next(_ s: [UInt16], from start: Int, icu: ICU, sides: Bool) -> Int {
         var i = start
         var beforeBefore: UInt16 = i > 1 ? s[i - 2] : 0
         var before = (ch: s[i - 1], type: UInt16(0)), after = (ch: UInt16(0), type: UInt16(0))
@@ -74,12 +76,16 @@ enum WebLineBreaks {
                 advance(); continue   // else a space or a control character: no break here
             }
             // past U+00FF: WebKit's classes settle the plain cases
-            if before.type == 0 { before.type = classify(before.ch) }
-            after.type = classify(after.ch)
+            if before.type == 0 { before.type = classify(before.ch, sides: sides) }
+            after.type = classify(after.ch, sides: sides)
             let pair = before.type | after.type
-            if pair & ~(SP | AL | QU) == 0 { advance(); continue }   // letters, quotes
+            if pair & ~(SP | AL | QU | Pi | Pf) == 0 { advance(); continue }   // letters, quotes
             if pair | AL == ID | AL { return i }   // an ideograph beside a letter or another ideograph
-            if pair & (GL | QU) != 0, pair & weird == 0 { advance(); continue }   // no break beside glue or a quote
+            if pair & (GL | QU) != 0, pair & weird == 0 {
+                // no break beside glue or a quote, but before an initial quote or after a final one beside an ideograph
+                if pair & ID != 0, pair & QU != 0, after.type & Pi != 0 || before.type & Pf != 0 { return i }
+                advance(); continue
+            }
             if after.type == CM { after.type = before.type; advance(); continue }   // a combining mark takes its base's
             if pair & weird == 0, pair & (CL | CP | OP) != 0 {
                 if after.type == CL || after.type == CP || before.type == OP { advance(); continue }
@@ -132,13 +138,20 @@ enum WebLineBreaks {
     // WebKit's break classes (UAX #14's, folded: HL as AL, H2 and H3 as ID, NU as AL); weird: ask ICU.
     private static let AL: UInt16 = 1, ID: UInt16 = 1 << 1, CM: UInt16 = 1 << 2, OP: UInt16 = 1 << 3, CP: UInt16 = 1 << 4
     private static let CL: UInt16 = 1 << 5, GL: UInt16 = 1 << 6, QU: UInt16 = 1 << 7, SP: UInt16 = 1 << 8
-    private static let weird: UInt16 = 1 << 15
+    private static let Pi: UInt16 = 1 << 9, Pf: UInt16 = 1 << 10, weird: UInt16 = 1 << 15
 
-    /// WebKit's `classify`: the class of a character for its shortcuts past U+00FF, as WebKit 26.5 has it, where the
-    /// curly single quotes are quotes and the double ones are left to ICU, and no quote breaks beside an ideograph
-    /// (WebKit has since split the quotes into initial and final, broken beside ideographs: not followed here, since
-    /// the phone's web view does not do it yet).
-    private static func classify(_ c: UInt16) -> UInt16 {
+    /// Whether the runtime's WebKit gives quotes sides (initial, final): iOS 27's does, as WebKit's source has it
+    /// (2026-11-03): the curly quotes and the guillemets are initial or final quotes, and a break falls before an
+    /// initial one or after a final one beside an ideograph. iOS 26's WebKit (26.5) has the curly single quotes as plain
+    /// quotes, the double ones left to ICU, the guillemets plain quotes, no break beside an ideograph. The two break 320
+    /// of CoachHomeViewTests' 45,000-odd strings differently, every one beside such a quote.
+    static var quoteSides: Bool {
+        ProcessInfo.processInfo.isOperatingSystemAtLeast(OperatingSystemVersion(majorVersion: 27, minorVersion: 0, patchVersion: 0))
+    }
+
+    /// WebKit's `classify`: the class of a character for its shortcuts past U+00FF, the quotes with their sides or
+    /// without (`quoteSides`).
+    private static func classify(_ c: UInt16, sides: Bool) -> UInt16 {
         switch c {
         case 0x00...0x0F: return weird
         case 0x10...0x1F: return CM
@@ -152,7 +165,8 @@ enum WebLineBreaks {
         case 0xA0: return GL
         case 0xC1...0xFF: return AL
         case 0xA1, 0xBF: return OP
-        case 0xAB, 0xBB: return QU
+        case 0xAB: return sides ? QU | Pi : QU
+        case 0xBB: return sides ? QU | Pf : QU
         case 0x80...0xFF: return weird
         case 0x0100...0x027F: return AL
         case 0x02C8, 0x02CC, 0x02DF: return weird
@@ -167,7 +181,10 @@ enum WebLineBreaks {
         case 0x0591...0x05BD, 0x05BF, 0x05C1, 0x05C2, 0x05C4, 0x05C5, 0x05C7: return CM
         case 0x0589...0x05FF: return weird
         case 0x0600...0x09FF, 0x1000...0x19FF: return weird
-        case 0x2018, 0x2019: return QU
+        case 0x2018: return sides ? QU | Pi : QU
+        case 0x2019: return sides ? QU | Pf : QU
+        case 0x201C: return sides ? QU | Pi : weird
+        case 0x201D: return sides ? QU | Pf : weird
         case 0x3000...0x303F:
             switch c & 0x1F {
             case 0x01, 0x02, 0x09, 0x0B, 0x0D, 0x0F, 0x11, 0x15, 0x17, 0x19, 0x1B, 0x1E, 0x1F: return CL

@@ -1049,7 +1049,7 @@ final class CoachHomeViewTests: XCTestCase {
     /// (dashes, curly quotes, an ellipsis, letters of other scripts, ideographs and their punctuation, a combining mark,
     /// symbols, an emoji) before and after every one of them, and block names a coach may write (the golden's labels,
     /// slashes and hyphens beside letters and digits, dashes, brackets) break at the offsets `WebLineBreaks.breaks`
-    /// gives, string for string. A letter's line is read off its widest client rect: on iOS the bounding rect of a
+    /// gives, string for string (the quotes with sides on iOS 27 and later, as that runtime's WebKit has them). A letter's line is read off its widest client rect: on iOS the bounding rect of a
     /// letter right after a soft break also spans the line before. CoreText's typesetter breaks 423 of the printable
     /// ASCII pairs otherwise (after "/", "!" or "|", never at a space before "/" or ")"), so a breaker that is not the
     /// web view's fails here, on each runtime the tests run on.
