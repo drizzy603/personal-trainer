@@ -670,24 +670,34 @@ xcodebuild -scheme FPKit-Package -destination 'platform=iOS Simulator,id=<udid>'
 ```
 
 CI (`.github/workflows/ios-build.yml`) builds the app, runs `swift test` on macOS (job `fpkit-mac`) and both commands
-above (job `fpkit-ios`) with the Xcode the app ships with, Xcode 27.1, on GitHub's `xcode-27` label (a preview, with
-no SLA; `macos-latest` is macOS 26, with Xcode 26.x and iOS 26.x runtimes only). The iOS tests run in six parts, each on
-its own runner and an iPhone 17 Pro: `renders` (`CoachHomeRenderTests`, `CoachRenderTests`), `tabs`
-(`ShellBridgeTabsTests`, `RootTabControllerTests`), `stack` (`ScreenHostTests`, `CoachHomeStoreTests`,
-`CoachHomeViewTests`) and `rest` (every other test: it skips exactly the named classes, so a new class always runs
-somewhere) run on the newest iOS 27.x there that runs that model (27.1; the Mac has 27.0). `tabs-26` and `stack-26`
-run the tabs and stack classes again on the floor of the tab root and the native Coach tab: the newest iOS 26.x on the
-`macos-26` image (26.5), built by Xcode 26.6, since `xcode-27` has no iOS 26 runtime. Xcode 26.6 links against the
-iOS 26.5 SDK, the runtime's own, so UIKit there behaves as it does for the app built by 27.1; only the compiler is
-older. So FPKit must keep compiling with Xcode 26.6, which cannot compile an API only the iOS 27 SDK declares, even
-behind `#available`, and a class that must run on iOS 26 too belongs to `tabs` or `stack`.
-`.github/scripts/fpkit-parts.sh` is the one place that names the classes and each part's iOS major. A named class that
-no longer exists, a matrix row missing or on another iOS major, a part that runs no test or a named class that ran none
-fails the job; a part whose test step passes 22 minutes warns that it is time to rebalance or split again. By
-16ee484's parts, a runner's test step is about 2.3 minutes of building plus 2.8 times a calm Mac's seconds for its
-classes; with H10's and H11's tests a calm Mac takes about 200 s for `renders`, 230 for `tabs`, 200 for `stack` and
-95 for `rest`, so 7 to 13 minutes a part. CI leaves to a Mac Xcode 27.1's own build on iOS 26.x, and every other class
-on iOS 26.x.
+above (job `fpkit-ios`) with Xcode 27.1 on GitHub's `xcode-27` image (generally available
+since 2026-10-15 by GitHub's changelog; runner-images' README still badges it a preview), and runs the iOS tests again
+on `macos-26` (`macos-latest`: Xcode 26.x and iOS 26.x runtimes only; `xcode-27` has no iOS 26 runtime). Xcode 27.1
+built the app until 2026-11-03, when the App Store moved the owner's Mac to Xcode 27.2; `xcode-27` has only 27.2's RC,
+so CI stays on 27.1 until it carries 27.2's release (`XCODE_SHIP` in the workflow). The whole iOS
+suite runs on two runtimes, in eight parts, each on its own runner and an iPhone 17 Pro: four groups, `renders`
+(`CoachHomeRenderTests`, `CoachRenderTests`), `tabs` (`ShellBridgeTabsTests`, `RootTabControllerTests`), `stack`
+(`ScreenHostTests`, `CoachHomeStoreTests`, `CoachHomeViewTests`) and `rest` (every other test: it skips exactly the
+named classes, so a new class always runs somewhere), each on iOS 27.0 built by Xcode 27.1 and, as `renders-26`,
+`tabs-26`, `stack-26` and `rest-26`, on iOS 26.5 built by Xcode 26.6 (the tab root and the native Coach tab support
+iOS 26 and later, FPKit iOS 17 and later). 27.0 is the runtime the Mac's gates run: the image also has 27.1, which no
+gate has run yet, and `fpkit-sim.py` takes exactly the runtime a part names (saying which newer one it left out); 26.0
+to 26.4 run in no part. A 26 part tests iOS 26.5's own UIKit, SwiftUI and WebKit and its linked-on-or-after checks
+(Xcode 26.6 links against the iOS 26.5 SDK, the runtime's own, and the runtime knows no later SDK, so the checks read as
+they do for the app linked against 27.x); the compiler and the SDK's Swift code built into the client (`@inlinable`,
+`@_alwaysEmitIntoClient`, `@backDeployed`) are Xcode 26.6's, not the app's. So FPKit must keep compiling with Xcode
+26.6, which cannot compile an API only the iOS 27 SDK declares, even behind `#available`, and the shipped pair, the Mac's
+own Xcode build on iOS 26.x, runs on the Mac: every FPKit iOS gate runs the whole suite on iOS 26.5 and 27.0 with the
+Xcode the app ships with, before every merge that touches FPKit (CLAUDE.md says so too).
+`.github/scripts/fpkit-parts.sh` is the one place that names the classes and each part's runtime; it makes the parts
+from the groups, so no group runs on one runtime alone. Its own test and `fpkit-sim.py`'s (`.github/scripts/*-test.sh`,
+also run by hand: `bash .github/scripts/fpkit-parts-test.sh`) run first in every part. A named class that no longer
+exists, a matrix row missing, extra, on another runtime or with its `ios` unquoted (GitHub reads 27.0 as the number 27),
+a part that runs no test or a named class that ran none fails the job; a part whose test step passes 22 minutes warns
+that it is time to rebalance or split again. By 16ee484's parts, a runner's test step is about 2.3 minutes of building
+plus 2.8 times a calm Mac's seconds for its classes; with H10's and H11's tests a calm Mac takes about 200 s for
+`renders`, 230 for `tabs`, 200 for `stack` and 95 for `rest`, so 7 to 13 minutes a part on either runtime. A run takes
+ten macOS runners and GitHub runs five macOS jobs at once below its Enterprise plan, so the parts run in two waves.
 
 `.build` (SwiftPM's build folder, or the link to it) is ignored by the root `.gitignore`. xcodebuild leaves
 an empty `.swiftpm/` folder here, which git does not see.

@@ -30,13 +30,14 @@ concurrency:
 # The two Xcodes, each named once (.github/scripts/select-xcode.sh selects /Applications/Xcode_<version>.app, which on
 # GitHub's images follows that version's newest patch, and checks that it is that Xcode).
 env:
-  # The Xcode the app ships with: the owner's Mac archives with Xcode 27.1 (27A9275); this moves when that Mac's does.
-  # GitHub has Xcode 27 only on the xcode-27 label, a public preview (runner-images issue 14404: no SLA, and queueing
-  # while capacity grows). Its image of 2026-10-26 has macOS 27, Xcode 27.0, 27.1 (27A9275, the default) and 27.2 RC,
-  # and the iOS 27.0 and 27.1 runtimes, none of 26.x. macos-latest is macos-26 (image of 2026-10-26: Xcode 26.0.1 to
-  # 26.6, the iOS 26.2, 26.4.1 and 26.5 runtimes, no Xcode 27); both checked in runner-images on 2026-11-02. The app
-  # build, fpkit-mac and fpkit-ios' iOS 27 parts run on xcode-27 with this Xcode; when GitHub gives Xcode 27 a GA label
-  # (or drops the preview's), move their runs-on there.
+  # The Xcode CI builds and tests the app with: Xcode 27.1 (27A9275), which the owner's Mac archived with until
+  # 2026-11-03, when the App Store moved the Mac to Xcode 27.2 (27B52). The image below has only 27.2's RC, so CI stays
+  # on 27.1 until it carries 27.2's release; then this moves to it.
+  # GitHub has Xcode 27 only on the xcode-27 label, generally available since 2026-10-15 (GitHub's changelog of that
+  # day; runner-images' README still badges it a preview). Its image of 2026-10-26 has macOS 27, Xcode 27.0, 27.1
+  # (27A9275, the default) and 27.2 RC, and the iOS 27.0 and 27.1 runtimes, none of 26.x. macos-latest is macos-26
+  # (image of 2026-10-26: Xcode 26.0.1 to 26.6, the iOS 26.2, 26.4.1 and 26.5 runtimes, no Xcode 27); both checked in
+  # runner-images on 2026-11-02. The app build, fpkit-mac and fpkit-ios' iOS 27 parts run on xcode-27 with this Xcode.
   XCODE_SHIP: '27.1'
   # The newest Xcode on macos-26, the only image with iOS 26.x runtimes: fpkit-ios' iOS 26 parts (that job's comment).
   XCODE_FLOOR: '26.6'
@@ -124,42 +125,51 @@ jobs:
   # FPHost and FPUI keep every source inside #if os(iOS), so swift test on the Mac never compiles them.
   # This job builds every FPKit target for the iOS Simulator, then runs every FPKit test target on a
   # simulator: FPCoreTests, FPStoreTests (KillTests is macOS only), FPHostTests and FPUITests, all in the
-  # FPKit-Package scheme. Two checks run first, in seconds: the warm-up lint (every test class that loads a web view
-  # warms WebKit: .github/scripts/fpkit-lint.sh) and the split's check (below).
+  # FPKit-Package scheme. Three checks run first, in seconds: the CI scripts' own tests (.github/scripts/*-test.sh), the
+  # warm-up lint (every test class that loads a web view warms WebKit: .github/scripts/fpkit-lint.sh) and the split's
+  # check (below).
   #
-  # Toolchains and runtimes. Every part runs on an iPhone 17 Pro, the model of every local run
-  # (.github/scripts/fpkit-sim.py makes one when the runtime has none). renders, tabs, stack and rest run on xcode-27,
-  # built by Xcode 27.1 as the app is, on the newest iOS 27.x there that runs that model (27.1 on the image of
-  # 2026-10-26; the Mac's gates run 27.0). The tab root and the native Coach tab support iOS 26 and later (delta 14) and
-  # xcode-27 has no iOS 26 runtime, so tabs-26 and stack-26 run tabs' and stack's classes, the ones that drive UIKit's
-  # tab bar and the Coach tab's navigation stack, again on macos-26's newest iOS 26.x (26.5), built by Xcode 26.6. That
-  # is the floor's own UIKit and SwiftUI, which go by the runtime; Xcode 26.6 links against the iOS 26.5 SDK, the
-  # runtime's own, so every linked-on-or-after check the runtime makes reads as it does for the app (linked against
-  # 27.1): only the compiler is older than the app's. (The four cases that failed at 16ee484 under Xcode 26.6 on iOS
-  # 26.5 fail line for line under Xcode 27.1 on iOS 26.5 on the owner's Mac, and pass there on 27.0.) So FPKit must keep
-  # compiling with Xcode 26.6: an API only the iOS 27 SDK declares does not compile there even behind #available. Should
-  # FPKit need one, those two parts move to xcode-27 and download the iOS 26.5 runtime on each run (gigabytes from
-  # Apple). CI leaves to a Mac Xcode 27.1's own build on iOS 26.x, and every other class on iOS 26.x.
+  # Toolchains and runtimes. The whole suite runs on two runtimes, every part on an iPhone 17 Pro, the model of every
+  # local run (.github/scripts/fpkit-sim.py makes one when the runtime has none). renders, tabs, stack and rest run on
+  # xcode-27, built by Xcode 27.1 (XCODE_SHIP), on iOS 27.0, the runtime the Mac's gates run. The image also has iOS
+  # 27.1, which no gate has run: fpkit-sim.py takes exactly the runtime a part names and says which newer one it left
+  # out, and 27.1 parts come once the Mac has run the four groups there. The tab root and the native Coach tab support
+  # iOS 26 and later (delta 14), FPKit iOS 17 and later, and xcode-27 has no iOS 26 runtime, so renders-26, tabs-26,
+  # stack-26 and rest-26 run the same four groups on macos-26's newest iOS 26.x, 26.5, built by Xcode 26.6 (26.0 to
+  # 26.4 run in no part). A 26 part tests iOS 26.5's own UIKit, SwiftUI and WebKit and its linked-on-or-after checks
+  # (Xcode 26.6 links against the iOS 26.5 SDK, the runtime's own, and the runtime knows no later SDK, so the checks read
+  # as they do for the app linked against 27.x); the compiler and the SDK's Swift code built into the client
+  # (@inlinable, @_alwaysEmitIntoClient, @backDeployed) are Xcode 26.6's, not the app's. So FPKit must keep compiling
+  # with Xcode 26.6: an API only the iOS 27 SDK declares does not compile there even behind #available (should FPKit need
+  # one, the 26 parts move to xcode-27 and download the iOS 26.5 runtime on each run, gigabytes from Apple). The shipped
+  # pair, the Mac's own Xcode build on iOS 26.x, runs on the Mac: every FPKit iOS gate runs the whole suite on iOS 26.5 and
+  # 27.0 with the Xcode the app ships with, before every merge that touches FPKit (CLAUDE.md, the FPKit README). At
+  # 16ee484 the 26.5 run's last part annotated ten failure lines (annotate-xc.sh kept ten then): they are the first ten
+  # of ScreenHostTests and CoachHomeStoreTests under Xcode 27.1 on iOS 26.5 on the Mac, whose failures there are seven
+  # cases; the two classes pass whole on 27.0 there.
   #
   # Parts, each on its own runner and simulator; .github/scripts/fpkit-parts.sh is the one place that names their
-  # classes and each part's iOS major. renders, tabs and stack run the classes named there, rest runs everything else
-  # (it skips exactly those, so a new test class always runs somewhere). A named class that no longer exists, a matrix
-  # that leaves out a part, runs one the script does not know or puts one on another iOS major, a part that executes no
-  # test, or a named class that ran nothing fails the job.
+  # classes and each part's runtime, and it makes the parts from the groups (GROUP on 27.0, GROUP-26 on 26.5), so no
+  # group runs on one runtime alone. renders, tabs and stack run the classes named there, rest runs everything else (it
+  # skips exactly those, so a new test class always runs somewhere). A named class that no longer exists, a matrix that
+  # leaves out a part, runs one the script does not know or puts one on another runtime (or leaves `ios` unquoted, which
+  # GitHub reads as a number: 27.0 becomes 27), a part that executes no test, or a named class that ran nothing fails
+  # the job.
   #
   # Time budget (the split rule): the test step prints its minutes as a notice; past 22 minutes it warns, and the parts
   # are rebalanced or split again. At 16ee484 (three parts on macos-26, Xcode 26.6, iOS 26.5) the test steps took 12.0
   # minutes (CoachHomeRenderTests and CoachRenderTests), 7.5 (ShellBridgeTabsTests, 34 tests) and 20.6 (every other
-  # class, three failures' waits included): about 2.3 minutes of building the tests plus 2.8 times a calm Mac's seconds
-  # for the same classes (its whole run of those tests on 27.0: renders 205 s, ShellBridgeTabsTests 110), the failures
-  # adding about 5 minutes to the last. Another 8 to 9 minutes went outside the test steps (the first simulator boot 5.5
-  # to 6.8), hence 40 minutes for the job, so the warning comes well before the job is cut off. With H10's and H11's
-  # tests (ShellBridgeTabsTests 52, ScreenHostTests 61) a calm Mac takes about 200 s for renders, 230 for tabs, 200 for
-  # stack and 95 for rest: about 12, 13, 12 and 7 minutes a test step by that rule, rest being the part every new class
-  # joins, and a failing case's waits on top. xcode-27's runners are not measured yet.
+  # class, the failing cases' waits included): about 2.3 minutes of building the tests plus 2.8 times a calm Mac's
+  # seconds for the same classes (its whole run of those tests on 27.0: renders 205 s, ShellBridgeTabsTests 110). The
+  # seven failing cases took about 7.5 minutes on the Mac under CI's bounds, so for the last part's passing tests the 2.8
+  # errs high. Another 8 to 9 minutes went outside the test steps (the first simulator boot 5.5 to 6.8), hence 40
+  # minutes for the job, so the warning comes well before the job is cut off. With H10's and H11's tests
+  # (ShellBridgeTabsTests 52, ScreenHostTests 61) a calm Mac takes about 200 s for renders, 230 for tabs, 200 for stack
+  # and 95 for rest: about 12, 13, 12 and 7 minutes a test step by that rule, on either runtime, rest being the part
+  # every new class joins, and a failing case's waits on top. xcode-27's runners are not measured yet.
   #
-  # A run takes eight macOS runners (build, fpkit-mac and six parts), and GitHub runs at most five macOS jobs at once
-  # below its Enterprise plan: the last parts can wait for a runner (time queued is not counted in timeout-minutes).
+  # A run takes ten macOS runners (build, fpkit-mac and eight parts), and GitHub runs at most five macOS jobs at once
+  # below its Enterprise plan: the parts run in two waves (time queued is not counted in timeout-minutes).
   fpkit-ios:
     name: FPKit on an iOS simulator (${{ matrix.part }})
     runs-on: ${{ matrix.runner }}
@@ -168,21 +178,33 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { part: renders, runner: xcode-27, xcode: ship, ios: 27 }
-          - { part: tabs, runner: xcode-27, xcode: ship, ios: 27 }
-          - { part: stack, runner: xcode-27, xcode: ship, ios: 27 }
-          - { part: rest, runner: xcode-27, xcode: ship, ios: 27 }
-          - { part: tabs-26, runner: macos-26, xcode: floor, ios: 26 }
-          - { part: stack-26, runner: macos-26, xcode: floor, ios: 26 }
+          - { part: renders, runner: xcode-27, xcode: ship, ios: '27.0' }
+          - { part: tabs, runner: xcode-27, xcode: ship, ios: '27.0' }
+          - { part: stack, runner: xcode-27, xcode: ship, ios: '27.0' }
+          - { part: rest, runner: xcode-27, xcode: ship, ios: '27.0' }
+          - { part: renders-26, runner: macos-26, xcode: floor, ios: '26.5' }
+          - { part: tabs-26, runner: macos-26, xcode: floor, ios: '26.5' }
+          - { part: stack-26, runner: macos-26, xcode: floor, ios: '26.5' }
+          - { part: rest-26, runner: macos-26, xcode: floor, ios: '26.5' }
 
     steps:
       - uses: actions/checkout@v4
+
+      # The scripts below check the tests' split, pick the simulator and name the failures; each *-test.sh beside them
+      # runs that script on made-up inputs, so a script that would run the wrong classes, take another runtime or hide a
+      # failure fails here, in seconds.
+      - name: The CI scripts' own tests
+        run: |
+          for t in .github/scripts/*-test.sh; do
+            echo "== $t"
+            bash "$t" || exit 1
+          done
 
       # A test class that makes a web view without warming WebKit first fails here, in seconds, with its file named.
       - name: WebKit warm-up lint
         run: bash .github/scripts/fpkit-lint.sh
 
-      # Every class the split names must exist, and the matrix must run every part on its iOS major, or tests would
+      # Every class the split names must exist, and the matrix must run every part on its runtime, or tests would
       # quietly run nowhere (rest skips the named classes) or on one runtime only: checked before the toolchain and the
       # simulator, so a slip fails in seconds (the image's own Ruby reads the matrix).
       - name: Check the split
