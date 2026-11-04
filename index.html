@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20261028-1"/>
+<meta name="build" content="20261103-1"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -25596,11 +25596,14 @@ function _fpCoachSheetHTML(){
   return out+_fpSafetyHTML();
 }
 // The shell's counters (contract 10.5), shell-wide, in both 61 sheets: each "stays 0" but the trips and the markers.
+// leftAny (delta 17.1) counts the web view's moves out of its window in any app state, so it sees what leftWindow
+// (active only) cannot: warm deep links, shares and background launches; a status without it reads 0.
 function _fpSafetyHTML(){
   var st=_fpChat.st, cn=(st && st.counters) || {}, out=_fpStoreEyebrow('SAFETY');
   if(!st) return out+'<div style="padding:10px 20px;border-top:1px solid var(--border);font-size:13px;color:var(--muted);">Reading the counters\u2026</div>';
   var trips=cn.trips||{}, marks=cn.markers||{};
   out+=_fpStoreStat('Left its window while open', _fpChatCount(cn.leftWindow), 'Stays 0: native screens and tab changes never take the app out of its window');
+  out+=_fpStoreStat('Left its window in any state', _fpChatCount(cn.leftAny), 'Stays 0: not in the background either, nor for a link or a share');
   out+=_fpStoreStat('Hidden while in use', _fpChatCount(cn.hidden), 'Stays 0: the app keeps showing under native screens and tab changes');
   out+=_fpStoreStat('Tab changes outside the funnel', _fpChatCount(cn.strays), 'Stays 0: every tab change goes one way');
   out+=_fpStoreStat('Breaker trips', _fpChatCount(trips), trips.last ? 'Last: '+_fpStoreWhen(trips.last) : 'No hello in time, or calls failing in a row, pauses a native piece for that version');
