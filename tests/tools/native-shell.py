@@ -11,7 +11,8 @@ builds only: `-fpShellProbe <steps>`); the app acts and reports, this decides. S
   native-shell.py --phone UDID --app App.app [--only a,b] [--out DIR]
 
 Scenarios (decision.md section 9, task C5's acceptance, and what C5 promises besides):
-  smoke    a -fpSmoke launch logs "fp: ping ok v1" (subsystem app.kt.trainer); hello negotiates v1 with the coach
+  smoke    a -fpSmoke launch logs "fp: ping ok v1" (subsystem app.kt.trainer); hello negotiates v1 with the coach on
+           the classic root, and with the three pieces on the tab root (its bar and first tab checked)
   chat     the page presents the native chat (.overFullScreen, the web view in its window and hidden from VoiceOver,
            the room's appearance); a model push and intents round-trip (a message sent and answered, the model
            switch, a forwarded confirm answered, an Undo toast's Undo); the owner's Back; no visibilitychange while

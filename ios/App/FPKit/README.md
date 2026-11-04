@@ -249,7 +249,9 @@ activity, the confirm, the toast strip; the edge pan and the toast window need a
 one; from build 61 the `testStack...` cases, on a real UINavigationController as a tab of a UITabBarController in the
 window with a stand-in StackState, each waiting on the queue going idle, never on a fixed time; from H10 the
 `testHome...` cases: the home at the stack's bottom on a model, its dismiss before the chat's pop, the marker and the
-toast's anchor following the top, a document going, the store emptied, its presses and toast) and `ShellBridgeTests`
+toast's anchor following the top, a document going, the store emptied; and H10's
+`testTheHomesPressesGoThroughAskAndItsToastToTheOverlay` and `testTheToastStripIsMeasuredOncePerToastAsTheAnchorMoves`:
+the hub's presses and its toast, and the toast strip measured once per toast as the anchor moves) and `ShellBridgeTests`
 (markers to verdicts once, hello and `up`, the resync, the policy's off, another web view's message refused; from build
 61 the refusals' codes, the new messages with no tab root, the iOS 26 floor, held timeouts and their ping answered,
 failed or lost, a section left open giving one verdict at the next launch, a model marker turning off its piece for its
@@ -260,19 +262,28 @@ web view out of its window counted in any app state). Build 61's:
 `RootTabControllerTests` (a real RootTabController on a real window, a RecordingWebView standing for the page: the
 funnel never takes the web view out of the window, one funnel and its strays, focus, the bar against
 `Fixtures/shell/bar.json`, the room on the bar and its container, the fallback, VoiceOver, the status bar, the hold, the
-modes per scene and `describe()`), `ShellBridgeTabsTests` (ShellBridge with a live tab root built as SceneDelegate
+modes per scene and `describe()`, and from H11 each screen change naming the probe run it belongs to),
+`ShellBridgeTabsTests` (ShellBridge with a live tab root built as SceneDelegate
 builds it, over a stand-in page whose `FPScreens.call` answers as each case sets and keeps unanswered promises
 reachable, since WebKit fails a call whose promise the page's garbage collector took: the root decision, `selectTab` and
 its funnel, taps, re-taps and strays, `sheets`, `tabs.select` and `tabs.bar` as state, deep links,
 covered, the teardown that frees the root and the web view, VoiceOver after the page's answer, a busy page
 against a dead one; then hello with `tabs` and the declines, the fallback and each of its triggers, the Coach tab's
-modes, the switch, the status, the composer's words handed over, `status {refresh}`; from H10 `present` and `dismiss`
-of `coachHome` (the tab NATIVE on the store's model, WEB again with the pushed chat taken off), three undecodable hub
-models tripping `coachHome` and the chat with it, the drop and the teardown emptying the home's store), `ShellProbeTests`
+modes, the switch, the status, the composer's words handed over, `status {refresh}`; from H11 the probe's relays (each
+screen change heard under its run, and a mode change or the fallback under none, a page message logged at its answer,
+`tapTab` tapping only a bar a finger can reach, `sceneDestroy` holding what the scene held unless UIKit refuses, the
+hub press an error unless the owner sees the hub, and under the shell's confirm); from H10 `present` and `dismiss` of
+`coachHome` (the tab NATIVE on the store's model, WEB again with the pushed chat taken off), a reload keeping the
+native tab on its last model until the snapshot, three undecodable hub models tripping `coachHome` and the chat with
+it, the newest hub model's `resume` holding a tap into the native Coach tab, the chat going over the hub and coming
+back with the marker and the anchor, the page's one pass putting the hub up and pushing the chat over it (from a web
+tab too), a key typed into the connect screen's field in no part of `describe()`, the hub's ground in the first
+frame's room, the hub's model and its snapshot applied inside their section, the drop and the teardown emptying the
+home's store), `ShellProbeTests`
 (Debug, H11: `tapTab` finding the control by the item's label and the title it draws and tapping nothing a finger
 could not reach or under the shell's confirm, the hub pressed only while the owner sees it, `type` into the key field
 only while it holds the keys and never into a draft, the input report naming its kind and never its text, the page state
-script's tabs-mode fields) and `ShellMarkersTests` (the
+script's tabs-mode fields, the accessibility search counting each element once) and `ShellMarkersTests` (the
 section markers' state byte across a process that dies inside a section, the switch file read before its UserDefaults
 copy). The Coach tab's own are under [The native Coach tab](#the-native-coach-tab-coachhomeview-and-coachhomestore). In
 the real app, `tests/native-shell.sh`.
@@ -281,7 +292,8 @@ the real app, `tests/native-shell.sh`.
 
 The screen bridge in the real app on the real page, on the first paired iPhone + Watch of a runtime (iOS 26.x by
 default; `--os 27`), scenario by scenario through `ShellProbe` and `tests/tools/native-shell.py`: `smoke` (`-fpSmoke`
-logs `fp: ping ok v1`; v1 negotiated with the coach), `chat` (the chat presented `.overFullScreen` on the page's model,
+logs `fp: ping ok v1`; v1 negotiated with the coach on the classic root, with the three pieces on the tab root, its bar
+and first tab checked), `chat` (the chat presented `.overFullScreen` on the page's model,
 a message sent and answered, the model switch, a forwarded confirm and an Undo toast round-tripping, Back, no
 `visibilitychange`, Heavyweight light and Lime dark), `focus` (a tap into the page and a focused field low enough that
 WebKit scrolls to it, then present and dismiss by the page, by Back and by the edge pan: no keyboard comes back and the
@@ -310,7 +322,10 @@ off (`{"tabs": false}` in the app container's `Library/Application Support/FPShe
 hello, so every later launch of that build is classic. Such a bundle is built by hand into `dd-shell` (that page staged
 with `cap copy`, the App scheme built at 61, its `build-id.txt` removed) and run with `--no-build=any`, which runs a
 build of a tree unknown and says so (`--no-build` refuses a build with no `build-id.txt`, another tree's, or one whose
-bundled page is not the page this checkout staged); the tree's own page is staged again after.
+bundled page is not the page this checkout staged); the tree's own page is staged again after. The build and the run
+share one `sim.lock` hold (`tests/tools/simlock.sh`), since `dd-shell` is the folder every simulator tool of the
+checkout reuses, and no other build of the checkout runs meanwhile: the hand build stages its page in `www/` and
+`ios/App/App/public` outside fp-build's `build.lock`.
 
 ## The live chat: CoachStore
 
@@ -614,12 +629,15 @@ swift test --package-path ios/App/FPKit
 **Inside iCloud Drive** (this repo lives in `~/Documents`), that stops at CodeSign with "resource fork,
 Finder information, or similar detritus not allowed". iCloud flags every `*.xctest` folder as a package,
 and SwiftPM signs Mac debug test bundles to give them the debugger entitlement. Either keep the build
-folder outside iCloud, once per checkout:
+folder outside iCloud, once per checkout, in the folder the native tools name for it (`main` for the main checkout,
+else the worktree's folder name with dashes for its spaces: `fp_tree_name` in `tests/tools/simlock.sh`), from the
+repository's root:
 
 ```sh
+n=$(bash -c '. tests/tools/simlock.sh && fp_tree_name')
 rm -rf ios/App/FPKit/.build
-mkdir -p ~/Library/Caches/FPKit/"$(basename "$PWD")"
-ln -s ~/Library/Caches/FPKit/"$(basename "$PWD")" ios/App/FPKit/.build
+mkdir -p ~/Library/Caches/FPKit/"$n"
+ln -s ~/Library/Caches/FPKit/"$n" ios/App/FPKit/.build
 ```
 
 or skip that signing step:
@@ -629,7 +647,7 @@ swift test --package-path ios/App/FPKit --disable-get-task-allow-entitlement
 ```
 
 CI runners are not in iCloud and need neither. If the link's folder is ever deleted, SwiftPM fails with
-"couldn't be saved in the folder": run the three lines again.
+"couldn't be saved in the folder": run the four lines again.
 
 The iOS build of every target, which compiles FPHost and FPUI (no simulator boots; run it in this folder):
 

@@ -195,6 +195,10 @@ hold). Each then builds through `tools/fp-build.sh` into
 `<checkout>` is `main` or the worktree's folder name, never `/tmp`), checks the
 scene rule on the built app (`tools/scene-plist.sh`) and writes `build-id.txt`
 beside it: HEAD, the tree's state, the bundled page's stamp, the build number.
+The one exception is `native-store.sh --downgrade`'s second app, build 59 built
+at its own commit into `/tmp/supero-build59` by the script's own xcodebuild,
+with no `build-id.txt` and no scene check: build 59 predates the rule (it still
+names its storyboards).
 `--no-build` runs that build only when it is this tree's and the page staged in
 `ios/App/App/public` is the one it bundled, else exits 1 naming the difference;
 `--no-build=any` runs it anyway, its identity first.
@@ -225,6 +229,14 @@ view taken out of its window with the chat up). Spec 118 holds the page's half
 (its C5 cases: the take-over after a reload, and the About row, its sheet,
 TrovoShell `status`/`reset` and the `visibility` report on the mock).
 
+These are build 60's scenarios. On an iOS 26+ phone whose app data turns nothing
+off the scene takes the tab root, where only `smoke` holds: there the chat is
+pushed in the Coach tab's stack rather than presented over the page, so `chat`
+and every other scenario that puts the chat up need the classic root, which the
+Native tab bar switch off gives (`{"tabs": false}` in the app container's
+`Library/Application Support/FPShell/switches.json`), as does build 60's page
+bundled (it declines `tabs`; FPKit README, "tests/native-shell.sh").
+
 ## The live native chat in test-native.sh
 
 `../test-native.sh` drives the live chat (plan task C7) after its routes, through
@@ -245,6 +257,11 @@ x `content_size large|extra-extra-large`; the app's Larger Text off keeping the 
 height. It puts back what it changed in the container and the
 phone's settings. `python3 tools/coach-stub.py --script FILE` serves the stand-in
 on its own (one JSON line per request).
+
+On an iOS 26+ phone the launches (`-fpOffline`, no policy file) take the tab root
+the same way, where `native-chat.py`, written for 60's chat over the page, fails,
+and `../test-native.sh` exits 1 after the routes, the store check and the watch;
+the classic root comes with the same `{"tabs": false}` switch file.
 
 ## The probe's self-test and the Release strings check
 

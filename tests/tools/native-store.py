@@ -720,7 +720,8 @@ def scen_scene(c):
     refused = ev.first('sceneDestroyRefused')
     if refused:
         c.rep.fact(s, 'UIKit refuses a scene destruction here (%s); the scenario replays the reconnect in the process: '
-                      'sceneDidDisconnect\'s call, sceneConnected, a new SuperoViewController from Main.storyboard in the window'
+                      'sceneDidDisconnect\'s call, sceneConnected, a new window and its root around a new SuperoViewController, '
+                      'built by SceneDelegate in code'
                       % refused.get('error', '')[:90])
     disc = ev.first('sceneDisconnected')
     det = ev.first('detached') or {}
