@@ -634,9 +634,11 @@ xcodebuild -scheme FPKit-Package -destination 'platform=iOS Simulator,id=<udid>'
 ```
 
 CI (`.github/workflows/ios-build.yml`) builds the app, runs `swift test` on macOS (job `fpkit-mac`) and both commands
-above (job `fpkit-ios`) with the Xcode the app ships with, Xcode 27.1, on GitHub's `xcode-27` image (generally available
+above (job `fpkit-ios`) with Xcode 27.1 on GitHub's `xcode-27` image (generally available
 since 2026-10-15 by GitHub's changelog; runner-images' README still badges it a preview), and runs the iOS tests again
-on `macos-26` (`macos-latest`: Xcode 26.x and iOS 26.x runtimes only; `xcode-27` has no iOS 26 runtime). The whole iOS
+on `macos-26` (`macos-latest`: Xcode 26.x and iOS 26.x runtimes only; `xcode-27` has no iOS 26 runtime). Xcode 27.1
+built the app until 2026-11-03, when the App Store moved the owner's Mac to Xcode 27.2; `xcode-27` has only 27.2's RC,
+so CI stays on 27.1 until it carries 27.2's release (`XCODE_SHIP` in the workflow). The whole iOS
 suite runs on two runtimes, in eight parts, each on its own runner and an iPhone 17 Pro: four groups, `renders`
 (`CoachHomeRenderTests`, `CoachRenderTests`), `tabs` (`ShellBridgeTabsTests`, `RootTabControllerTests`), `stack`
 (`ScreenHostTests`, `CoachHomeStoreTests`, `CoachHomeViewTests`) and `rest` (every other test: it skips exactly the
@@ -646,10 +648,10 @@ iOS 26 and later, FPKit iOS 17 and later). 27.0 is the runtime the Mac's gates r
 gate has run yet, and `fpkit-sim.py` takes exactly the runtime a part names (saying which newer one it left out); 26.0
 to 26.4 run in no part. A 26 part tests iOS 26.5's own UIKit, SwiftUI and WebKit and its linked-on-or-after checks
 (Xcode 26.6 links against the iOS 26.5 SDK, the runtime's own, and the runtime knows no later SDK, so the checks read as
-they do for the app linked against 27.1); the compiler and the SDK's Swift code built into the client (`@inlinable`,
+they do for the app linked against 27.x); the compiler and the SDK's Swift code built into the client (`@inlinable`,
 `@_alwaysEmitIntoClient`, `@backDeployed`) are Xcode 26.6's, not the app's. So FPKit must keep compiling with Xcode
-26.6, which cannot compile an API only the iOS 27 SDK declares, even behind `#available`, and the shipped pair, Xcode
-27.1's own build on iOS 26.x, runs on the Mac: every FPKit iOS gate runs the whole suite on iOS 26.5 and 27.0 with the
+26.6, which cannot compile an API only the iOS 27 SDK declares, even behind `#available`, and the shipped pair, the Mac's
+own Xcode build on iOS 26.x, runs on the Mac: every FPKit iOS gate runs the whole suite on iOS 26.5 and 27.0 with the
 Xcode the app ships with, before every merge that touches FPKit (CLAUDE.md says so too).
 `.github/scripts/fpkit-parts.sh` is the one place that names the classes and each part's runtime; it makes the parts
 from the groups, so no group runs on one runtime alone. Its own test and `fpkit-sim.py`'s (`.github/scripts/*-test.sh`,

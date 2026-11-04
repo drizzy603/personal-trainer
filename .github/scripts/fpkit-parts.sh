@@ -29,7 +29,8 @@ STACK="FPUITests/ScreenHostTests FPUITests/CoachHomeStoreTests FPUITests/CoachHo
 PART_GROUPS="renders tabs stack rest"
 # The runtime of the parts named after their group: the one the Mac's gates run (the xcode-27 image also has 27.1).
 IOS_27=27.0
-# The runtime of the GROUP-26 parts: the newest iOS 26.x, the only 26.x on macos-26 that runs the iPhone 17 Pro.
+# The runtime of the GROUP-26 parts: the newest iOS 26.x on macos-26 (its 26.2 and 26.4.1 run the iPhone 17 Pro
+# too, and no part runs them).
 IOS_26=26.5
 PARTS=$PART_GROUPS
 for g in $PART_GROUPS; do PARTS="$PARTS $g-26"; done

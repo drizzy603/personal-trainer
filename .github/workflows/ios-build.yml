@@ -30,7 +30,9 @@ concurrency:
 # The two Xcodes, each named once (.github/scripts/select-xcode.sh selects /Applications/Xcode_<version>.app, which on
 # GitHub's images follows that version's newest patch, and checks that it is that Xcode).
 env:
-  # The Xcode the app ships with: the owner's Mac archives with Xcode 27.1 (27A9275); this moves when that Mac's does.
+  # The Xcode CI builds and tests the app with: Xcode 27.1 (27A9275), which the owner's Mac archived with until
+  # 2026-11-03, when the App Store moved the Mac to Xcode 27.2 (27B52). The image below has only 27.2's RC, so CI stays
+  # on 27.1 until it carries 27.2's release; then this moves to it.
   # GitHub has Xcode 27 only on the xcode-27 label, generally available since 2026-10-15 (GitHub's changelog of that
   # day; runner-images' README still badges it a preview). Its image of 2026-10-26 has macOS 27, Xcode 27.0, 27.1
   # (27A9275, the default) and 27.2 RC, and the iOS 27.0 and 27.1 runtimes, none of 26.x. macos-latest is macos-26
@@ -120,18 +122,18 @@ jobs:
   #
   # Toolchains and runtimes. The whole suite runs on two runtimes, every part on an iPhone 17 Pro, the model of every
   # local run (.github/scripts/fpkit-sim.py makes one when the runtime has none). renders, tabs, stack and rest run on
-  # xcode-27, built by Xcode 27.1 as the app is, on iOS 27.0, the runtime the Mac's gates run. The image also has iOS
+  # xcode-27, built by Xcode 27.1 (XCODE_SHIP), on iOS 27.0, the runtime the Mac's gates run. The image also has iOS
   # 27.1, which no gate has run: fpkit-sim.py takes exactly the runtime a part names and says which newer one it left
   # out, and 27.1 parts come once the Mac has run the four groups there. The tab root and the native Coach tab support
   # iOS 26 and later (delta 14), FPKit iOS 17 and later, and xcode-27 has no iOS 26 runtime, so renders-26, tabs-26,
   # stack-26 and rest-26 run the same four groups on macos-26's newest iOS 26.x, 26.5, built by Xcode 26.6 (26.0 to
   # 26.4 run in no part). A 26 part tests iOS 26.5's own UIKit, SwiftUI and WebKit and its linked-on-or-after checks
   # (Xcode 26.6 links against the iOS 26.5 SDK, the runtime's own, and the runtime knows no later SDK, so the checks read
-  # as they do for the app linked against 27.1); the compiler and the SDK's Swift code built into the client
+  # as they do for the app linked against 27.x); the compiler and the SDK's Swift code built into the client
   # (@inlinable, @_alwaysEmitIntoClient, @backDeployed) are Xcode 26.6's, not the app's. So FPKit must keep compiling
   # with Xcode 26.6: an API only the iOS 27 SDK declares does not compile there even behind #available (should FPKit need
   # one, the 26 parts move to xcode-27 and download the iOS 26.5 runtime on each run, gigabytes from Apple). The shipped
-  # pair, Xcode 27.1's own build on iOS 26.x, runs on the Mac: every FPKit iOS gate runs the whole suite on iOS 26.5 and
+  # pair, the Mac's own Xcode build on iOS 26.x, runs on the Mac: every FPKit iOS gate runs the whole suite on iOS 26.5 and
   # 27.0 with the Xcode the app ships with, before every merge that touches FPKit (CLAUDE.md, the FPKit README). At
   # 16ee484 the 26.5 run's last part annotated ten failure lines (annotate-xc.sh kept ten then): they are the first ten
   # of ScreenHostTests and CoachHomeStoreTests under Xcode 27.1 on iOS 26.5 on the Mac, whose failures there are seven
