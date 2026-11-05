@@ -99,18 +99,53 @@ final class CoachModelTests: XCTestCase {
         XCTAssertNil(m.message(id: ""))
     }
 
-    /// The models carry the page's THEMES: the compiled defaults must agree with them, colour for colour.
+    /// The files Tools/coach-fixtures.js writes by hand; every other file in Fixtures/coach is the page's own
+    /// (tests/golden/dump-coach.js: both rooms' chat, setup, the empty chat, errors and stops, a reply in flight, sixty
+    /// messages), so a state the dump adds is read as these are.
+    private static let handMade: Set<String> = ["forward-compat", "lone-surrogates", "minimal"]
+
+    /// Each room's page-built chat model: the page builds every model's colours from one `_coachTokens(room)` call.
+    private static let chatFixture: [Room: String] = [.heavyweight: "heavyweight-chat", .lime: "lime-chat"]
+
+    /// The models carry the page's THEMES, in every page-built file (N16, as CoachHomeModelTests holds the hub's since
+    /// 75972d7): the room's whole palette, every ColorToken (THEMES camel-cased and the chat's roles; satAccent may be
+    /// left out only where the accent stands in for it, as on the page's satellites, and that accent is FPCore's compiled
+    /// satAccent: Lime, whose THEMES has no sat-accent), the same colours as the room's page-built chat model, each its
+    /// room's compiled colour. A colour the page stopped sending would decode to the compiled one and pass every other
+    /// check, in the chat files as in the rest, so the palette is held to ColorToken itself, not to a count.
     func testCompiledPaletteMatchesThePageThemes() throws {
-        for (file, defaults) in [("heavyweight-chat", Tokens.heavyweight), ("lime-chat", Tokens.lime)] {
-            let colors = try XCTUnwrap(FixtureFiles.json("coach/\(file).json")["tokens"]?["color"]?.object)
-            var checked = 0
-            for (key, value) in colors {
-                guard let token = ColorToken(rawValue: key) else { XCTFail("\(file): \(key) is not a token"); continue }
-                XCTAssertEqual(RGBA(css: value.string ?? ""), defaults.color(token), "\(file) \(key)")
-                checked += 1
+        let pageBuilt = FixtureFiles.files(in: "coach").map { $0.deletingPathExtension().lastPathComponent }
+            .filter { !Self.handMade.contains($0) }
+        var rooms: Set<Room> = []
+        for name in pageBuilt {
+            let data = try FixtureFiles.data("coach/\(name).json")
+            let m = try CoachModel.decode(utf8: data)
+            let compiled = Tokens.defaults(for: m.room)
+            rooms.insert(m.room)
+            let color = try XCTUnwrap(JSONText.parse(utf8: data)["tokens"]?["color"]?.object, name)
+            // the whole palette: every ColorToken but satAccent is sent; satAccent is left out only where the page's
+            // satellites read the accent in its place (T['sat-accent']||T.accent) and that is FPCore's compiled one
+            let sat = ColorToken.satAccent.rawValue
+            XCTAssertEqual(Set(ColorToken.allCases.map(\.rawValue)).subtracting(color.keys).subtracting([sat]).sorted(), [],
+                           "\(name): colours of the palette the page leaves out")
+            if color[sat] == nil {
+                let accent = color[ColorToken.accent.rawValue]?.string ?? "absent", want = compiled.color(.satAccent)
+                XCTAssertEqual(RGBA(css: accent), want,
+                               "\(name): no satAccent sent, so the accent standing in for it (\(accent)) must be FPCore's compiled satAccent (\(want.css))")
             }
-            XCTAssertGreaterThan(checked, 30, file)
+            if let chatName = Self.chatFixture[m.room] {
+                let chat = try XCTUnwrap(FixtureFiles.json("coach/\(chatName).json")["tokens"]?["color"]?.object, chatName)
+                XCTAssertEqual(Set(chat.keys).subtracting(color.keys).sorted(), [], "\(name): colours \(chatName) sends that it leaves out")
+                XCTAssertEqual(Set(color.keys).subtracting(chat.keys).sorted(), [], "\(name): colours it sends that \(chatName) does not")
+            } else {
+                XCTFail("\(name): no page-built chat model in its room (\(m.room.id))")
+            }
+            for (key, value) in color.sorted(by: { $0.key < $1.key }) {
+                guard let token = ColorToken(rawValue: key) else { XCTFail("\(name): color.\(key) is not a token"); continue }
+                XCTAssertEqual(RGBA(css: value.string ?? ""), compiled.color(token), "\(name) color.\(key)")
+            }
         }
+        XCTAssertEqual(rooms, [.heavyweight, .lime], "both rooms are page-built")
     }
 
     /// The page sends the whole scale (type, space, radii, fonts) with every model: the compiled
