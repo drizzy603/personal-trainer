@@ -14,6 +14,7 @@ the app only acts and reports.
 Exit 1 when any check fails. Output: one PASS/FAIL line per check, then the facts the report needs.
 """
 import argparse
+import datetime
 import json
 import os
 import plistlib
@@ -356,13 +357,23 @@ return { wrote: n, mode: st ? st.mode : null, fallbacks: st ? st.fallbacks : nul
 """
 
 
+SEED_DAY = []   # the day the seed's dates count from: one set of dates for the whole run, even across midnight
+
+
 def seed_values():
     with open(os.path.join(REPO, 'tests', 'seed-dump.json')) as f:
         s = json.load(f)
     routine = s['kt_routine']
+    if not SEED_DAY:
+        SEED_DAY.append(datetime.date.today())
+    day = SEED_DAY[0]
+    # A set next round starting on a Monday two weeks or more ahead, and its ROUND N card shown until three weeks ahead:
+    # dates every boot of the run leaves as they are. A start already gone builds the round at the next boot, which
+    # rewrites both keys (the wiped scenario compares them with this seed; the fixed dates of October 2026 went stale).
+    starts = day + datetime.timedelta(days=14 + (7 - day.weekday()) % 7)
     s.update({
-        'kt_routine_next': '{"startsOn":"2026-10-19","at":1791700000000}',
-        'kt_round_intro': '{"cycle":2,"top":"Bench","until":"2026-10-25"}',
+        'kt_routine_next': '{"startsOn":"%s","at":1791700000000}' % starts.isoformat(),
+        'kt_round_intro': '{"cycle":2,"top":"Bench","until":"%s"}' % (day + datetime.timedelta(days=21)).isoformat(),
         'kt_hk_imported': '["11111111-AAAA-4000-8000-000000000001","22222222-BBBB-4000-8000-000000000002"]',
         'kt_hk_last_sync': '1791600000000',
         'kt_routine_backup': routine,
@@ -1030,9 +1041,20 @@ def _scene_room(c, s):
     c.in_step(s, 'room back', ev)
 
 
+def ota_build(c):
+    """The test page's stamp: --ota-build, else newer than the bundled page's (`c.page`) on the same date, so the next
+    launch serves it while any later real page (a later date) still beats a copy a broken run left staged."""
+    if c.opts.ota_build:
+        return c.opts.ota_build
+    m = re.match(r'^(\d{8})-(\d+)$', c.page or '')
+    return '%s-%d' % (m.group(1), max(99, int(m.group(2)) + 1)) if m else None
+
+
 def scen_ota(c):
     s = 'ota'
-    build = c.opts.ota_build
+    build = ota_build(c)
+    if not c.rep.check(s, 'a stamp newer than the bundled page\'s for the test page', build and build != c.page, '%s over %s' % (build, c.page)):
+        return
     src = open(os.path.join(REPO, 'index.html'), encoding='utf-8').read()
     html = re.sub(r'<meta name="build" content="[^"]+"/>', '<meta name="build" content="%s"/>' % build, src, count=1)
     with open(c.sim.path('Documents', 'fp-probe', 'ota.html'), 'w', encoding='utf-8') as f:
@@ -1409,7 +1431,7 @@ def main():
     ap.add_argument('--sweep', type=int, default=24)
     ap.add_argument('--burst-chars', type=int, default=4000)
     ap.add_argument('--sweep-extra', type=int, default=30)
-    ap.add_argument('--ota-build', default='20261011-99')
+    ap.add_argument('--ota-build', default='', help='the OTA test page\'s stamp (default: the bundled page\'s date, suffix 99)')
     ap.add_argument('--out')
     opts = ap.parse_args()
     BURST_CHARS[0] = opts.burst_chars
