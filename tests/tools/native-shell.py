@@ -66,7 +66,8 @@ visibility aggregates: counters, a scene replay). `--only` takes any name; a mod
 or a name taken twice stops the run before any launch (exit 2). A module reaches the helpers with
 `import native_shell as shell` (this file registers itself under that name before it loads them): shell_probe, state,
 js, wait, mark, intent, step, shot, sim_lock_held, the readers (page, shellst, screens, coach, home, root, rcoach, rweb,
-rbar, stack, fp, shown, intents, page_events, kb_shown, markers, screen_markers, unsettled, marker_state, verdicts), the
+rbar, stack, fp, shown, replaced, intents, page_events, kb_shown, markers, screen_markers, unsettled, marker_state,
+verdicts), the
 About steps and readers (about, about_of, about_words) and the seed's strings. The context c carries c.sim (Sim, from
 native-store.py), c.rep (check, fact), c.opts, c.page (the page build), c.root ('tabs' or 'classic': what this pass's
 launches build), c.tabs (c.root == 'tabs'), c.os ('27.0'), c.os_major and c.shell (the binary's build).
@@ -113,6 +114,7 @@ TAB_IDS = ('log', 'progress', 'coach', 'settings')   # the page's FP_TAB_IDS: th
 BAR_H, BAR_SAFE = 83, (34, 0)  # the tab root's bar (delta 14.1): 83 on every iPhone, safe = the window's inset
 HOLD = 3500                   # every mark's hold (ms): the runner's shot lands inside it
 OFFS_FILE = 'fp-policy-offs.json'
+GROUP = 'group.app.kt.trainer'   # the App Group (a build signed to run locally has its container)
 # Plan 13-tests-release.md section 6's offs (T7): build 61 builds the classic root, build 60 is unchanged.
 OFFS = {'v': 1, 'store': {'facade': 'on', 'repair': 'off'}, 'screens': {'coach': 'on', 'coachHome': 'off', 'tabs': 'off'}}
 OFFS_ARGS = ['-fpPolicyFile', OFFS_FILE, '-fpPolicyEvery', '0']
@@ -313,6 +315,34 @@ def intent(label, name, **args):
     return {'op': 'intent', 'label': label, 'name': name, 'args': args}
 
 
+def booted(udid):
+    """Whether the simulator is booted now."""
+    out = subprocess.run(['xcrun', 'simctl', 'list', '-j', 'devices'], capture_output=True, text=True).stdout
+    try:
+        return any(d.get('udid') == udid and d.get('state') == 'Booted' for ds in json.loads(out)['devices'].values() for d in ds)
+    except ValueError:
+        return False
+
+
+def load1():
+    try:
+        return float(subprocess.run(['sysctl', '-n', 'vm.loadavg'], capture_output=True, text=True).stdout.split()[1])
+    except (IndexError, ValueError):
+        return 0.0
+
+
+def settle(least=60, most=240, calm=40):
+    """A phone this run booted: its first boot's daemons run for minutes (a 1-minute load of 200 and more on this Mac,
+    simctl calls timing out), so the scenarios wait at least `least` s, then until the load is under `calm` or `most` s
+    have gone by."""
+    t0 = time.time()
+    while time.time() - t0 < most:
+        if time.time() - t0 >= least and load1() < calm:
+            break
+        time.sleep(5)
+    print('   the phone was shut down: %.0f s for its first boot to settle (1-minute load now %.0f)' % (time.time() - t0, load1()), flush=True)
+
+
 def sim_lock_holder():
     """The paired simulators' lock (tests/tools/simlock.sh, the session's fplock): its folder and its holder's pid."""
     root_dir = os.environ.get('FP_LOCKS_ROOT') or os.path.expanduser('~/Library/Caches/FPKit')
@@ -438,6 +468,14 @@ def stack(e):
 
 def fp(e):
     return page(e).get('fp') or {}
+
+
+def replaced(e):
+    """What a scene's teardown let go of, as a state after it reads it: {by, webView, root, window} (alive), {} before any.
+    A scene is torn down by `sceneCycle` (H11's replay of StoreProbe.sceneReplay): UIKit refuses `sceneDestroy` for
+    this one-scene iPhone app on both runtimes (delta 17.10), so a release check rests on sceneCycle's `replaced`, read
+    in the states that follow it, never in the replay's own turn."""
+    return (e or {}).get('replaced') or {}
 
 
 def shown(e):
@@ -647,6 +685,9 @@ def scen_smoke(c):
                     and p.get('tabsDisplay') not in (None, 'none'), {k: p.get(k) for k in ('tabsMode', 'fpTabsClass', 'tabsDisplay')})
     c.rep.check(s, what, offered and flag.get('v') == 1 and sorted(flag.get('binary') or []) == binary, flag)
     c.rep.check(s, 'the page booted with the bridge (bootDone through TrovoShell)', sh.get('bootDones', 0) >= 1, sh.get('bootDones'))
+    gc = c.sim.sh('xcrun', 'simctl', 'get_app_container', c.sim.udid, ns.BID, GROUP, check=False).strip()
+    c.rep.check(s, 'the build carries the App Group\'s container (signed to run locally, FP_BUILD_SIGN=local: the share hook writes '
+                'its file there, delta 17.7)', bool(gc) and os.path.isdir(gc), gc or 'none: an unsigned build')
     c.rep.fact(s, 'shell %s, page %s, root %s' % (c.shell, c.page, kind))
     if int(c.shell) < 61:
         return
@@ -1486,7 +1527,10 @@ def main():
         sys.exit(2)
     os.makedirs(opts.out, exist_ok=True)
     sim = Sim(opts.phone)
+    cold = not booted(opts.phone)
     sim.boot()
+    if cold:
+        settle()
     rt, name = sim.runtime()
     osv = rt.replace('iOS-', '').replace('-', '.')
     major = int(osv.split('.')[0]) if osv.split('.')[0].isdigit() else 0

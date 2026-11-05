@@ -7,6 +7,7 @@
 #                                                   # this tree's (HEAD, the dirty state, the page's stamp)
 #   tests/tools/fp-build.sh <tool> --no-build=any   # reuse it whatever tree it came from, saying so first
 #   tests/tools/fp-build.sh --self-test             # the stamp and its check on a scratch repository (no xcodebuild)
+#   FP_BUILD_SIGN=local tests/tools/fp-build.sh <tool> [--no-build]   # signed to run locally (see below)
 #
 # <tool> names the folder: ~/Library/Caches/FPKit/<checkout>/dd-<tool>, where <checkout> is "main" for the main
 # checkout and the worktree's folder name otherwise (the ios/App/FPKit/.build link's name). Never /tmp: the machine
@@ -25,6 +26,10 @@
 #   the bundled public/index.html>  ·  build <CFBundleVersion>  ·  app <hash of every file in App.app>  ·  tool,
 #   worktree, built (when).
 # Untracked symlinks (the worktrees' node_modules links) are not part of the tree's state; untracked files are.
+# FP_BUILD_SIGN=local builds without CODE_SIGNING_ALLOWED=NO, signed to run locally: the simulator then carries the app's
+# entitlements as simulated ones, the App Group's container among them, which the share hook needs to write its file
+# (plan delta 17.7; an unsigned build has none, and the hook refuses). The stamp's `sign` line (none or local; a stamp
+# without one is none) is compared like head, tree and page: --no-build refuses a build signed otherwise than asked.
 # --no-build compares head, tree and page with the tree it runs in, checks the app is still the one stamped (app) and
 # that the page this checkout staged last (ios/App/App/public/index.html, what cap copy put there) is the page the app
 # bundled (staged), and runs the scene rule again; =any reports the same and goes on. The staged check catches a page
@@ -36,6 +41,7 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 . "$HERE/simlock.sh"
 
 say() { echo "$*" >&2; }
+SIGN=${FP_BUILD_SIGN:-none}
 die() { echo "FAIL: $*" >&2; exit 1; }
 APP_REL=Build/Products/Debug-iphonesimulator/App.app
 
@@ -90,6 +96,7 @@ write_id() {
     printf '%s\n' "$id" | sed -n '/^head /p; /^tree /p'
     echo "page $(page_stamp "$app/public/index.html")"
     echo "build $(plutil -extract CFBundleVersion raw -o - "$app/Info.plist" 2>/dev/null || echo unknown)"
+    echo "sign $SIGN"
     echo "app $(app_print "$app")"
     echo "tool $tool"
     echo "worktree $(fp_tree_name)"
@@ -98,10 +105,13 @@ write_id() {
   mv "$dd/build-id.txt.new" "$dd/build-id.txt"
 }
 
+# sign_of <build-id.txt>: how the build was signed (a stamp from before the line: none).
+sign_of() { local x; x=$(field "$1" sign); echo "${x:-none}"; }
+
 # The build's identity in one line.
 id_line() {
   local f="$1"
-  echo "head $(field "$f" head | cut -c1-7) · tree $(field "$f" tree) · page $(field "$f" page) · build $(field "$f" build) · built $(field "$f" built) by fp-build $(field "$f" tool) ($(field "$f" worktree))"
+  echo "head $(field "$f" head | cut -c1-7) · tree $(field "$f" tree) · page $(field "$f" page) · build $(field "$f" build) · sign $(sign_of "$f") · built $(field "$f" built) by fp-build $(field "$f" tool) ($(field "$f" worktree))"
 }
 
 # check <dd> <check|any>: the build in <dd> against the tree in the current folder.
@@ -124,6 +134,9 @@ check() {
     h1=$(field "$f" page); h2=$(printf '%s\n' "$now" | sed -n 's/^page //p')
     [ "$h1" = "$h2" ] || diffs="$diffs
   page: built with $h1, this tree's index.html is $h2"
+    h1=$(sign_of "$f")
+    [ "$h1" = "$SIGN" ] || diffs="$diffs
+  sign: built with sign $h1, this run asks for sign $SIGN (FP_BUILD_SIGN)"
     h1=$(field "$f" app); h2=$(app_print "$app")
     [ "$h1" = "$h2" ] || diffs="$diffs
   app: the app in $dd is not the one stamped (stamped $h1, now $h2: built again by something else)"
@@ -170,11 +183,13 @@ build() {
   id0=$(tree_id)
   mkdir -p "$dd"
   rm -f "$dd/build-id.txt"
-  say "── fp-build $tool: refreshing www/ and building the App scheme as build $n (Debug, simulator) into $dd"
+  local signargs=CODE_SIGNING_ALLOWED=NO
+  [ "$SIGN" = local ] && signargs=""
+  say "── fp-build $tool: refreshing www/ and building the App scheme as build $n (Debug, simulator$([ "$SIGN" = local ] && echo ', signed to run locally')) into $dd"
   npm run --silent build:web >&2 || die "npm run build:web failed"
   npx cap copy ios >/dev/null || die "npx cap copy ios failed"
   if ( cd ios/App && xcodebuild -project App.xcodeproj -scheme App -configuration Debug \
-        -destination 'generic/platform=iOS Simulator' -derivedDataPath "$dd" build CODE_SIGNING_ALLOWED=NO \
+        -destination 'generic/platform=iOS Simulator' -derivedDataPath "$dd" build $signargs \
         CURRENT_PROJECT_VERSION="$n" ) >"$dd/build.log" 2>&1 && grep -q '\*\* BUILD SUCCEEDED \*\*' "$dd/build.log"; then
     say "   build succeeded ($dd/build.log)"
   else
@@ -278,6 +293,17 @@ PLIST
   stamp
   cp index.html ios/App/App/public/index.html
   run 0 check "the staged page back: taken" "this tree's build"
+  # the signing the run asks for (FP_BUILD_SIGN): a build signed otherwise is refused; a stamp without the line is none
+  SIGN=local; stamp; SIGN=none
+  run 1 check "a build signed to run locally, asked for unsigned, is refused, naming sign" "sign: built with sign local, this run asks for sign none"
+  SIGN=local
+  run 0 check "the same build asked for signed is taken" "this tree's build" "sign local"
+  SIGN=none; stamp; SIGN=local
+  run 1 check "an unsigned build asked for signed is refused, naming sign" "sign: built with sign none, this run asks for sign local"
+  SIGN=none
+  sed -i '' '/^sign /d' "$dd/build-id.txt"
+  run 0 check "a stamp from before the sign line reads as unsigned" "this tree's build" "sign none"
+  stamp
   # the scene rule on --no-build
   plutil -insert UIMainStoryboardFile -string Main "$app/Info.plist"
   stamp
@@ -298,6 +324,7 @@ usage() { echo "usage: $0 <tool> [--no-build | --no-build=any] | --self-test" >&
 [ $# -ge 1 ] || usage
 if [ "$1" = --self-test ]; then [ $# = 1 ] || usage; self_test; exit $?; fi
 TOOL="$1"; shift
+case "$SIGN" in none|local) ;; *) echo "FP_BUILD_SIGN takes none or local, not $SIGN" >&2; exit 2 ;; esac
 case "$TOOL" in ''|*[!a-z0-9-]*) usage ;; esac
 MODE=build
 case "${1:-}" in

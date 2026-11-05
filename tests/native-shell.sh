@@ -37,8 +37,8 @@
 # One runner uses the paired simulators at a time: the run takes ~/Library/Caches/FPKit/sim.lock first
 # (tests/tools/simlock.sh: it waits as long as a live holder holds, says whose lock it waits for, and breaks one whose
 # holder is gone, or one naming no holder once it is 2 hours old), and builds inside that hold. The build is
-# tests/tools/fp-build.sh's: ~/Library/Caches/FPKit/<checkout>/dd-shell, build-id.txt beside the app, the scene rule
-# (tests/tools/scene-plist.sh) checked on the app every run.
+# tests/tools/fp-build.sh's: ~/Library/Caches/FPKit/<checkout>/dd-shell, signed to run locally, build-id.txt beside the
+# app, the scene rule (tests/tools/scene-plist.sh) checked on the app every run.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -76,8 +76,9 @@ mkdir -p "$OUT"
 . tests/tools/simlock.sh
 simlock native-shell
 # Build 61 at least (FPStore gives a new store minReader 60, and the verdicts and breaker records a container kept from
-# build 60's runs must not apply); --no-build refuses another tree's build.
-DD=$(tests/tools/fp-build.sh shell $NOBUILD)
+# build 60's runs must not apply), signed to run locally (FP_BUILD_SIGN=local: the App Group's container, which the share
+# hook writes into, plan delta 17.7); --no-build refuses another tree's build and one signed otherwise.
+DD=$(FP_BUILD_SIGN=local tests/tools/fp-build.sh shell $NOBUILD)
 APP="$DD/Build/Products/Debug-iphonesimulator/App.app"
 SHELL_BUILD=$(plutil -extract CFBundleVersion raw -o - "$APP/Info.plist")
 
@@ -103,8 +104,35 @@ for r, ds in sorted(devs.items(), reverse=True):
 PY
 }
 
+# The paired phones are the lock holder's (20-order 1.5): each pass gets the machine to itself, the other paired phones
+# shut down first (a booted iOS 27 phone costs about 200 processes and its share of the memory), and at the end the run
+# shuts down the phones it booted itself.
+paired_phones(){
+  xcrun simctl list pairs | sed -nE 's/.*Phone: .*\(([0-9A-F-]{36})\) \(([A-Za-z ]+)\).*/\1 \2/p'
+}
+BOOTED_BEFORE=$(paired_phones | awk '$2 == "Booted" {print $1}')
+others_down(){  # others_down <udid>: every other booted paired phone shut down
+  local u st
+  while read -r u st; do
+    if [ "$u" != "$1" ] && [ "$st" = Booted ]; then
+      echo "   (the paired phone $u shut down: this pass runs on $1)"
+      xcrun simctl shutdown "$u" >/dev/null 2>&1 || true
+    fi
+  done < <(paired_phones)
+}
+end_down(){  # the phones this run booted, shut down again
+  local u st
+  while read -r u st; do
+    if [ "$st" = Booted ] && ! printf '%s\n' "$BOOTED_BEFORE" | grep -qx "$u"; then
+      xcrun simctl shutdown "$u" >/dev/null 2>&1 || true
+      echo "   (the paired phone $u this run booted: shut down)"
+    fi
+  done < <(paired_phones)
+}
+
 RC=0
 run_on(){  # run_on <udid> <tabs|classic>
+  others_down "$1"
   local args=(--phone "$1" --app "$APP" --shell "$SHELL_BUILD" --out "$OUT" --root "$2")
   [ -n "$ONLY" ] && args+=(--only "$ONLY")
   [ -n "$KEEP" ] && args+=(--keep-data)
@@ -126,6 +154,7 @@ else
     if [ -n "$P" ]; then run_on "$P" classic; else echo "FAIL: no iPhone simulator on iOS 27 for the classic pass"; RC=1; fi
   fi
 fi
+end_down
 ANY=""; [ "$NOBUILD" = --no-build=any ] && ANY=" (--no-build=any: the build's identity is at the top)"
 [ "$RC" = 0 ] && echo "native-shell: all scenarios passed$ANY" || echo "native-shell: FAILED (see FAIL lines above)$ANY"
 exit $RC
