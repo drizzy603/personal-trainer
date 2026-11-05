@@ -16,7 +16,11 @@
 # the web view is out of the window; background and back (checkpoint); a WebContent kill; a launch without the facade,
 # then adopt; WebKit unreadable; a checkpoint and snapshots racing page writes; the policy file (facade "off" at the
 # next document start, a bad file changes nothing); the store breaker; a planted crash marker; no flag without a
-# verified KTUIProxy; a scene disconnect and reconnect; an OTA page staged, served and confirmed; WebKit wiped and Put
+# verified KTUIProxy; the scene replayed in the process (UIKit refuses to destroy it: SceneDelegate's teardown, then its
+# connection on the same window scene) building the root the gate decides, the tab root under -fpOffline and the classic
+# root under the policy offs file, with the old page, root and window let go (the store's live pages, and the shell
+# probe's weak hold of what it replaced, read 5 s after) and the store in step, then the first frame's room read from the
+# store at a launch (the shell's own state set aside for it and put back); an OTA page staged, served and confirmed; WebKit wiped and Put
 # back; Settings > About > Storage through the real TrovoStore plugin (plan task S6: Put back of a value an older build
 # replaced, a value the copy held as none previewed as a removal, "Test: quit after next save" and its report, the
 # Native copy switch across launches, the sheet and Export a copy, shots in screenshots/out/native-store/); the SIGKILL
