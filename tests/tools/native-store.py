@@ -813,18 +813,32 @@ class ShellAside:
         return self
 
     def put_back(self):
-        """What was found, put back; answers the copies that still differ when read back (none: as found)."""
-        self.sim.terminate()
-        if os.path.isdir(self.folder):
-            shutil.rmtree(self.folder)
-        if self.saved:
-            shutil.copytree(self.saved, self.folder)
+        """What was found, put back, each part tried even when another fails (a wedged simulator's terminate times out);
+        answers what still differs when read back, or could not be put back (none: as found). The set-aside copy is kept,
+        and named, unless everything went back."""
         left = []
+        try:
+            self.sim.terminate()
+        except Exception as e:  # noqa: BLE001 -- the app may still run: put back what can be, and say so
+            left.append('terminate: %r' % e)
+        try:
+            if os.path.isdir(self.folder):
+                shutil.rmtree(self.folder)
+            if self.saved:
+                shutil.copytree(self.saved, self.folder)
+        except Exception as e:  # noqa: BLE001
+            left.append('the folder: %r' % e)
         if self.found is not None:
-            _write_prefs(self.sim, self.found)
-            now = _read_prefs(self.sim, SHELL_PREFS)
-            left = sorted(k for k in SHELL_PREFS if now.get(k) != self.found.get(k))
-        shutil.rmtree(self.tmp, ignore_errors=True)
+            try:
+                _write_prefs(self.sim, self.found)
+                now = _read_prefs(self.sim, SHELL_PREFS)
+                left += sorted(k for k in SHELL_PREFS if now.get(k) != self.found.get(k))
+            except Exception as e:  # noqa: BLE001
+                left.append('the copies: %r' % e)
+        if left:
+            left.append('what was found is kept in %s' % self.tmp)
+        else:
+            shutil.rmtree(self.tmp, ignore_errors=True)
         return left
 
 
@@ -878,7 +892,7 @@ def scen_scene(c):
     finally:
         left = aside.put_back()
         c.rep.check(s, 'the shell\'s own state put back as found (Application Support/FPShell, and %s read back)' % ', '.join(SHELL_PREFS),
-                    not left, left or '')
+                    not left, '; '.join(left))
 
 
 def _scene_tabs(c, s):
