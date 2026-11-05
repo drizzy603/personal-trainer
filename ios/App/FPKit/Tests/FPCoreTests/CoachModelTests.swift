@@ -122,6 +122,11 @@ final class CoachModelTests: XCTestCase {
     /// messages), so a state the dump adds is read as these are.
     private static let handMade: Set<String> = ["forward-compat", "lone-surrogates", "minimal"]
 
+    /// The page-built files by name: Fixtures/coach less the hand-made ones.
+    private static func pageBuilt() -> [String] {
+        FixtureFiles.files(in: "coach").map { $0.deletingPathExtension().lastPathComponent }.filter { !handMade.contains($0) }
+    }
+
     /// Each room's page-built chat model: the page builds every model's colours from one `_coachTokens(room)` call.
     private static let chatFixture: [Room: String] = [.heavyweight: "heavyweight-chat", .lime: "lime-chat"]
 
@@ -132,10 +137,8 @@ final class CoachModelTests: XCTestCase {
     /// room's compiled colour. A colour the page stopped sending would decode to the compiled one and pass every other
     /// check, in the chat files as in the rest, so the palette is held to ColorToken itself, not to a count.
     func testCompiledPaletteMatchesThePageThemes() throws {
-        let pageBuilt = FixtureFiles.files(in: "coach").map { $0.deletingPathExtension().lastPathComponent }
-            .filter { !Self.handMade.contains($0) }
         var rooms: Set<Room> = []
-        for name in pageBuilt {
+        for name in Self.pageBuilt() {
             let data = try FixtureFiles.data("coach/\(name).json")
             let m = try CoachModel.decode(utf8: data)
             let compiled = Tokens.defaults(for: m.room)
@@ -166,23 +169,35 @@ final class CoachModelTests: XCTestCase {
         XCTAssertEqual(rooms, [.heavyweight, .lime], "both rooms are page-built")
     }
 
-    /// The page sends the whole scale (type, space, radii, fonts) with every model: the compiled
-    /// defaults must agree with it, so a model without tokens draws the same chat.
+    /// The page sends the whole scale (type, space, radii, fonts) with every model, in every page-built file, as the
+    /// palette case reads them: the chat's sizes, every space, radius and font, each its room's compiled default, so a
+    /// model without tokens draws the same chat; and the decoded tokens are the room's compiled ones with nothing
+    /// rejected, as CoachHomeModelTests.testPageBuiltTokensAreTheRoomsCompiledOnes holds the hub's. N16's review: with
+    /// only the two chat files read, errors.json without type.body and loading.json with another gutter or body font
+    /// passed every case.
     func testCompiledScaleMatchesThePage() throws {
-        for (file, defaults) in [("heavyweight-chat", Tokens.heavyweight), ("lime-chat", Tokens.lime)] {
-            let tokens = try FixtureFiles.json("coach/\(file).json")["tokens"]
-            let type = try XCTUnwrap(tokens?["type"]?.object), space = try XCTUnwrap(tokens?["space"]?.object)
-            let radius = try XCTUnwrap(tokens?["radius"]?.object), font = try XCTUnwrap(tokens?["font"]?.object)
+        var rooms: Set<Room> = []
+        for name in Self.pageBuilt() {
+            let data = try FixtureFiles.data("coach/\(name).json")
+            let m = try CoachModel.decode(utf8: data)
+            let compiled = Tokens.defaults(for: m.room)
+            rooms.insert(m.room)
+            let tokens = try JSONText.parse(utf8: data)["tokens"]
+            let type = try XCTUnwrap(tokens?["type"]?.object, name), space = try XCTUnwrap(tokens?["space"]?.object, name)
+            let radius = try XCTUnwrap(tokens?["radius"]?.object, name), font = try XCTUnwrap(tokens?["font"]?.object, name)
             // the chat's half only: the hub's home* sizes never enter CoachModel (contract 6.3)
-            XCTAssertEqual(Set(type.keys), Set(TypeToken.chat.map(\.rawValue)), file)
-            XCTAssertEqual(Set(space.keys), Set(SpaceToken.allCases.map(\.rawValue)), file)
-            XCTAssertEqual(Set(radius.keys), Set(RadiusToken.allCases.map(\.rawValue)), file)
-            XCTAssertEqual(Set(font.keys), Set(FontToken.allCases.map(\.rawValue)), file)
-            for t in TypeToken.chat { XCTAssertEqual(type[t.rawValue]?.double, defaults.size(t), "\(file) type.\(t.rawValue)") }
-            for t in SpaceToken.allCases { XCTAssertEqual(space[t.rawValue]?.double, defaults.space(t), "\(file) space.\(t.rawValue)") }
-            for t in RadiusToken.allCases { XCTAssertEqual(radius[t.rawValue]?.double, defaults.radius(t), "\(file) radius.\(t.rawValue)") }
-            for t in FontToken.allCases { XCTAssertEqual(font[t.rawValue]?.string, defaults.font(t), "\(file) font.\(t.rawValue)") }
+            XCTAssertEqual(Set(type.keys), Set(TypeToken.chat.map(\.rawValue)), name)
+            XCTAssertEqual(Set(space.keys), Set(SpaceToken.allCases.map(\.rawValue)), name)
+            XCTAssertEqual(Set(radius.keys), Set(RadiusToken.allCases.map(\.rawValue)), name)
+            XCTAssertEqual(Set(font.keys), Set(FontToken.allCases.map(\.rawValue)), name)
+            for t in TypeToken.chat { XCTAssertEqual(type[t.rawValue]?.double, compiled.size(t), "\(name) type.\(t.rawValue)") }
+            for t in SpaceToken.allCases { XCTAssertEqual(space[t.rawValue]?.double, compiled.space(t), "\(name) space.\(t.rawValue)") }
+            for t in RadiusToken.allCases { XCTAssertEqual(radius[t.rawValue]?.double, compiled.radius(t), "\(name) radius.\(t.rawValue)") }
+            for t in FontToken.allCases { XCTAssertEqual(font[t.rawValue]?.string, compiled.font(t), "\(name) font.\(t.rawValue)") }
+            XCTAssertEqual(m.tokens.rejected, [], name)
+            XCTAssertEqual(m.tokens, compiled, "\(name): the decoded tokens are the room's compiled defaults")
         }
+        XCTAssertEqual(rooms, [.heavyweight, .lime], "both rooms are page-built")
     }
 
     /// CoachModel stays byte-identical whichever host draws it (contract 6.3): no coach fixture, page-built or
