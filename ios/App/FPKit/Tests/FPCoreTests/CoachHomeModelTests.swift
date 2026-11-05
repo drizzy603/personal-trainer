@@ -203,14 +203,14 @@ final class CoachHomeModelTests: XCTestCase {
         o["groups"] = .array([["head": "Conversation", "rows": .array(rows)]])
         let data = Data(JSONValue.object(o).jsonText.utf8)
         XCTAssertGreaterThan(data.count, 4_000)
-        let start = Date()
         var m: CoachHomeModel?
-        for _ in 0 ..< 10 { m = try CoachHomeModel.decode(utf8: data) }
-        let each = Date().timeIntervalSince(start) / 10
+        let spent = try threadCPUSeconds { for _ in 0 ..< 10 { m = try CoachHomeModel.decode(utf8: data) } }
+        let each = spent / 10
         XCTAssertEqual(m?.groups.first?.rows.count, 24)
-        // GitHub's shared Macs are several times slower and stall at random (CoachModelTests' slack)
+        // The test thread's CPU time, not the wall clock (threadCPUSeconds, CoachModelTests.swift); GitHub's shared Macs
+        // are still several times slower (CoachModelTests' slack)
         let slack: Double = ProcessInfo.processInfo.environment["CI"] == nil ? 1 : 10
-        XCTAssertLessThan(each, 0.016 * slack, "a hub model decodes well inside a frame on the Mac (\(each) s)")
+        XCTAssertLessThan(each, 0.016 * slack, "a hub model decodes well inside a frame on the Mac (\(each) s of the thread's CPU time)")
     }
 
     // MARK: The intent map (N6)

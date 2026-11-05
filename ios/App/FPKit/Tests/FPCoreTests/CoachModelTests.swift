@@ -2,6 +2,24 @@ import Foundation
 import XCTest
 import FPCore
 
+/// The CPU time the calling thread spends in `body`, in seconds: clock_gettime(CLOCK_THREAD_CPUTIME_ID) before and after
+/// (N16). The decode budgets (testSixtyMessagesDecodeQuickly, CoachHomeModelTests.testA4KBModelDecodesQuickly) are held
+/// to it, not to the wall clock, which on a loaded Mac also counts the time the thread waits for a core: the wall-clock
+/// bounds failed gates at load 28-78. The decoders run on the calling thread, so this is all of their work.
+func threadCPUSeconds(file: StaticString = #filePath, line: UInt = #line, _ body: () throws -> Void) rethrows -> Double {
+    func now() -> Double {
+        var t = timespec()
+        let rc = clock_gettime(CLOCK_THREAD_CPUTIME_ID, &t)
+        XCTAssertEqual(rc, 0, "clock_gettime(CLOCK_THREAD_CPUTIME_ID) failed: errno \(errno)", file: file, line: line)
+        return Double(t.tv_sec) + Double(t.tv_nsec) / 1_000_000_000
+    }
+    let start = now()
+    try body()
+    let spent = now() - start
+    XCTAssertGreaterThan(spent, 0, "the thread's CPU clock did not move", file: file, line: line)
+    return spent
+}
+
 final class CoachModelTests: XCTestCase {
     private func model(_ name: String) throws -> CoachModel {
         try CoachModel.decode(utf8: FixtureFiles.data("coach/\(name).json"))
@@ -265,17 +283,17 @@ final class CoachModelTests: XCTestCase {
         let data = try FixtureFiles.data("coach/sixty.json")
         let compact = try JSONSerialization.data(withJSONObject: JSONSerialization.jsonObject(with: data))
         XCTAssertLessThan(compact.count, 40_000, "about 22 KB for 60 messages in the plan; this one carries every block")
-        let start = Date()
         var m: CoachModel?
-        for _ in 0 ..< 10 { m = try CoachModel.decode(utf8: compact) }
-        let each = Date().timeIntervalSince(start) / 10
+        let spent = try threadCPUSeconds { for _ in 0 ..< 10 { m = try CoachModel.decode(utf8: compact) } }
+        let each = spent / 10
         XCTAssertEqual(m?.messages.count, 60)
         XCTAssertEqual(Set(m?.messages.map(\.id) ?? []).count, 60, "ids are unique")
         XCTAssertNotNil(m?.messages.last?.ledger)
-        // GitHub's shared Macs are several times slower and stall at random (GitHub Actions sets CI; xcodebuild hands
-        // TEST_RUNNER_CI to a simulator's test process as CI): there the bound only catches a collapse.
+        // The test thread's CPU time, so a loaded machine's waits for a core do not count (threadCPUSeconds). GitHub's
+        // shared Macs are still several times slower (GitHub Actions sets CI; xcodebuild hands TEST_RUNNER_CI to a
+        // simulator's test process as CI): there the bound only catches a collapse.
         let slack: Double = ProcessInfo.processInfo.environment["CI"] == nil ? 1 : 10
-        XCTAssertLessThan(each, 0.25 * slack, "a model decodes well inside a frame budget on the Mac (\(each) s)")
+        XCTAssertLessThan(each, 0.25 * slack, "a model decodes well inside a frame budget on the Mac (\(each) s of the thread's CPU time)")
     }
 
     /// What a newer page may add decodes, and anything unknown draws as text.
