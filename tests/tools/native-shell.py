@@ -65,7 +65,7 @@ events). `leaves` says it takes the web view out of its window on purpose (its s
 visibility aggregates: counters, a scene replay). `--only` takes any name; a module that does not load, a malformed row
 or a name taken twice stops the run before any launch (exit 2). A module reaches the helpers with
 `import native_shell as shell` (this file registers itself under that name before it loads them): shell_probe, state,
-js, wait, mark, intent, step, shot, sim_lock_held, the readers (page, shellst, screens, coach, home, root, rcoach, rweb,
+js, wait, mark (cap, transient), intent, step, shot, sim_lock_held, plant and clear_runner_markers, the readers (page, shellst, screens, coach, home, root, rcoach, rweb,
 rbar, stack, fp, shown, replaced, intents, page_events, kb_shown, markers, screen_markers, unsettled, marker_state,
 verdicts), the
 About steps and readers (about, about_of, about_words) and the seed's strings. The context c carries c.sim (Sim, from
@@ -78,8 +78,14 @@ any launch (maps/lessons.md:82), every shot taken at its mark. Marker checks rea
 the state byte of section.tabs.marker and model.<screen>.marker, which rest at 0 between sections (contract 10.2):
 describe()'s markers lists every .marker file, so a non-empty list is no verdict.
 
-Shots: a mark holds the app still for HOLD ms and the runner takes the shot as soon as it reads the mark, inside the
-hold (one that ended after the hold may show the next step, and fails the shots check); each is named
+Shots: a mark holds the app still until its shot is on disk. The probe logs the mark, holds MARK_HOLD ms, then waits in
+the page (a js step) for a go file the runner writes into the probe's folder once `simctl io screenshot` has returned
+(the page reads it through Capacitor's own file URL, convertFileSrc); the runner takes the shot as soon as it reads the
+mark. However long a screenshot takes on a loaded machine (5 to 16 s at a 1-minute load of 200, where a fixed hold of
+1.5 s and then 3.5 s let a shot show the next step), the app does not move during it. A mark waits SHOT_CAP ms at most:
+a shot whose go file the page never saw (the cap, or no page to wait in) is late and fails the shots check, but for a
+`transient` mark, whose subject has a shorter life of its own (a toast: 2.2 s, an Undo toast 6 s; its cap stays under
+that life so the steps after it still find it), which is reported instead. Each shot is named
 <runtime>-<root>-<scenario>-<launch>-<label>.png in --out, and a scenario's older shots of the same runtime and root go
 first, so a run on another runtime never overwrites them.
 
@@ -112,7 +118,8 @@ OVER_FULL_SCREEN = 5          # UIModalPresentationStyle.overFullScreen
 LIGHT, DARK = 1, 2            # UIUserInterfaceStyle
 TAB_IDS = ('log', 'progress', 'coach', 'settings')   # the page's FP_TAB_IDS: the tabs a flag's tabs.selected may name
 BAR_H, BAR_SAFE = 83, (34, 0)  # the tab root's bar (delta 14.1): 83 on every iPhone, safe = the window's inset
-HOLD = 3500                   # every mark's hold (ms): the runner's shot lands inside it
+MARK_HOLD = 250               # the probe's own hold at a mark (ms), before it waits for the runner's shot of it
+SHOT_CAP = 60000              # the longest a mark waits for its shot (ms): past it the probe goes on, and the shot is late
 OFFS_FILE = 'fp-policy-offs.json'
 GROUP = 'group.app.kt.trainer'   # the App Group (a build signed to run locally has its container)
 # Plan 13-tests-release.md section 6's offs (T7): build 61 builds the classic root, build 60 is unchanged.
@@ -201,7 +208,8 @@ def launch_args(tag, args, verdicts):
 
 def shot(sim, label, tag=None, mark_event=None, hold=None):
     """A screenshot now, as <runtime>-<root>-<scenario>[-<launch>]-<label>.png in the pass's folder. Taken for a mark
-    (its event and hold), it records whether it ended inside the hold: a late one may show the next step."""
+    (its event), it records when it started after the mark; shell_probe then says whether the app held still until it
+    ended (the mark's go file seen by the page). Called with a `hold` of its own (ms), it is late when it ends past it."""
     if not PASS.out:
         return None
     name = '-'.join(_slug(x) for x in (PASS.prefix, PASS.scenario, tag, label) if x) + '.png'
@@ -213,12 +221,49 @@ def shot(sim, label, tag=None, mark_event=None, hold=None):
     t1 = time.time()
     rec = {'scenario': PASS.scenario, 'file': name, 'label': label, 'ms': int((t1 - t0) * 1000), 'ok': os.path.exists(path)}
     if mark_event is not None and mark_event.get('wall') is not None:
-        hold = 1500 if hold is None else hold
         rec['started'] = int(t0 * 1000 - mark_event['wall'])
-        rec['late'] = t1 * 1000 > mark_event['wall'] + hold
-        rec['hold'] = hold
+        if hold is not None:
+            rec['late'] = t1 * 1000 > mark_event['wall'] + hold
+            rec['hold'] = hold
     PASS.shots.append(rec)
     return rec
+
+
+# A mark's wait for its shot (shell_probe adds it after every mark): the page fetches the go file the runner writes once
+# the shot is on disk, through Capacitor's file URL (the app's own container: the simulator's app runs on the host's
+# files), until it is there or `cap` ms have gone by. The app moves nothing meanwhile.
+SHOT_WAIT_JS = r"""
+var C = window.Capacitor;
+if (!C || typeof C.convertFileSrc !== 'function') return { ok: false, error: 'no Capacitor.convertFileSrc' };
+var url = C.convertFileSrc(args.path), t0 = Date.now(), polls = 0, last = null;
+while (Date.now() - t0 < args.cap) {
+  polls++;
+  try { var r = await fetch(url, { cache: 'no-store' }); if (r.ok) return { ok: true, waited: Date.now() - t0, polls: polls }; last = 'status ' + r.status; }
+  catch (e) { last = String((e && e.message) || e); }
+  await new Promise(function (res) { setTimeout(res, 120); });
+}
+return { ok: false, waited: Date.now() - t0, polls: polls, last: last };
+"""
+
+
+def go_path(pdir, tag, label):
+    """The go file of a mark: the runner writes it once the mark's shot is on disk."""
+    return os.path.join(pdir, '%s.go.%s' % (tag, _slug(label)))
+
+
+def with_shot_waits(phases, pdir, tag):
+    """The phases with a wait for its shot after every mark (SHOT_WAIT_JS), and each mark's own settings by label."""
+    out, meta = [], {}
+    for ph in phases:
+        steps = []
+        for s in ph:
+            steps.append(s)
+            if s.get('op') == 'mark' and s.get('label'):
+                meta[s['label']] = s
+                steps.append(js('shot-wait ' + s['label'], SHOT_WAIT_JS, path=go_path(pdir, tag, s['label']),
+                                cap=int(s.get('cap') or SHOT_CAP)))
+        out.append(steps)
+    return out, meta
 
 
 def clear_shots(scenario):
@@ -244,21 +289,27 @@ def shell_probe(sim, name, phases, args=(), timeout=90, verdicts=False, during=N
     page under test) and, unless `verdicts`, ignores a crash marker the runner's own simctl terminate may have left with
     a screen up. Each `mark` gets its shot as soon as it is read (out=False: none). `during(events)` runs at every read;
     `until` is an event name or a function of the events read so far; `end` 'terminate' (simctl) or 'kill' (SIGKILL,
-    as jetsam's). Returns the events, with pid, tag and timedOut."""
+    as jetsam's). Each mark holds the app until its shot is on disk (with_shot_waits), and the time a shot takes is added
+    to `timeout`. Returns the events, with pid, tag and timedOut."""
     PASS.runs += 1
     tag = '%02d-%s' % (PASS.runs, name)
     pdir = sim.path('Documents', 'fp-probe')
     os.makedirs(pdir, exist_ok=True)
+    for p in glob.glob(os.path.join(pdir, '*.go.*')):   # an earlier pass's go files (--keep-data) would release a mark at once
+        os.remove(p)
+    shots_on = out is not False and bool(PASS.out)
+    meta = {}
+    if shots_on:
+        phases, meta = with_shot_waits(phases, pdir, tag)
     with open(os.path.join(pdir, tag + '.json'), 'w') as f:
         json.dump({'phases': phases}, f)
     logp = os.path.join(pdir, tag + '.jsonl')
     if os.path.exists(logp):
         os.remove(logp)
-    holds = {s.get('label'): s.get('hold', 1500) for ph in phases for s in ph if s.get('op') == 'mark'}
     met_fn = until if callable(until) else (lambda ev: bool(ev.first(until)))
     sim.terminate()
     pid = sim.launch(launch_args(tag, list(args), verdicts))
-    tail, seen, shot_done, met = LogTail(logp), 0, set(), False
+    tail, seen, shot_done, met, recs = LogTail(logp), 0, set(), False, []
     t_end = time.time() + timeout
     while time.time() < t_end:
         time.sleep(0.1)
@@ -267,8 +318,14 @@ def shell_probe(sim, name, phases, args=(), timeout=90, verdicts=False, during=N
             label = e.get('label')
             if e.get('ev') == 'mark' and label and label not in shot_done:
                 shot_done.add(label)
-                if out is not False:
-                    shot(sim, label, tag=tag, mark_event=e, hold=holds.get(label))
+                if shots_on:
+                    rec = shot(sim, label, tag=tag, mark_event=e)
+                    if rec is not None:
+                        rec['transient'] = bool((meta.get(label) or {}).get('transient'))
+                        recs.append(rec)
+                        t_end += rec['ms'] / 1000.0   # the app held still while it was taken
+                    with open(go_path(pdir, tag, label), 'w') as f:
+                        f.write('go\n')
         seen = len(ev)
         if during:
             during(ev)
@@ -277,6 +334,13 @@ def shell_probe(sim, name, phases, args=(), timeout=90, verdicts=False, during=N
             break
     ev = tail.read()
     ev.pid, ev.tag, ev.timedOut = pid, tag, not met
+    for rec in recs:   # held still for the whole shot: the page saw the go file, written once the shot was on disk
+        w = (ev.first('js', label='shot-wait ' + rec['label']) or {}).get('result')
+        w = w if isinstance(w, dict) else {}
+        rec['late'] = w.get('ok') is not True
+        rec['waited'] = w.get('waited')
+        if rec['late']:
+            rec['why'] = w.get('error') or (('the cap (%s ms), last %s' % (w.get('waited'), w.get('last'))) if w else 'the page never answered the wait')
     if end == 'kill' and pid:
         try:
             os.kill(pid, signal.SIGKILL)   # as jetsam ends an app in the background
@@ -307,8 +371,11 @@ def wait(ms):
     return {'op': 'wait', 'ms': ms}
 
 
-def mark(label, hold=HOLD):
-    return {'op': 'mark', 'label': label, 'hold': hold}
+def mark(label, hold=MARK_HOLD, cap=SHOT_CAP, transient=False):
+    """A shot of this moment: the app holds still until the runner's shot of it is on disk, `cap` ms at most. A
+    `transient` mark shows something with a shorter life of its own (a toast); its cap stays under that life, and a
+    shot that ended past it is reported, not failed (it may show the screen without the toast)."""
+    return {'op': 'mark', 'label': label, 'hold': hold, 'cap': cap, 'transient': transient}
 
 
 def intent(label, name, **args):
@@ -719,7 +786,7 @@ def scen_chat(c):
         {'op': 'confirm', 'yes': True}, wait(700),
         js('confirmed', "return localStorage.getItem('kt_probe_confirmed');"), state('confirm answered'),
         js('toast', "showUndoToast('Probe removed', function () { localStorage.setItem('kt_probe_undo', String(Date.now())); }); return true;"),
-        wait(500), state('toast'), mark('toast'), {'op': 'undo'}, wait(600),
+        wait(500), state('toast'), mark('toast', cap=3500, transient=True), {'op': 'undo'}, wait(600),
         js('undone', "return localStorage.getItem('kt_probe_undo');"),
         intent('model back', 'coach.model', model='claude-sonnet-5-5'), wait(600),
         {'op': 'back'}, wait(1800), state('back'), mark('home'),
@@ -808,7 +875,7 @@ def scen_chat(c):
     c.rep.check(s, 'every intent answered (no timeout, no failure)', not fails, fails[:4])
     # Lime: the chat and its toast window are dark (on the tab root the bar and its container too)
     ev = shell_probe(c.sim, 'chat-lime', [[wait(1000), state('lime'), mark('lime'),
-                                            js('toast', "showToast('Probe saved'); return true;"), wait(300), state('lime toast'), mark('lime-toast')]],
+                                            js('toast', "showToast('Probe saved'); return true;"), wait(300), state('lime toast'), mark('lime-toast', cap=1500, transient=True)]],
                      args=['-devNav', 'coach/chat', '-devTheme', 'dark'])
     lime, lt = ev.state('lime'), ev.state('lime toast')
     olt = screens(lt).get('overlay') or {}
@@ -1009,12 +1076,35 @@ def scen_wckill(c):
     c.rep.check(s, 'no visibilitychange in either document while the chat was up', all(v == [] for v in vis), vis)
 
 
-def plant(c, screen):
-    """A screen's crash marker, as a death on screen leaves it (60's file and line), for this page and shell build."""
+def clear_runner_markers(c, s, folder):
+    """What the runner's own simctl terminate left in FPShell (a launch it ended with a native screen up leaves that
+    screen's marker; one it ended inside a short section leaves that marker's state byte at 1): gone before a launch that
+    reads verdicts, so the launch reads only what the scenario planted. Reported as a fact."""
+    left = []
+    for p in sorted(glob.glob(os.path.join(folder, '*.marker'))):
+        base = os.path.basename(p)
+        with open(p, 'rb') as f:
+            data = f.read()
+        if base.startswith('presenting.'):
+            os.remove(p)
+            left.append('%s removed (%s)' % (base, data.decode('utf-8', 'replace').strip()))
+        elif data.endswith(b'\n1'):
+            with open(p, 'wb') as f:
+                f.write(data[:-1] + b'0')
+            left.append('%s at 1, put to 0' % base)
+    if left:
+        c.rep.fact(s, 'the runner\'s own terminate had left: %s' % '; '.join(left))
+    return left
+
+
+def plant(c, screen, s='marker'):
+    """A screen's crash marker, as a death on screen leaves it (60's file and line), for this page and shell build: the
+    only marker the next launch finds."""
     folder = c.sim.path('Library', 'Application Support', 'FPShell')
     os.makedirs(folder, exist_ok=True)
     line = 'presenting %s@%s shell %s' % (screen, c.page, c.shell)
     c.sim.terminate()
+    clear_runner_markers(c, s, folder)
     path = os.path.join(folder, 'presenting.%s.marker' % screen)
     with open(path, 'w') as f:
         f.write(line + '\n')
@@ -1277,9 +1367,8 @@ def scen_inactive(c):
     folder = c.sim.path('Library', 'Application Support', 'FPShell')
     names = ['presenting.coach.marker'] + (['presenting.coachHome.marker'] if c.tabs else [])
     c.sim.terminate()
-    for n in names:
-        if os.path.exists(os.path.join(folder, n)):
-            os.remove(os.path.join(folder, n))
+    os.makedirs(folder, exist_ok=True)
+    clear_runner_markers(c, s, folder)   # what the kill below leaves is the scenario's subject; nothing from before it
     seen = {}
 
     def away(ev):
@@ -1413,8 +1502,17 @@ def aggregates(c, run):
     nh = [f for f in PASS.fellbacks if f[2] == 'no-hello'] + [(r['scenario'], r['tag'], 'state ' + str(r['label'])) for r in PASS.records
                                                               if (r['fellBack'] or {}).get('why') == 'no-hello']
     c.rep.check('window', 'no fallback for want of a hello in any launch (fellBack why no-hello)', not nh, nh[:6])
-    late = [(x['file'], x.get('started'), x.get('ms')) for x in PASS.shots if x.get('late') or not x['ok']]
-    c.rep.check('shots', 'every shot was taken at its mark, inside its hold (%d shots, none late or missing)' % len(PASS.shots), not late, late[:6])
+    late = [(x['file'], x.get('started'), x.get('ms'), x.get('why')) for x in PASS.shots
+            if (x.get('late') and not x.get('transient')) or not x['ok']]
+    c.rep.check('shots', 'every shot was taken while the app held still at its mark (%d shots, none late or missing)' % len(PASS.shots),
+                not late, late[:6])
+    tr = [(x['file'], x.get('ms'), x.get('why')) for x in PASS.shots if x.get('late') and x.get('transient') and x['ok']]
+    if tr:
+        c.rep.fact('shots', '%d transient shot%s ended past %s cap (they may show the screen without their toast): %s' % (
+            len(tr), '' if len(tr) == 1 else 's', 'its' if len(tr) == 1 else 'their', tr))
+    if PASS.shots:
+        ms = sorted(x.get('ms') or 0 for x in PASS.shots)
+        c.rep.fact('shots', 'a screenshot took %d ms at the median, %d ms at the most' % (ms[len(ms) // 2], ms[-1]))
 
 
 def self_test():
@@ -1480,6 +1578,34 @@ def self_test():
         case('a row\'s every wrong type is named (function, rank, backgrounds, leaves)', len(h) == 1 and all(
             w in h[0] for w in ('not callable', 'rank True', 'backgrounds 1', 'leaves \'x\'')), h)
         case('a refused row adds no scenario; the nine keep their own', [e.name for e in entries] == base + ['twice'], [e.name for e in entries])
+    # a mark's wait for its shot, and what the runner's own terminate leaves before a launch that reads verdicts
+    phases = [[state('a'), mark('one'), wait(5)], [mark('two cap', cap=1500, transient=True)]]
+    got, meta = with_shot_waits(phases, '/p', '07-x')
+    w1, w2 = got[0][2], got[1][1]
+    case('every mark is followed by its shot wait (the go file by tag and label, the mark\'s cap)', [s['op'] for s in got[0]] == ['state', 'mark', 'js', 'wait']
+         and w1['label'] == 'shot-wait one' and w1['args'] == {'path': '/p/07-x.go.one', 'cap': SHOT_CAP} and w1['src'] == SHOT_WAIT_JS
+         and w2['args'] == {'path': '/p/07-x.go.two-cap', 'cap': 1500} and meta['two cap']['transient'] is True and got[0][1]['hold'] == MARK_HOLD, got)
+    case('the phases given are left as they were', [s['op'] for s in phases[0]] == ['state', 'mark', 'wait'], phases)
+
+    class Rep:
+        def __init__(self):
+            self.facts = []
+
+        def fact(self, s, text):
+            self.facts.append((s, text))
+
+    with tempfile.TemporaryDirectory() as d:
+        for name, data in (('presenting.coach.marker', b'presenting coach@p shell 61\n'), ('section.tabs.marker', b'tabs@p shell 61\n1'),
+                           ('model.coachHome.marker', b'coachHome@p shell 61\n0'), ('notes.txt', b'x')):
+            with open(os.path.join(d, name), 'wb') as f:
+                f.write(data)
+        cx = type('C', (), {})()
+        cx.rep = Rep()
+        left = clear_runner_markers(cx, 'x', d)
+        files = {n: open(os.path.join(d, n), 'rb').read() for n in sorted(os.listdir(d))}
+        case('the runner\'s leftovers: a screen marker removed, a section left at 1 put to 0, the rest untouched, said as a fact',
+             files == {'model.coachHome.marker': b'coachHome@p shell 61\n0', 'notes.txt': b'x', 'section.tabs.marker': b'tabs@p shell 61\n0'}
+             and len(left) == 2 and len(cx.rep.facts) == 1, (files, left, cx.rep.facts))
     if bad:
         print('native-shell self-test: %d of %d cases wrong' % (len(bad), n[0]))
         return 1

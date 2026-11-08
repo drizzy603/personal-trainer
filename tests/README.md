@@ -270,8 +270,13 @@ docstring of `tools/native-shell.py` lists them) and gets the context `c`
 `leftWindow` and `leftWindowAny` 0 (but in scenarios that take the web view out
 on purpose, `leaves`), no `visibilitychange` (but where the app goes to the
 background, `backgrounds`), no fallback for want of a hello; each mark holds the
-app still for 3.5 s and its shot is taken inside the hold (a late one fails: it
-may show the next step). Shots land in `screenshots/out/native-shell/` as
+app still until its shot is on disk (the probe waits in the page for a go file
+the runner writes once `simctl io screenshot` has returned, 60 s at most), so a
+shot never shows the next step however slow a loaded machine makes it; a late
+one fails, but for a `transient` mark (a toast, whose own life is shorter: its
+cap stays under it), which is reported. Before a launch that reads verdicts, the
+markers the runner's own terminate left go (a fact says which). Shots land in
+`screenshots/out/native-shell/` as
 `<runtime>-<root>-<scenario>-<launch>-<label>.png`, a scenario's older shots of
 the same runtime and root removed first: read every one.
 
