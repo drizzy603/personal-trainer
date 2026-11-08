@@ -11,11 +11,12 @@
 # with their counts of failure lines (about 35 names fit; the last notice says how many more there are).
 # A swift test log is read as SwiftPM wrote it: SwiftPM passes the test process's output on through its standard
 # output, which is buffered and goes out a whole buffer at a time (its size the descriptor's st_blksize: 16384 bytes
-# into a pipe, as in CI's 2>&1 | tee, 4096 into a file), while its own lines go to standard error at once. So when that
-# process crashes, SwiftPM's "error: Process '<xctest> <bundle>' exited with unexpected signal code N" lands after the
-# last whole buffer of the test output and before the rest, and in a 2>&1 log that line can start inside another, whose
-# rest is the next line (SwiftPM 6.4.2: "Test Case '-[M.C testB_pa" then its line, and on the next "sses]' passed
-# (0.000 seconds).").
+# into a pipe, as in CI's 2>&1 | tee, 4096 into a file), while its build lines and the line it writes for a crashed
+# test process go to standard error at once (its closing "Note: Some test targets reported failures:" goes out on
+# standard output, after the rest of the test output). So when that process crashes, SwiftPM's "error: Process
+# '<xctest> <bundle>' exited with unexpected signal code N" lands after the last whole buffer of the test output and
+# before the rest, and in a 2>&1 log that line can start inside another, whose rest is the next line (SwiftPM 6.4.2:
+# "Test Case '-[M.C testB_pa" then its line, and on the next "sses]' passed (0.000 seconds).").
 # Usage: annotate-xc.sh LOG...  (a missing log is skipped; always exits 0)
 # Test: bash .github/scripts/annotate-xc-test.sh
 logs=()
