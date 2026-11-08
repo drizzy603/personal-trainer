@@ -219,8 +219,7 @@ Debug `-fpClearVerdicts` could clear a verdict. Build 61's status adds the reaso
 piece needs), the root built at scene connect, the fallback (`fellBack {why, at}`), the shell's switches, the policy
 file's last check (`status {refresh: true}`, About's "Check the switches now", fetches it first, at most once a minute)
 and two counters, the strays (selections made outside the funnel) and `leftAny` (ShellWebView's moves out of its
-window in any app state, H11; both 61 sheets list it as "Left its window in any state", web 20261103-1); `reset`
-also forgets the piece's decline.
+window in any app state, H11; the page's sheet does not list it yet); `reset` also forgets the piece's decline.
 
 Debug launch arguments (besides FPHost's): `-fpSmoke` (after each hello a ping through the real link, logged as
 `fp: ping ok v1`, subsystem `app.kt.trainer`), `-fpShellProbe <steps file>` with `-fpShellProbeLog <name>`; FPHost's
