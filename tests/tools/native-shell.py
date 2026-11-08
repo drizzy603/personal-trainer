@@ -24,17 +24,19 @@ probe's key, a starter programme, a short conversation, Heavyweight) and checks 
 scenario runs. `--keep-data` installs over the container instead (a tab pass then turns a decline, a verdict, a trip or
 the bar's switch back on through TrovoShell if the root comes up classic); `--no-install` keeps the installed app too.
 
-Scenarios (build 60's nine, under both roots; decision.md section 9, plan tasks C5 and T16):
-  smoke    a -fpSmoke launch logs "fp: ping ok v1"; the launch built this pass's root; hello negotiates v1 with the coach
-           on the classic root, the three pieces on the tab root (the flag's bar 83 high over the window's inset, its
-           first tab); bootDone; Settings > About's Native tab bar and Native Coach rows as the root leaves them (the
-           classic root by policy: "Off by the policy file" and "On . the iPhone's own chat screen")
+Scenarios (build 60's nine and teardown, under both roots; decision.md section 9, plan tasks C5 and T16):
+  smoke    a -fpSmoke launch logs "fp: ping ok v1" (that launch's process); the launch built this pass's root; hello
+           negotiates v1 with the coach on the classic root, the three pieces on the tab root (the flag's bar 83 high
+           over the window's inset, its first tab); bootDone; Settings > About's Native tab bar and Native Coach rows as
+           the root leaves them (the classic root by policy: "Off by the policy file" and "On . the iPhone's own chat
+           screen"); the share hook writes its file into the App Group's container (the page's own reads held off)
   chat     classic: the native chat presented .overFullScreen over the page; tab root: Coach selected, the chat pushed
            on the NATIVE Coach stack (host stack, not modal; the root's coach {mode native, pushed, depth 2}), the web
            view in the Coach slot, in its window, hidden and hidden from VoiceOver, the bar shown; both: the room's
            appearance, a message, the model switch, a forwarded confirm and Undo toast, the screen marker, Back (on the
-           tab root to the hub: its marker, the page still covered on view home), no visibilitychange; Lime is dark
-           (on the tab root the bar too)
+           tab root to the hub: its marker, the page still covered on view home), no visibilitychange; Lime is dark on a
+           light phone and Heavyweight light on a dark phone (on the tab root the bar too, as its style and as the shot
+           draws it: the mean luminance of its frame)
   focus    a focused web field, then the chat put up and taken down (classic: by the page, by Back, by the edge pan;
            tab root: by the page, by Back, by navPop): no keyboard comes back, nothing is focused, the document is not
            scrolled; an edge pan let go early leaves the chat up; on the tab root interactivePop is on for a chat with
@@ -53,39 +55,59 @@ Scenarios (build 60's nine, under both roots; decision.md section 9, plan tasks 
            staying); About says it is paused; Try again brings it back
   counters the web view taken out of its window with the chat up (the fault the shell counts, never by design): the
            leave-window counts (active and any state) and the hidden page go up, About's sheet lists them; on the tab
-           root a stray selection (selectedIndex behind the funnel) is counted and redirected, and both 61 sheets list it
+           root a stray selection (selectedIndex behind the funnel) is counted and redirected, and both 61 sheets list
+           it; from then on nothing leaves the window or hides the page again (the stray's redirect, About's tab moves)
   inactive the app sent to the background right after launch, so the page presents the chat (on the tab root the Coach
            stack) while it is not active: no screen marker while it is away, no verdict at the next launch
+  teardown the scene torn down and connected again with the chat up (sceneCycle: the App's replay of SceneDelegate's
+           teardown and connection, which UIKit never makes on an iPhone): a new root of the pass's kind in a new window
+           around a new web view, and 5 s later the web view, the root and the window it replaced all let go
+           (ShellProbe's replaced; delta 17.10, 20-order 9 item 35), the teardown's moves no leave-window fault, the new
+           document negotiating the root's pieces again
 
-Modules (plan T16 item 1, D-T5). Every tests/tools/shellscen/*.py but _*.py is loaded with importlib and exports
-SCENARIOS = [(name, function, rank, backgrounds), ...], with an optional fifth item, leaves. `function(c)` runs the
-scenario on the context below. `rank` orders the modules' scenarios after the nine (lower first; ties by file name, then
-by place). `backgrounds` says the scenario sends the app to the background (its states may hold visibilitychange
-events). `leaves` says it takes the web view out of its window on purpose (its states are exempt from the window and
-visibility aggregates: counters, a scene replay). `--only` takes any name; a module that does not load, a malformed row
-or a name taken twice stops the run before any launch (exit 2). A module reaches the helpers with
-`import native_shell as shell` (this file registers itself under that name before it loads them): shell_probe, state,
-js, wait, mark (cap, transient), intent, step, shot, sim_lock_held, plant and clear_runner_markers, the readers (page, shellst, screens, coach, home, root, rcoach, rweb,
-rbar, stack, fp, shown, replaced, intents, page_events, kb_shown, markers, screen_markers, unsettled, marker_state,
-verdicts), the
-About steps and readers (about, about_of, about_words) and the seed's strings. The context c carries c.sim (Sim, from
-native-store.py), c.rep (check, fact), c.opts, c.page (the page build), c.root ('tabs' or 'classic': what this pass's
-launches build), c.tabs (c.root == 'tabs'), c.os ('27.0'), c.os_major and c.shell (the binary's build).
+Modules (plan T16 item 1, D-T5; 20-order 9 item 8). Every tests/tools/shellscen/*.py but _*.py is loaded with importlib
+and exports SCENARIOS = [(name, function, rank, backgrounds[, marks]), ...]. `function(c)` runs the scenario on the
+context below. `rank` orders the modules' scenarios after the base ones (lower first; ties by file name, then by place).
+`backgrounds` says the scenario sends the app to the background (its states may hold visibilitychange events). `marks`
+is optional: True or False is `leaves` alone (as before), or a dict {'leaves': bool, 'roots': 'tabs' | 'classic' |
+'both'} with either key left out (roots may also be a list of 'tabs' and 'classic'). `leaves` says the scenario takes
+the web view out of its window on purpose (its states are exempt from the window aggregate, and from the visibility
+aggregate once it has left: counters). `roots` names the roots it runs under, both by default: a tab-root-only row is
+{'roots': 'tabs'} (N15's coachtab and intakeway, T17-T20's). A pass on another root skips it, says so as a fact and
+never counts it as run; a pass with nothing of --only to run on its root says so and ends before it boots or installs
+anything (exit 0). `--only` takes any name; a module that does not load, a malformed row or a name taken twice stops
+the run before any launch (exit 2). A module reaches the helpers with `import native_shell as shell` (this file
+registers itself under that name before it loads them): shell_probe, state, js, wait, mark (cap, transient), intent,
+step, shot, sim_lock_held, plant and clear_runner_markers, appearance, drawn_bar, the readers (page, shellst, screens,
+coach, home, root, rcoach, rweb, rbar, stack, fp, shown, replaced, intents, page_events, kb_shown, markers,
+screen_markers, unsettled, marker_state, verdicts), the About steps and readers (about, about_of, about_words) and the
+seed's strings. The context c carries c.sim (Sim, from native-store.py), c.rep (check, fact), c.opts, c.page (the page
+build), c.root ('tabs' or 'classic': what this pass's launches build), c.tabs (c.root == 'tabs'), c.os ('27.0'),
+c.os_major and c.shell (the binary's build).
 
 Aggregates (plan T16 item 3), over every state of every launch of a pass: leftWindow and leftWindowAny 0 (but in the
-scenarios that leave), visEvents empty (but in the scenarios that background or leave), no fellBack with why no-hello in
-any launch (maps/lessons.md:82), every shot taken at its mark. Marker checks read the screen markers (presenting.*) and
-the state byte of section.tabs.marker and model.<screen>.marker, which rest at 0 between sections (contract 10.2):
-describe()'s markers lists every .marker file, so a non-empty list is no verdict.
+scenarios that leave), visEvents empty (but in the scenarios that background, and in those that leave once they have
+left: a state whose leftWindowAny is above 0), no fellBack with why no-hello in any launch (maps/lessons.md:82), every
+launch run to its end (no probe timed out), every shot taken while the app held still at its mark. Marker checks read
+the screen markers (presenting.*) and the state byte of section.tabs.marker and model.<screen>.marker, which rest at 0
+between sections (contract 10.2): describe()'s markers lists every .marker file, so a non-empty list is no verdict.
+Before a launch that reads verdicts (plant, inactive) what the runner's own terminate left goes, so that launch reads
+only what the scenario planted: a screen marker the previous launch's last state listed with its screen up is removed
+(a fact); any other screen marker, and a section or model marker left at 1 (sections last milliseconds: one left open at
+rest turns any kill into a crash verdict), is a failed check naming the file and that launch, and goes all the same (a
+fact instead when that launch timed out: the runner ended it wherever it was).
 
 Shots: a mark holds the app still until its shot is on disk. The probe logs the mark, holds MARK_HOLD ms, then waits in
 the page (a js step) for a go file the runner writes into the probe's folder once `simctl io screenshot` has returned
 (the page reads it through Capacitor's own file URL, convertFileSrc); the runner takes the shot as soon as it reads the
 mark. However long a screenshot takes on a loaded machine (5 to 16 s at a 1-minute load of 200, where a fixed hold of
-1.5 s and then 3.5 s let a shot show the next step), the app does not move during it. A mark waits SHOT_CAP ms at most:
-a shot whose go file the page never saw (the cap, or no page to wait in) is late and fails the shots check, but for a
-`transient` mark, whose subject has a shorter life of its own (a toast: 2.2 s, an Undo toast 6 s; its cap stays under
-that life so the steps after it still find it), which is reported instead. Each shot is named
+1.5 s and then 3.5 s let a shot show the next step), the app does not move during it. A shot held still only when the
+page's wait saw the go file and went on after the shot ended (its js event's wall time, the host's clock, which the
+simulator's app runs on, at or after the shot's end); else it is late (the cap of SHOT_CAP ms at most, no page to wait
+in, a go file seen too early) and fails the shots check, but for a `transient` mark, whose subject has a shorter life
+of its own (a toast: 2.2 s, an Undo toast 6 s; its cap stays under that life so the steps after it still find it),
+which is reported instead. The marks of one launch need labels distinct as file names (the go file and the PNG are
+named by them): two that are not stop the launch before it starts. Each shot is named
 <runtime>-<root>-<scenario>-<launch>-<label>.png in --out, and a scenario's older shots of the same runtime and root go
 first, so a run on another runtime never overwrites them.
 
@@ -98,11 +120,13 @@ import json
 import os
 import re
 import signal
+import struct
 import subprocess
 import sys
 import tempfile
 import time
 import traceback
+import zlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 _spec = importlib.util.spec_from_file_location('native_store', os.path.join(HERE, 'native-store.py'))
@@ -120,6 +144,11 @@ TAB_IDS = ('log', 'progress', 'coach', 'settings')   # the page's FP_TAB_IDS: th
 BAR_H, BAR_SAFE = 83, (34, 0)  # the tab root's bar (delta 14.1): 83 on every iPhone, safe = the window's inset
 MARK_HOLD = 250               # the probe's own hold at a mark (ms), before it waits for the runner's shot of it
 SHOT_CAP = 60000              # the longest a mark waits for its shot (ms): past it the probe goes on, and the shot is late
+ROOTS = ('tabs', 'classic')   # the roots a pass builds, and a scenario row's `roots` names
+# The bar as a shot draws it: the mean luminance (0-255) of its frame. Measured at 64cba89 on the chat's shots: Lime's
+# dark glass over the dark Coach stack 35 on iOS 27.0, the light glass of H9f1 over it 129 on iOS 26.5, Heavyweight's
+# paper 239-240 on both runtimes.
+DARK_BAR_MAX, LIGHT_BAR_MIN = 80, 170
 OFFS_FILE = 'fp-policy-offs.json'
 GROUP = 'group.app.kt.trainer'   # the App Group (a build signed to run locally has its container)
 # Plan 13-tests-release.md section 6's offs (T7): build 61 builds the classic root, build 60 is unchanged.
@@ -163,6 +192,7 @@ class Pass:
         self.fellbacks = []
         self.shots = []
         self.launches = []
+        self.last = None   # the newest launch: {scenario, tag, timedOut, state: its last state event or None}
 
 
 PASS = Pass()
@@ -208,8 +238,9 @@ def launch_args(tag, args, verdicts):
 
 def shot(sim, label, tag=None, mark_event=None, hold=None):
     """A screenshot now, as <runtime>-<root>-<scenario>[-<launch>]-<label>.png in the pass's folder. Taken for a mark
-    (its event), it records when it started after the mark; shell_probe then says whether the app held still until it
-    ended (the mark's go file seen by the page). Called with a `hold` of its own (ms), it is late when it ends past it."""
+    (its event), it records when it started after the mark and when it ended (`end`, epoch ms); judge_shots then says
+    whether the app held still until it ended (the mark's go file seen by the page after that). Called with a `hold` of
+    its own (ms), it is late when it ends past it."""
     if not PASS.out:
         return None
     name = '-'.join(_slug(x) for x in (PASS.prefix, PASS.scenario, tag, label) if x) + '.png'
@@ -219,7 +250,8 @@ def shot(sim, label, tag=None, mark_event=None, hold=None):
     t0 = time.time()
     sim.screenshot(path)
     t1 = time.time()
-    rec = {'scenario': PASS.scenario, 'file': name, 'label': label, 'ms': int((t1 - t0) * 1000), 'ok': os.path.exists(path)}
+    rec = {'scenario': PASS.scenario, 'tag': tag, 'file': name, 'path': path, 'label': label, 'ms': int((t1 - t0) * 1000),
+           'end': int(t1 * 1000), 'ok': os.path.exists(path)}
     if mark_event is not None and mark_event.get('wall') is not None:
         rec['started'] = int(t0 * 1000 - mark_event['wall'])
         if hold is not None:
@@ -227,6 +259,44 @@ def shot(sim, label, tag=None, mark_event=None, hold=None):
             rec['hold'] = hold
     PASS.shots.append(rec)
     return rec
+
+
+def shoot_mark(sim, mark_event, tag, pdir, meta):
+    """A mark's shot, and only then its go file: the page's wait for it lets the app go on once the shot is on disk.
+    Returns the shot's record (None with no shots folder; the go file is written all the same)."""
+    label = mark_event.get('label')
+    rec = shot(sim, label, tag=tag, mark_event=mark_event)
+    if rec is not None:
+        rec['transient'] = bool((meta.get(label) or {}).get('transient'))
+    with open(go_path(pdir, tag, label), 'w') as f:
+        f.write('go\n')
+    return rec
+
+
+def judge_shots(recs, ev):
+    """Whether the app held still for each mark's whole shot: the page's wait for the go file (its 'shot-wait' js event)
+    said ok, and said it at a wall time at or after the shot's end (the host's clock, which the simulator's app runs
+    on): the go file is written once the shot is on disk, so a page that went on earlier saw a go file too early. Else
+    the shot is late, and `why` says what the wait said, with both times."""
+    for rec in recs:
+        e = ev.first('js', label='shot-wait ' + rec['label']) or {}
+        res = e.get('result')
+        w = res if isinstance(res, dict) else {}
+        rec['waited'] = w.get('waited')
+        wall, end = e.get('wall'), rec.get('end')
+        if not e:
+            rec['late'], rec['why'] = True, 'the page never answered the wait'
+        elif not isinstance(res, dict):
+            rec['late'], rec['why'] = True, 'the wait answered %r' % (res,)
+        elif w.get('ok') is not True:
+            rec['late'], rec['why'] = True, w.get('error') or 'the cap (%s ms), last %s' % (w.get('waited'), w.get('last'))
+        elif not isinstance(wall, (int, float)) or not isinstance(end, (int, float)) or wall < end:
+            rec['late'] = True
+            rec['why'] = 'the page went on at %s, before the shot ended at %s (its go file seen too early)' % (wall, end)
+        else:
+            rec['late'] = False
+            rec.pop('why', None)
+    return recs
 
 
 # A mark's wait for its shot (shell_probe adds it after every mark): the page fetches the go file the runner writes once
@@ -252,8 +322,19 @@ def go_path(pdir, tag, label):
 
 
 def with_shot_waits(phases, pdir, tag):
-    """The phases with a wait for its shot after every mark (SHOT_WAIT_JS), and each mark's own settings by label."""
-    out, meta = [], {}
+    """The phases with a wait for its shot after every mark (SHOT_WAIT_JS), and each mark's own settings by label. The
+    go file and the PNG are named by the label's slug, so two marks of one launch whose labels make the same file name
+    (one label twice, or 'a b' and 'a-b') are refused (ValueError): the second would be released by the first's go file
+    and never shot."""
+    out, meta, slugs = [], {}, {}
+    for ph in phases:
+        for s in ph:
+            if s.get('op') == 'mark' and s.get('label'):
+                k = _slug(s['label'])
+                if k in slugs:
+                    raise ValueError('launch %s: the marks %r and %r share the file name %s (their go file and their shot)'
+                                     % (tag, slugs[k], s['label'], k))
+                slugs[k] = s['label']
     for ph in phases:
         steps = []
         for s in ph:
@@ -275,13 +356,15 @@ def clear_shots(scenario):
 
 def _record(tag, ev):
     PASS.launches.append((PASS.scenario, tag, ev.timedOut))
-    for e in ev.all('state'):
+    sts = ev.all('state')
+    for e in sts:
         sh = shellst(e)
         PASS.records.append({'scenario': PASS.scenario, 'tag': tag, 'label': e.get('label'),
                              'leftWindow': sh.get('leftWindow'), 'leftWindowAny': sh.get('leftWindowAny'),
                              'visEvents': page(e).get('visEvents'), 'fellBack': root(e).get('fellBack')})
     for e in ev.all('fellBack'):
         PASS.fellbacks.append((PASS.scenario, tag, e.get('why')))
+    PASS.last = {'scenario': PASS.scenario, 'tag': tag, 'timedOut': ev.timedOut, 'state': sts[-1] if sts else None}
 
 
 def shell_probe(sim, name, phases, args=(), timeout=90, verdicts=False, during=None, until='done', out=None, end='terminate'):
@@ -289,8 +372,8 @@ def shell_probe(sim, name, phases, args=(), timeout=90, verdicts=False, during=N
     page under test) and, unless `verdicts`, ignores a crash marker the runner's own simctl terminate may have left with
     a screen up. Each `mark` gets its shot as soon as it is read (out=False: none). `during(events)` runs at every read;
     `until` is an event name or a function of the events read so far; `end` 'terminate' (simctl) or 'kill' (SIGKILL,
-    as jetsam's). Each mark holds the app until its shot is on disk (with_shot_waits), and the time a shot takes is added
-    to `timeout`. Returns the events, with pid, tag and timedOut."""
+    as jetsam's). Each mark holds the app until its shot is on disk (with_shot_waits, shoot_mark, judge_shots), and the
+    time a shot takes is added to `timeout`. Returns the events, with pid, tag and timedOut."""
     PASS.runs += 1
     tag = '%02d-%s' % (PASS.runs, name)
     pdir = sim.path('Documents', 'fp-probe')
@@ -319,13 +402,10 @@ def shell_probe(sim, name, phases, args=(), timeout=90, verdicts=False, during=N
             if e.get('ev') == 'mark' and label and label not in shot_done:
                 shot_done.add(label)
                 if shots_on:
-                    rec = shot(sim, label, tag=tag, mark_event=e)
+                    rec = shoot_mark(sim, e, tag, pdir, meta)
                     if rec is not None:
-                        rec['transient'] = bool((meta.get(label) or {}).get('transient'))
                         recs.append(rec)
                         t_end += rec['ms'] / 1000.0   # the app held still while it was taken
-                    with open(go_path(pdir, tag, label), 'w') as f:
-                        f.write('go\n')
         seen = len(ev)
         if during:
             during(ev)
@@ -334,13 +414,7 @@ def shell_probe(sim, name, phases, args=(), timeout=90, verdicts=False, during=N
             break
     ev = tail.read()
     ev.pid, ev.tag, ev.timedOut = pid, tag, not met
-    for rec in recs:   # held still for the whole shot: the page saw the go file, written once the shot was on disk
-        w = (ev.first('js', label='shot-wait ' + rec['label']) or {}).get('result')
-        w = w if isinstance(w, dict) else {}
-        rec['late'] = w.get('ok') is not True
-        rec['waited'] = w.get('waited')
-        if rec['late']:
-            rec['why'] = w.get('error') or (('the cap (%s ms), last %s' % (w.get('waited'), w.get('last'))) if w else 'the page never answered the wait')
+    judge_shots(recs, ev)   # held still for the whole shot: the page went on only after it was on disk
     if end == 'kill' and pid:
         try:
             os.kill(pid, signal.SIGKILL)   # as jetsam ends an app in the background
@@ -443,6 +517,91 @@ def sim_lock_held():
     return False
 
 
+# ── what a shot draws ────────────────────────────────────────────────────────────────────────────────────────────────
+
+def appearance(sim, value=None):
+    """The phone's appearance (simctl ui): read it ('light' or 'dark'), or set it to `value`."""
+    if value is None:
+        return sim.sh('xcrun', 'simctl', 'ui', sim.udid, 'appearance', check=False).strip()
+    sim.sh('xcrun', 'simctl', 'ui', sim.udid, 'appearance', value, check=False)
+    return value
+
+
+def png_bmp(png):
+    """A PNG's pixels as an uncompressed BMP's bytes (sips, macOS's own image tool, converts it), or None."""
+    with tempfile.TemporaryDirectory() as d:
+        bmp = os.path.join(d, 'shot.bmp')
+        r = subprocess.run(['sips', '-s', 'format', 'bmp', png, '--out', bmp], capture_output=True, text=True)
+        if r.returncode != 0 or not os.path.isfile(bmp):
+            return None
+        with open(bmp, 'rb') as f:
+            return f.read()
+
+
+def bmp_size(data):
+    """(width, height) in pixels of a BMP's bytes."""
+    w, h = struct.unpack_from('<ii', data, 18)
+    return w, abs(h)
+
+
+def bmp_luma(data, rect, step=2):
+    """The mean luminance (0-255: Rec. 709's weights on the sRGB bytes) of the pixels of `rect` (x0, y0, x1, y1 in
+    pixels, clipped to the image), every `step`-th row and column, of an uncompressed 24- or 32-bit BMP (rows top-down
+    or bottom-up, channels by its masks); None when the rect holds no pixel or the BMP is of another kind."""
+    if data[:2] != b'BM':
+        return None
+    off = struct.unpack_from('<I', data, 10)[0]
+    w, h, _, bpp, comp = struct.unpack_from('<iiHHI', data, 18)
+    if bpp not in (24, 32) or comp not in (0, 3, 6):
+        return None
+    masks = struct.unpack_from('<III', data, 54) if comp in (3, 6) else (0xff0000, 0xff00, 0xff)
+    chans = []
+    for m, wt in zip(masks, (0.2126, 0.7152, 0.0722)):
+        if not m:
+            return None
+        sh = (m & -m).bit_length() - 1
+        chans.append((m, sh, wt * 255.0 / (m >> sh)))
+    top_down, rows = h < 0, abs(h)
+    bpx, stride = bpp // 8, ((w * bpp + 31) // 32) * 4
+    x0, y0, x1, y1 = max(0, int(rect[0])), max(0, int(rect[1])), min(w, int(rect[2])), min(rows, int(rect[3]))
+    total, n = 0.0, 0
+    for y in range(y0, y1, step):
+        base = off + (y if top_down else rows - 1 - y) * stride
+        for x in range(x0, x1, step):
+            p = base + x * bpx
+            v = int.from_bytes(data[p:p + bpx], 'little')
+            total += sum(((v & m) >> sh) * k for m, sh, k in chans)
+            n += 1
+    return total / n if n else None
+
+
+def drawn_bar(e, tag, label):
+    """The tab bar as a shot draws it, not as the root asks for it: the mean luminance (0-255) of the bar's frame
+    (describe().root.bar.frame, in points) in the shot of mark `label` of launch `tag`, the frame scaled by the shot's
+    width over the window's (the right edge of the web view's frame or the bar's, which both span it). Returns (luma,
+    what was read) or (None, why not)."""
+    rec = next((x for x in PASS.shots if x.get('tag') == tag and x.get('label') == label), None)
+    if not rec or not rec.get('ok'):
+        return None, 'no shot of the mark %r in launch %s' % (label, tag)
+    fr, wf = rbar(e).get('frame') or {}, rweb(e).get('frame') or {}
+    win = max((wf.get('x') or 0) + (wf.get('w') or 0), (fr.get('x') or 0) + (fr.get('w') or 0))
+    if not fr.get('h') or not win:
+        return None, 'no bar frame in the state (bar %s, web %s)' % (fr, wf)
+    data = png_bmp(rec['path'])
+    if not data:
+        return None, 'sips could not read %s' % rec['file']
+    pw, _ = bmp_size(data)
+    k = pw / float(win)
+    if not 1 <= k <= 4:
+        return None, 'the shot is %d px wide for a window of %s points' % (pw, win)
+    rect = (fr['x'] * k, fr['y'] * k, (fr['x'] + fr['w']) * k, (fr['y'] + fr['h']) * k)
+    luma = bmp_luma(data, rect)
+    info = {'shot': rec['file'], 'frame': fr, 'scale': round(k, 3), 'px': [int(v) for v in rect]}
+    if luma is None:
+        return None, dict(info, why='no pixel read')
+    return round(luma, 1), dict(info, luma=round(luma, 1))
+
+
 # ── the page's side ──────────────────────────────────────────────────────────────────────────────────────────────────
 
 # The coach answers at once (no network): every chat turn gets one short reply.
@@ -477,6 +636,16 @@ var programme = false;
 if (typeof getCustomRoutine === 'function' && !getCustomRoutine()) {
   setCustomRoutine(buildStarterRoutine({goal: 'muscle', days: 3, runs: 0, equip: 'full', exp: 1})); _startProgramme(); programme = true; }
 return { ok: true, programme: programme, build: (typeof APP_BUILD !== 'undefined') ? APP_BUILD : null };
+"""
+
+# The page's own reads of a pending share (checkPendingShare: the boot's +2.5 s, a return's +0.6 s, one at a time by
+# _shareBusy) held off for the rest of the launch: one under way is let finish, then _shareBusy stays set, so a share
+# the probe's hook writes stays on disk for the runner (a late boot read would otherwise take it into the composer).
+SHARE_HOLD_JS = r"""
+for (var i = 0; i < 100 && window._shareBusy; i++) await new Promise(function (r) { setTimeout(r, 100); });
+var busy = !!window._shareBusy;
+if (!busy) window._shareBusy = true;
+return { held: !busy && window._shareBusy === true, at: Math.round(performance.now()) };
 """
 
 # About's Try again for the bar and the Coach (TrovoShell reset: a decline, crash verdicts and a breaker's trip go) and
@@ -713,11 +882,16 @@ def scen_smoke(c):
     ev = shell_probe(c.sim, 'smoke', [[state('smoke')]], args=['-fpSmoke'])
     e = ev.state('smoke')
     c.page = shellst(e).get('pageBuild') or c.page
+    # this launch's process only: a pass on the other root on the same phone (or an earlier run) logs the same line
+    pred = 'subsystem == "app.kt.trainer" AND eventMessage CONTAINS "fp: ping"'
+    if ev.pid:
+        pred += ' AND processID == %d' % ev.pid
     out = c.sim.sh('xcrun', 'simctl', 'spawn', c.sim.udid, 'log', 'show', '--last', '%dm' % (int((time.time() - t0) / 60) + 2),
-                   '--predicate', 'subsystem == "app.kt.trainer" AND eventMessage CONTAINS "fp: ping"', '--style', 'compact', check=False)
+                   '--predicate', pred, '--style', 'compact', check=False)
     lines = [l for l in out.splitlines() if 'fp: ping' in l]
     ok = [l for l in out.splitlines() if 'fp: ping ok v1' in l and 'app.kt.trainer:shell' in l]
-    c.rep.check(s, 'a -fpSmoke launch logs "fp: ping ok v1" (subsystem app.kt.trainer)', bool(ok), (ok or lines or ['no line'])[-1].strip()[:160])
+    c.rep.check(s, 'a -fpSmoke launch logs "fp: ping ok v1" (subsystem app.kt.trainer, that launch\'s process: pid %s)' % ev.pid,
+                bool(ok) and bool(ev.pid), (ok or lines or ['no line'])[-1].strip()[:160])
     p, sh = page(e), shellst(e)
     # The screens compiled into the binary (FPCore ShellContract.binaryScreens): build 60 the chat alone, build 61 the
     # chat, the native Coach tab's home and the tab root (20-order 9 item 11). The root decides what is offered and
@@ -760,9 +934,10 @@ def scen_smoke(c):
         return
     # Settings > About under build 61's binary (contract 10.5): the Native tab bar row says why the root is what it is,
     # and the Native Coach row reads the piece that hosts the Coach (_fpCoachHost).
-    # Then the share hook (delta 17.7: T18's share scenarios need this build's App Group container), after the page's
-    # boot read of a pending share (+2.5 s).
-    ev = shell_probe(c.sim, 'smoke-about', [[wait(1000), *about(sheet='', label='about'), mark('about'), {'op': 'share', 'comment': ''}, wait(300)]])
+    # Then the share hook (delta 17.7: T18's share scenarios need this build's App Group container), once the page's own
+    # reads of a pending share are held off for the rest of the launch (SHARE_HOLD_JS), so the file is the runner's to read.
+    ev = shell_probe(c.sim, 'smoke-about', [[wait(1000), *about(sheet='', label='about'), mark('about'), js('share hold', SHARE_HOLD_JS),
+                                             {'op': 'share', 'comment': ''}, wait(300)]])
     ab = about_of(ev)
     if c.tabs:
         want_t, want_c, why = TABS_ON, COACH_TAB_ON, 'the tab root live'
@@ -775,13 +950,15 @@ def scen_smoke(c):
     c.rep.check(s, 'Settings > About > %s says "%s"' % (about_words(ab)['title'], want_c), ab.get('sub') == want_c
                 and about_words(ab)['title'] in (ab.get('row') or ''), {'row': ab.get('row'), 'coach': ab_screen(ab, 'coach'), 'coachHome': ab_screen(ab, 'coachHome')})
     # The share hook writes its JPEG into the group's container (stored file), never the base64 slot; the file goes again
-    # at once, so no later launch's page picks a share up.
+    # at once, so no later launch's page picks a share up. (The comment it leaves, '', reads as no comment: TrovoShare's
+    # getPendingShare answers '' for a missing one, and a share writes its own.)
     se = ev.first('share') or {}
+    hold = (ev.first('js', label='share hold') or {}).get('result') or {}
     jpg = os.path.join(gc, 'pendingShare.jpg') if gc else ''
     there = bool(jpg) and os.path.isfile(jpg)
-    c.rep.check(s, 'the share hook writes pendingShare.jpg into the App Group\'s container (stored file, delta 17.7)',
-                se.get('ran') is True and se.get('stored') == 'file' and se.get('legacy') is False and there,
-                {k: se.get(k) for k in ('ran', 'stored', 'legacy', 'jpeg', 'bytes', 'error')} | {'file': there})
+    c.rep.check(s, 'the share hook writes pendingShare.jpg into the App Group\'s container (stored file, delta 17.7; the page\'s own reads held off)',
+                hold.get('held') is True and se.get('ran') is True and se.get('stored') == 'file' and se.get('legacy') is False and there,
+                {k: se.get(k) for k in ('ran', 'stored', 'legacy', 'jpeg', 'bytes', 'error')} | {'file': there, 'hold': hold})
     if there:
         os.remove(jpg)
 
@@ -823,7 +1000,7 @@ def scen_chat(c):
         c.rep.check(s, 'the page under it: placeholder, no web chat, covered, both pieces shown', pu.get('ph') and not pu.get('webChat')
                     and shown(up).get('coach') and shown(up).get('coachHome') and fp(up).get('covered') and pu.get('coachMode') == 'native',
                     {k: pu.get(k) for k in ('ph', 'phScreen', 'webChat', 'tab', 'view', 'coachMode')} | {'shown': shown(up)})
-        c.rep.check(s, 'Heavyweight\'s chat and bar are light whatever the phone says (the room\'s style)', cu.get('interfaceStyle') == LIGHT
+        c.rep.check(s, 'Heavyweight\'s chat and bar take the room\'s style, light (on a dark phone: chat-dark-phone below)', cu.get('interfaceStyle') == LIGHT
                     and rb.get('style') == 'light', '%s / bar %s' % (cu.get('interfaceStyle'), rb.get('style')))
         c.rep.check(s, 'one Coach-tab marker, the chat\'s, while it is on top of the stack', names_screen(screen_markers(up), 'coach', c)
                     and not names_screen(screen_markers(up), 'coachHome', c), screen_markers(up))
@@ -834,7 +1011,8 @@ def scen_chat(c):
                     and screens(up).get('webViewA11yHidden') is True and cu.get('modal') is True, {k: screens(up).get(k) for k in ('webViewInWindow', 'webViewA11yHidden')})
         c.rep.check(s, 'the page under it: placeholder, no web chat, covered', pu.get('ph') and not pu.get('webChat') and shown(up).get('coach')
                     and fp(up).get('covered'), {k: pu.get(k) for k in ('ph', 'webChat', 'tab', 'view')})
-        c.rep.check(s, 'Heavyweight\'s chat is light whatever the phone says (overrideUserInterfaceStyle)', cu.get('interfaceStyle') == LIGHT, cu.get('interfaceStyle'))
+        c.rep.check(s, 'Heavyweight\'s chat takes the room\'s style, light (overrideUserInterfaceStyle; on a dark phone: chat-dark-phone below)',
+                    cu.get('interfaceStyle') == LIGHT, cu.get('interfaceStyle'))
         c.rep.check(s, 'the crash marker names the chat while it is up', names_screen(screen_markers(up), 'coach', c), screen_markers(up))
     ps = page(sent)
     texts = ps.get('texts') or []
@@ -885,7 +1063,9 @@ def scen_chat(c):
     c.rep.check(s, 'no visibilitychange in the page while the chat was up (present to Back)', all(v == [] for v in vis) and all(page(e).get('vis') == 'visible' for e in ev.all('state')), vis)
     fails = [r for r in intents(ev) if r.get('outcome') not in ('done', None)]
     c.rep.check(s, 'every intent answered (no timeout, no failure)', not fails, fails[:4])
-    # Lime: the chat and its toast window are dark (on the tab root the bar and its container too)
+    # Lime on a light phone (the run's phones are light): the chat and its toast window are dark, and on the tab root the
+    # bar as the root asks for it (its style and its container's) and as the shot draws it (the band of its frame)
+    phone = appearance(c.sim)
     ev = shell_probe(c.sim, 'chat-lime', [[wait(1000), state('lime'), mark('lime'),
                                             js('toast', "showToast('Probe saved'); return true;"), wait(300), state('lime toast'), mark('lime-toast', cap=1500, transient=True)]],
                      args=['-devNav', 'coach/chat', '-devTheme', 'dark'])
@@ -893,12 +1073,35 @@ def scen_chat(c):
     olt = screens(lt).get('overlay') or {}
     dark = coach(lime).get('interfaceStyle') == DARK and olt.get('interfaceStyle') == DARK and olt.get('toast') == 'Probe saved'
     if c.tabs:
-        c.rep.check(s, 'Lime\'s pushed chat, its bar and the toast window are dark (the room\'s style, whatever the phone says)',
+        c.rep.check(s, 'Lime\'s pushed chat, its bar and the toast window ask for dark (the room\'s style; the phone %s)' % (phone or '?'),
                     dark and coach(lime).get('host') == 'stack' and rbar(lime).get('style') == 'dark' and rbar(lime).get('containerStyle') in ('dark', None),
                     '%s / bar %s, container %s / %s' % (coach(lime).get('interfaceStyle'), rbar(lime).get('style'), rbar(lime).get('containerStyle'), olt))
+        luma, seen = drawn_bar(lime, ev.tag, 'lime')
+        c.rep.check(s, 'Lime\'s bar draws dark over the dark Coach stack (the mean luminance of its frame in the shot under %d of 255; '
+                    'iOS 26.5\'s light glass there is H9f1)' % DARK_BAR_MAX, luma is not None and luma < DARK_BAR_MAX, seen)
     else:
-        c.rep.check(s, 'Lime\'s chat and its toast window are dark (overrideUserInterfaceStyle from paper)', dark,
+        c.rep.check(s, 'Lime\'s chat and its toast window are dark (overrideUserInterfaceStyle from paper; the phone %s)' % (phone or '?'), dark,
                     '%s / %s' % (coach(lime).get('interfaceStyle'), olt))
+    # Heavyweight on a phone set to dark: the room's light all the same (the chat, and on the tab root the bar as asked
+    # and as drawn); the phone's own appearance put back after
+    appearance(c.sim, 'dark')
+    try:
+        ev = shell_probe(c.sim, 'chat-dark-phone', [[wait(1000), state('dark phone'), mark('dark-phone')]], args=['-devNav', 'coach/chat'])
+    finally:
+        appearance(c.sim, phone if phone in ('light', 'dark') else 'light')
+    dp = ev.state('dark phone')
+    cd = coach(dp)
+    if c.tabs:
+        c.rep.check(s, 'Heavyweight on a phone set to dark: the pushed chat and the bar still ask for light (the room\'s style, not the phone\'s)',
+                    cd.get('presented') and cd.get('host') == 'stack' and cd.get('interfaceStyle') == LIGHT and rbar(dp).get('style') == 'light'
+                    and rbar(dp).get('containerStyle') in ('light', None),
+                    '%s / bar %s, container %s' % (cd.get('interfaceStyle'), rbar(dp).get('style'), rbar(dp).get('containerStyle')))
+        luma, seen = drawn_bar(dp, ev.tag, 'dark-phone')
+        c.rep.check(s, 'Heavyweight\'s bar draws light on a phone set to dark (the mean luminance of its frame in the shot over %d of 255)'
+                    % LIGHT_BAR_MIN, luma is not None and luma > LIGHT_BAR_MIN, seen)
+    else:
+        c.rep.check(s, 'Heavyweight on a phone set to dark: the chat stays light (overrideUserInterfaceStyle, the room\'s)',
+                    cd.get('presented') and cd.get('interfaceStyle') == LIGHT, {k: cd.get(k) for k in ('presented', 'interfaceStyle', 'style')})
 
 
 FIELD_JS = r"""
@@ -1089,24 +1292,51 @@ def scen_wckill(c):
 
 
 def clear_runner_markers(c, s, folder):
-    """What the runner's own simctl terminate left in FPShell (a launch it ended with a native screen up leaves that
-    screen's marker; one it ended inside a short section leaves that marker's state byte at 1): gone before a launch that
-    reads verdicts, so the launch reads only what the scenario planted. Reported as a fact."""
-    left = []
+    """What the previous launch left in FPShell, gone before a launch that reads verdicts, so that launch reads only
+    what the scenario plants. The runner ends every launch with simctl terminate, and one it ends with a native screen
+    up leaves that screen's marker (presenting.<screen>.marker): that is the runner's own leftover when the launch's last
+    state listed the file with its screen up (removed, a fact). Anything else is a failed check naming the file and the
+    launch: a screen marker that state did not list with its screen up, or a section or model marker at 1 (contract 10.2:
+    sections last milliseconds, so one left open at rest turns any kill into a crash verdict). Those go too (a marker at 1
+    put to 0), so the verdict launch still reads only what is planted. When the previous launch timed out (the runner
+    ended it wherever it was) its leftovers are facts. Returns [(file, 'runner' | 'unexplained' | 'timed out', what)]."""
+    last = PASS.last or {}
+    st = last.get('state')
+    listed = set(markers(st)) if st else set()
+    up = set(screens(st).get('up') or []) if st else set()
+    who = ('launch %s (%s)' % (last.get('tag'), last.get('scenario'))) if last else 'no launch of this pass yet'
+    found = []
     for p in sorted(glob.glob(os.path.join(folder, '*.marker'))):
         base = os.path.basename(p)
         with open(p, 'rb') as f:
             data = f.read()
+        line = data.decode('utf-8', 'replace').strip()
         if base.startswith('presenting.'):
+            screen = base[len('presenting.'):-len('.marker')]
             os.remove(p)
-            left.append('%s removed (%s)' % (base, data.decode('utf-8', 'replace').strip()))
+            if line in listed and screen in up:
+                kind, what = 'runner', '%s (%s): removed, its screen up at the last state' % (base, line)
+            else:
+                kind = 'timed out' if last.get('timedOut') else 'unexplained'
+                what = '%s (%s): removed; the last state %s' % (base, line, 'listed it, its screen not up' if line in listed
+                                                                  else 'did not list it')
         elif data.endswith(b'\n1'):
             with open(p, 'wb') as f:
                 f.write(data[:-1] + b'0')
-            left.append('%s at 1, put to 0' % base)
-    if left:
-        c.rep.fact(s, 'the runner\'s own terminate had left: %s' % '; '.join(left))
-    return left
+            kind = 'timed out' if last.get('timedOut') else 'unexplained'
+            what = '%s at 1 (%s): a section held open at rest, put to 0' % (base, line.replace('\n', ' '))
+        else:
+            continue
+        found.append((base, kind, what))
+    ran = [w for _, k, w in found if k == 'runner']
+    timed = [w for _, k, w in found if k == 'timed out']
+    bad = [w for _, k, w in found if k == 'unexplained']
+    if ran:
+        c.rep.fact(s, 'the runner\'s terminate of %s had left: %s' % (who, '; '.join(ran)))
+    if timed:
+        c.rep.fact(s, '%s timed out, so the runner ended it wherever it was; it had left: %s' % (who, '; '.join(timed)))
+    c.rep.check(s, 'the launch before a verdict launch left no marker but its own screen\'s (%s)' % who, not bad, bad)
+    return found
 
 
 def plant(c, screen, s='marker'):
@@ -1327,9 +1557,9 @@ def scen_counters(c):
     if c.tabs:
         steps += [{'op': 'stray', 'tab': 'progress'}, wait(1500), state('stray'), mark('stray'),
                   *about(label='chat sheet'), mark('chat-sheet'), js('open tabs sheet', ABOUT_JS, sheet='tabs'), wait(1200),
-                  js('tabs sheet', ABOUT_READ_JS), mark('tabs-sheet')]
+                  js('tabs sheet', ABOUT_READ_JS), mark('tabs-sheet'), state('end')]
     else:
-        steps += [*about(label='chat sheet'), mark('counters-about')]
+        steps += [*about(label='chat sheet'), mark('counters-about'), state('end')]
     ev = shell_probe(c.sim, 'counters', [steps], args=['-devNav', 'coach/chat'], timeout=150)
     b, back = ev.state('before'), ev.state('back')
     c0 = ((shellst(b).get('status') or {}).get('counters') or {})
@@ -1352,6 +1582,16 @@ def scen_counters(c):
     ab = about_of(ev, 'chat sheet')
     c.rep.check(s, 'Settings > About\'s sheet lists them', 'Left its window while open' in (ab.get('sheet') or '') and '1 this launch' in (ab.get('sheet') or ''),
                 (ab.get('sheet') or '')[:500])
+    # The scenario is exempt from the window aggregates, so it pins its own counts: after the probe's one leave nothing
+    # takes the web view out of its window or hides the page again (on the tab root the stray's redirect through the
+    # funnel, and About's tab moves, keep it in the window: contract 8.1 step 3, I1).
+    later = [(x, ev.state(x)) for x in (('stray', 'end') if c.tabs else ('end',))]
+    c.rep.check(s, 'from Back on nothing more leaves the window or hides the page (%s: leftWindow and leftWindowAny still 1, the '
+                'page\'s visibility events as at Back)' % ', '.join(x for x, _ in later),
+                all(e is not None and shellst(e).get('leftWindow') == 1 and shellst(e).get('leftWindowAny') == 1
+                    and page(e).get('visEvents') == page(back).get('visEvents') for _, e in later),
+                {x: {'leftWindow': shellst(e).get('leftWindow'), 'leftWindowAny': shellst(e).get('leftWindowAny'),
+                     'visEvents': page(e).get('visEvents')} for x, e in later} | {'back': page(back).get('visEvents')})
     if c.tabs:
         sy = ev.state('stray')
         st_ev = ev.first('stray') or {}
@@ -1414,18 +1654,98 @@ def scen_inactive(c):
         shell_probe(c.sim, 'inactive-clear', [[js('retry', "_fpChatRetry(); return true;"), wait(1200)]], verdicts=True)
 
 
+def scen_teardown(c):
+    """Delta 17.10, 20-order 9 item 35: a scene's teardown lets go of what the scene held. UIKit refuses to destroy the
+    only scene of an iPhone app (sceneDestroy), so the teardown is the App's replay (sceneCycle: SceneDelegate's teardown,
+    then its connection on the same window scene), made here with the chat up, where the most holds the page: on the tab
+    root the Coach stack (the hub, the chat pushed on it, ScreenHost's stack), on the classic root the chat presented
+    over the page. ShellProbe holds the old web view, root and window weakly; every state after the replay says which
+    are still alive (`replaced`), and 5 s after it none may be. The teardown's own moves of the web view are no
+    leave-window fault (ShellWebView.sceneEnding): this scenario does not leave, so the window aggregate covers it."""
+    s = 'teardown'
+    want = ['coach', 'coachHome', 'tabs'] if c.tabs else ['coach']
+    ev = shell_probe(c.sim, 'teardown', [[wait(1200), state('up'), mark('before'), {'op': 'sceneCycle'}],
+                                         [wait(1500), state('1.5 s'), wait(3500), state('5 s'), mark('after')]],
+                     args=['-devNav', 'coach/chat'], timeout=120)
+    up, e1, e5 = ev.state('up'), ev.state('1.5 s'), ev.state('5 s')
+    cu = coach(up)
+    if c.tabs:
+        c.rep.check(s, 'before the teardown the chat is pushed on the NATIVE Coach stack over the hub', cu.get('presented') and cu.get('host') == 'stack'
+                    and rcoach(up).get('mode') == 'native' and rcoach(up).get('pushed') is True and 'coachHome' in (screens(up).get('up') or []),
+                    {'coach': {k: cu.get(k) for k in ('presented', 'host')}, 'root coach': rcoach(up), 'up': screens(up).get('up')})
+    else:
+        c.rep.check(s, 'before the teardown the chat is presented over the page (.overFullScreen)', cu.get('presented') and cu.get('style') == OVER_FULL_SCREEN,
+                    {k: cu.get(k) for k in ('presented', 'style', 'modal')})
+    cyc = ev.first('sceneCycle') or {}
+    c.rep.check(s, 'the replay (the App\'s sceneCycle hook) built the %s root in a new window around a new web view' % c.root,
+                cyc.get('ran') is True and cyc.get('root') == c.root and cyc.get('newWebView') is True and cyc.get('newWindow') is True
+                and not cyc.get('error'), {k: cyc.get(k) for k in ('ran', 'root', 'newWebView', 'newWindow', 'error') if k in cyc})
+    after = round(((e5 or {}).get('wall', 0) - cyc.get('wall', 0)) / 1000.0, 1) if e5 and cyc.get('wall') else None
+    r1, r5 = replaced(e1), replaced(e5)
+    c.rep.fact(s, 'what the teardown had let go %s s after it: %s' % (
+        round(((e1 or {}).get('wall', 0) - cyc.get('wall', 0)) / 1000.0, 1) if e1 and cyc.get('wall') else None, r1 or None))
+    c.rep.check(s, '%s s after the teardown the web view, the root and the window it replaced are all gone (replaced: none alive)' % after,
+                r5.get('by') == 'sceneCycle' and r5.get('webView') is False and r5.get('root') is False and r5.get('window') is False
+                and after is not None and after >= 5, {'replaced': r5 or None, 'after': after})
+    p5 = page(e5)
+    c.rep.check(s, 'the new document is a new boot on the %s root and negotiates %s again' % (c.root, ', '.join(want)),
+                bool(fp(e5).get('boot')) and fp(e5).get('boot') != fp(up).get('boot') and root(e5).get('kind') == c.root
+                and (not c.tabs or root(e5).get('fellBack') is None) and sorted(shellst(e5).get('negotiated') or []) == want
+                and sorted((fp(e5).get('hello') or {}).get('screens') or []) == want,
+                {'boot': [fp(up).get('boot'), fp(e5).get('boot')], 'root': {k: root(e5).get(k) for k in ('kind', 'fellBack')},
+                 'negotiated': shellst(e5).get('negotiated'), 'hello': fp(e5).get('hello')})
+    c.rep.fact(s, 'after the teardown: tab %s, view %s, screens up %s, markers %s' % (
+        p5.get('tab'), p5.get('view'), screens(e5).get('up'), markers(e5)))
+
+
 # ── the scenarios: build 60's nine, then the modules' ────────────────────────────────────────────────────────────────
 
 class Entry:
-    def __init__(self, name, fn, rank, backgrounds, leaves, source):
+    def __init__(self, name, fn, rank, backgrounds, leaves, source, roots=ROOTS):
         self.name, self.fn, self.rank, self.backgrounds, self.leaves, self.source = name, fn, rank, backgrounds, leaves, source
+        self.roots = frozenset(roots)
 
 
-# (name, backgrounds, leaves): today's list (native-shell.py:677 before T16), in its order
+# (name, backgrounds, leaves): build 60's nine (native-shell.py:677 before T16) in their order, then teardown (delta
+# 17.10); every one under both roots
 BASE = [('smoke', False, False), ('chat', False, False), ('focus', False, False), ('wckill', False, False),
         ('marker', False, False), ('policy', False, False), ('breaker', False, False), ('counters', False, True),
-        ('inactive', True, False)]
+        ('inactive', True, False), ('teardown', False, False)]
 NAME_RE = re.compile(r'^[a-z][A-Za-z0-9_-]*$')
+MARKS_HELP = "True, False or a dict {'leaves': bool, 'roots': 'tabs' | 'classic' | 'both'} (a tab-root-only row: {'roots': 'tabs'})"
+
+
+def roots_of(v):
+    """A row's `roots` as the set of roots it names: 'both' (or the key left out) is both, 'tabs' or 'classic' one, a
+    non-empty list or tuple of them those; None for anything else."""
+    if v == 'both':
+        return frozenset(ROOTS)
+    if isinstance(v, str):
+        v = (v,)
+    if isinstance(v, (list, tuple)) and v and all(isinstance(x, str) and x in ROOTS for x in v):
+        return frozenset(v)
+    return None
+
+
+def roots_word(e):
+    """How --list and a skip name a scenario's roots."""
+    if e.roots == frozenset(ROOTS):
+        return 'both roots'
+    return 'the %s root only' % ('tab' if e.roots == frozenset(['tabs']) else 'classic')
+
+
+def for_root(entries, root):
+    """The scenarios a pass on `root` runs, and the ones it skips (their `roots` leave it out), each in ALL's order."""
+    return [e for e in entries if root in e.roots], [e for e in entries if root not in e.roots]
+
+
+def list_line(e):
+    """A scenario's line in --list: its name first (native-shell.sh's --only check reads that word), where it comes
+    from, its rank, and its marks."""
+    flags = [x for x, on in (('backgrounds', e.backgrounds), ('leaves', e.leaves)) if on]
+    if e.roots != frozenset(ROOTS):
+        flags.append(roots_word(e))
+    return '%-12s %s%s%s' % (e.name, e.source, '' if e.rank is None else ' rank %s' % e.rank, ' (%s)' % ', '.join(flags) if flags else '')
 
 
 def load_modules(folder):
@@ -1446,15 +1766,16 @@ def load_modules(folder):
             continue
         rows = getattr(mod, 'SCENARIOS', None)
         if not isinstance(rows, (list, tuple)) or not rows:
-            errors.append('%s: no SCENARIOS list of (name, function, rank, backgrounds[, leaves])' % base)
+            errors.append('%s: no SCENARIOS list of (name, function, rank, backgrounds[, marks])' % base)
             continue
         for i, row in enumerate(rows):
             where = '%s SCENARIOS[%d]' % (base, i)
             if not isinstance(row, (list, tuple)) or len(row) not in (4, 5):
-                errors.append('%s: not (name, function, rank, backgrounds[, leaves]): %r' % (where, row))
+                errors.append('%s: not (name, function, rank, backgrounds[, marks]): %r' % (where, row))
                 continue
             name, fn, rank, bg = row[:4]
-            leaves = row[4] if len(row) == 5 else False
+            marks = row[4] if len(row) == 5 else False
+            leaves, roots = False, frozenset(ROOTS)
             bad = []
             if not isinstance(name, str) or not NAME_RE.match(name):
                 bad.append('name %r (a lower-case letter, then letters, digits, - or _)' % (name,))
@@ -1464,18 +1785,30 @@ def load_modules(folder):
                 bad.append('rank %r is not a number' % (rank,))
             if type(bg) is not bool:
                 bad.append('backgrounds %r is not True or False' % (bg,))
-            if type(leaves) is not bool:
-                bad.append('leaves %r is not True or False' % (leaves,))
+            if type(marks) is bool:
+                leaves = marks
+            elif isinstance(marks, dict):
+                unknown = sorted((k for k in marks if k not in ('leaves', 'roots')), key=repr)
+                if unknown:
+                    bad.append('marks key%s %s unknown (leaves, roots)' % ('s' if len(unknown) > 1 else '', ', '.join(map(repr, unknown))))
+                leaves = marks.get('leaves', False)
+                if type(leaves) is not bool:
+                    bad.append('leaves %r is not True or False' % (leaves,))
+                roots = roots_of(marks.get('roots', 'both'))
+                if roots is None:
+                    bad.append('roots %r is not tabs, classic, both or a list of tabs and classic' % (marks.get('roots'),))
+            else:
+                bad.append('marks %r is not %s' % (marks, MARKS_HELP))
             if bad:
                 errors.append('%s: %s' % (where, '; '.join(bad)))
                 continue
-            entries.append(Entry(name, fn, rank, bg, leaves, '%s:%d' % (base, i)))
+            entries.append(Entry(name, fn, rank, bg, leaves, '%s:%d' % (base, i), roots))
     return entries, errors
 
 
 def registry(folder=SCEN_DIR):
-    """ALL: today's nine in their order, then the modules' by rank (ties by file name, then by place); and the errors (a
-    module that does not load, a malformed row, a name taken twice)."""
+    """ALL: the base ten (build 60's nine, teardown) in their order, then the modules' by rank (ties by file name, then
+    by place); and the errors (a module that does not load, a malformed row, a name taken twice)."""
     base = [Entry(n, globals()['scen_' + n], None, bg, lv, 'native-shell.py') for n, bg, lv in BASE]
     mods, errors = load_modules(folder)
     ranked = [m for _, m in sorted(enumerate(mods), key=lambda p: (p[1].rank, p[0]))]
@@ -1500,20 +1833,24 @@ def select(entries, only):
 
 
 def aggregates(c, run):
-    """Plan T16 item 3 over every state of every launch of this pass (the pass's setup included)."""
+    """Plan T16 item 3 over every state of every launch of this pass (the pass's setup included); `run` is what ran."""
     leaves = {e.name for e in run if e.leaves}
-    quiet_ok = {e.name for e in run if e.leaves or e.backgrounds}
+    bg = {e.name for e in run if e.backgrounds}
     lw = [(r['scenario'], r['tag'], r['label'], r['leftWindow'], r['leftWindowAny']) for r in PASS.records
           if r['scenario'] not in leaves and ((r['leftWindow'] or 0) != 0 or (r['leftWindowAny'] or 0) != 0)]
     c.rep.check('window', 'the web view never left its window, the app active or not: leftWindow and leftWindowAny 0 in every state%s'
                 % (' (but %s, on purpose)' % ', '.join(sorted(leaves)) if leaves else ''), not lw, lw[:6])
+    # a scenario that leaves on purpose is exempt only once it has left (its state's leftWindowAny above 0)
     vis = [(r['scenario'], r['tag'], r['label'], r['visEvents']) for r in PASS.records
-           if r['scenario'] not in quiet_ok and r['visEvents'] != []]
+           if r['scenario'] not in bg and not (r['scenario'] in leaves and (r['leftWindowAny'] or 0) > 0) and r['visEvents'] != []]
+    but = ['%s (in the background)' % n for n in sorted(bg)] + ['%s (once it has left the window)' % n for n in sorted(leaves - bg)]
     c.rep.check('window', 'no visibilitychange in any state of a scenario that keeps the app in front%s'
-                % (' (but %s)' % ', '.join(sorted(quiet_ok)) if quiet_ok else ''), not vis, vis[:6])
+                % (' (but %s)' % ', '.join(but) if but else ''), not vis, vis[:6])
     nh = [f for f in PASS.fellbacks if f[2] == 'no-hello'] + [(r['scenario'], r['tag'], 'state ' + str(r['label'])) for r in PASS.records
                                                               if (r['fellBack'] or {}).get('why') == 'no-hello']
     c.rep.check('window', 'no fallback for want of a hello in any launch (fellBack why no-hello)', not nh, nh[:6])
+    to = [(sc, tag) for sc, tag, timed in PASS.launches if timed]
+    c.rep.check('launches', 'every launch ran its steps to the end (%d launches, no probe timed out)' % len(PASS.launches), not to, to[:6])
     late = [(x['file'], x.get('started'), x.get('ms'), x.get('why')) for x in PASS.shots
             if (x.get('late') and not x.get('transient')) or not x['ok']]
     c.rep.check('shots', 'every shot was taken while the app held still at its mark (%d shots, none late or missing)' % len(PASS.shots),
@@ -1528,7 +1865,10 @@ def aggregates(c, run):
 
 
 def self_test():
-    """The loader on scratch modules (no simulator): ALL's order, the five-item rows, --only, and every refusal."""
+    """No simulator: the loader on scratch modules (ALL's order, the rows' marks, the roots, --only, every refusal), a
+    mark's shot and go file and how a shot is judged, the aggregates on a pass's records, what the runner's leftovers
+    give before a verdict launch, and the drawn bar's luminance read from a PNG (sips)."""
+    global PASS
     bad, n = [], [0]
 
     def case(what, ok, detail=''):
@@ -1542,35 +1882,65 @@ def self_test():
             f.write(text)
 
     base = [b[0] for b in BASE]
+    both = frozenset(ROOTS)
     with tempfile.TemporaryDirectory() as d:
         entries, errors = registry(d)
-        case('an empty folder: ALL is today\'s nine in order', [e.name for e in entries] == base and not errors, (entries, errors))
+        case('an empty folder: ALL is the base ten in order (build 60\'s nine, teardown), each under both roots',
+             [e.name for e in entries] == base and len(base) == 10 and base[-1] == 'teardown' and not errors
+             and all(e.roots == both for e in entries), (entries, errors))
         entries, errors = registry(os.path.join(d, 'missing'))
-        case('a missing folder is no error (ALL is the nine)', [e.name for e in entries] == base and not errors, errors)
+        case('a missing folder is no error (ALL is the base ten)', [e.name for e in entries] == base and not errors, errors)
         write(d, 'b_links.py', 'import native_shell as shell\nSTEP = shell.wait(5)\n'
                                'def gamma(c):\n    return shell.state("g")\n'
                                'SCENARIOS = [("gamma", gamma, 10, False)]\n')
         write(d, 'a_tabs.py', 'def alpha(c):\n    pass\n\ndef beta(c):\n    pass\n\n'
                               'SCENARIOS = [("alpha", alpha, 20, False), ("beta", beta, 10, True, True)]\n')
+        write(d, 'c_roots.py', 'def f(c):\n    pass\n\n'
+                               'SCENARIOS = [("coachtab", f, 30, False, {"roots": "tabs"}), ("intakeway", f, 31, False, {"roots": ("tabs",)}),\n'
+                               '             ("oldlook", f, 32, False, {"roots": "classic", "leaves": True}), ("anyroot", f, 33, True, {}),\n'
+                               '             ("listed", f, 34, False, {"roots": ["classic", "tabs"]}), ("bothword", f, 35, False, {"roots": "both", "leaves": False})]\n')
         write(d, '_helpers.py', 'raise SystemExit("a _ file is never loaded")\n')
         entries, errors = registry(d)
         names = [e.name for e in entries]
-        case('modules come after the nine, by rank, ties by file name then by place', names == base + ['beta', 'gamma', 'alpha'], names)
+        mods = ['beta', 'gamma', 'alpha', 'coachtab', 'intakeway', 'oldlook', 'anyroot', 'listed', 'bothword']
+        case('modules come after the base ten, by rank, ties by file name then by place', names == base + mods, names)
         byname = {e.name: e for e in entries}
-        case('backgrounds and leaves are read (a five-item row; four items: leaves False)', byname['beta'].backgrounds is True
+        case('backgrounds and leaves are read (marks True: leaves; four items: leaves False)', byname['beta'].backgrounds is True
              and byname['beta'].leaves is True and byname['alpha'].leaves is False and byname['gamma'].backgrounds is False,
              {k: (byname[k].backgrounds, byname[k].leaves) for k in ('alpha', 'beta', 'gamma')})
+        case('marks as a dict: roots tabs, (tabs,), classic with leaves, {} and both and a list of both: both roots',
+             byname['coachtab'].roots == frozenset(['tabs']) and byname['intakeway'].roots == frozenset(['tabs'])
+             and byname['oldlook'].roots == frozenset(['classic']) and byname['oldlook'].leaves is True
+             and byname['anyroot'].roots == both and byname['anyroot'].backgrounds is True and byname['anyroot'].leaves is False
+             and byname['listed'].roots == both and byname['bothword'].roots == both and byname['alpha'].roots == both,
+             {k: (sorted(byname[k].roots), byname[k].leaves) for k in mods})
         case('a _ file is skipped', not errors and not any('helpers' in e.source for e in entries), errors)
         mod = sys.modules.get('shellscen_b_links')
         case('a module reaches the helpers through import native_shell', mod is not None and mod.STEP == {'op': 'wait', 'ms': 5}
              and byname['gamma'].fn(None) == {'op': 'state', 'label': 'g'}, getattr(mod, 'STEP', None))
-        case('--only takes a module\'s name and the nine\'s, in ALL\'s order', [e.name for e in select(entries, 'gamma,smoke,beta')] == ['smoke', 'beta', 'gamma'])
+        case('--only takes a module\'s name and the base\'s, in ALL\'s order', [e.name for e in select(entries, 'gamma,smoke,beta')] == ['smoke', 'beta', 'gamma'])
         case('--only with nothing named is every scenario', [e.name for e in select(entries, '')] == names)
         try:
             select(entries, 'smoke,nope')
             case('--only refuses an unknown name', False, 'accepted')
         except ValueError as e:
             case('--only refuses an unknown name, naming it and the known ones', 'nope' in str(e) and 'gamma' in str(e), str(e))
+        on_tabs, off_tabs = for_root(entries, 'tabs')
+        on_classic, off_classic = for_root(entries, 'classic')
+        case('the tab pass runs the base ten and every row but the classic-only one, which it skips',
+             [e.name for e in on_tabs] == [x for x in names if x != 'oldlook'] and [e.name for e in off_tabs] == ['oldlook'],
+             ([e.name for e in on_tabs], [e.name for e in off_tabs]))
+        case('the classic pass skips the tab-root-only rows (coachtab, intakeway) and runs the rest, the base ten included',
+             [e.name for e in on_classic] == [x for x in names if x not in ('coachtab', 'intakeway')]
+             and [e.name for e in off_classic] == ['coachtab', 'intakeway'], ([e.name for e in on_classic], [e.name for e in off_classic]))
+        sel = select(entries, 'coachtab,intakeway')
+        case('an --only of tab-root-only rows leaves the classic pass nothing to run (it ends before it installs anything)',
+             for_root(sel, 'classic')[0] == [] and [e.name for e in for_root(sel, 'tabs')[0]] == ['coachtab', 'intakeway'])
+        lines = {e.name: list_line(e) for e in entries}
+        case('--list names each row first and says its roots when not both',
+             lines['coachtab'].split()[0] == 'coachtab' and 'the tab root only' in lines['coachtab'] and 'rank 30' in lines['coachtab']
+             and 'the classic root only' in lines['oldlook'] and 'leaves' in lines['oldlook'] and 'root only' not in lines['smoke']
+             and 'root only' not in lines['listed'] and lines['beta'].endswith('(backgrounds, leaves)'), lines)
     with tempfile.TemporaryDirectory() as d:
         write(d, 'c_none.py', 'X = 1\n')
         write(d, 'd_short.py', 'SCENARIOS = [("short", print, 1)]\n')
@@ -1580,6 +1950,9 @@ def self_test():
         write(d, 'h_types.py', 'SCENARIOS = [("typed", "not callable", True, 1, "x")]\n')
         write(d, 'i_exit.py', 'raise SystemExit(3)\n')
         write(d, 'j_twice.py', 'SCENARIOS = [("twice", print, 1, False), ("twice", print, 2, False)]\n')
+        write(d, 'k_roots.py', 'SCENARIOS = [("rootword", print, 1, False, "tabs"), ("rootbad", print, 1, False, {"roots": "both-ways"}),\n'
+                               '             ("rootnone", print, 1, False, {"roots": []}), ("rootmix", print, 1, False, {"roots": ["tabs", "web"]}),\n'
+                               '             ("rootkey", print, 1, False, {"root": "tabs", "leaves": 1}), ("rootseq", print, 1, False, ("tabs",))]\n')
         entries, errors = registry(d)
         text = '\n'.join(errors)
         for f, what in (('c_none.py', 'no SCENARIOS list'), ('d_short.py', 'not (name, function'), ('e_dupe.py', 'the name chat is'),
@@ -1587,10 +1960,17 @@ def self_test():
                         ('j_twice.py', 'the name twice is')):
             case('a refusal names %s: %s' % (f, what), any(l.startswith(f) and what in l for l in errors), text)
         h = [l for l in errors if l.startswith('h_types.py')]
-        case('a row\'s every wrong type is named (function, rank, backgrounds, leaves)', len(h) == 1 and all(
-            w in h[0] for w in ('not callable', 'rank True', 'backgrounds 1', 'leaves \'x\'')), h)
-        case('a refused row adds no scenario; the nine keep their own', [e.name for e in entries] == base + ['twice'], [e.name for e in entries])
-    # a mark's wait for its shot, and what the runner's own terminate leaves before a launch that reads verdicts
+        case('a row\'s every wrong type is named (function, rank, backgrounds, marks)', len(h) == 1 and all(
+            w in h[0] for w in ('not callable', 'rank True', 'backgrounds 1', 'marks \'x\'')), h)
+        k = {l.split(']')[0]: l for l in errors if l.startswith('k_roots.py')}
+        want = {'[0': ("marks 'tabs' is not", "{'roots': 'tabs'}"), '[1': ("roots 'both-ways'",), '[2': ('roots []',),
+                '[3': ("roots ['tabs', 'web']",), '[4': ("marks key 'root' unknown", 'leaves 1 is not'), '[5': ("marks ('tabs',) is not",)}
+        got = {key[-2:]: line for key, line in k.items()}
+        case('a malformed roots or marks is refused, saying what a tab-root-only row writes (a bare root name, an unknown root, '
+             'an empty list, an unknown key, a tuple)', len(k) == 6 and all(all(w in got.get(i, '') for w in ws) for i, ws in want.items()), k)
+        case('a refused row adds no scenario; the base ten keep their own', [e.name for e in entries] == base + ['twice'], [e.name for e in entries])
+
+    # ── a mark's shot, its go file, and how a shot is judged ──
     phases = [[state('a'), mark('one'), wait(5)], [mark('two cap', cap=1500, transient=True)]]
     got, meta = with_shot_waits(phases, '/p', '07-x')
     w1, w2 = got[0][2], got[1][1]
@@ -1598,26 +1978,166 @@ def self_test():
          and w1['label'] == 'shot-wait one' and w1['args'] == {'path': '/p/07-x.go.one', 'cap': SHOT_CAP} and w1['src'] == SHOT_WAIT_JS
          and w2['args'] == {'path': '/p/07-x.go.two-cap', 'cap': 1500} and meta['two cap']['transient'] is True and got[0][1]['hold'] == MARK_HOLD, got)
     case('the phases given are left as they were', [s['op'] for s in phases[0]] == ['state', 'mark', 'wait'], phases)
+    for dup in ([[mark('two cap')], [mark('two-cap')]], [[mark('one'), wait(1), mark('one')]]):
+        try:
+            with_shot_waits(dup, '/p', '08-y')
+            case('two marks of one launch with one file name are refused', False, dup)
+        except ValueError as e:
+            case('two marks of one launch with one file name are refused, naming both (%s)' % str(e).split(': ', 1)[1][:40],
+                 '08-y' in str(e) and str(e).count("'") >= 4, str(e))
 
     class Rep:
         def __init__(self):
-            self.facts = []
+            self.facts, self.rows = [], []
 
         def fact(self, s, text):
             self.facts.append((s, text))
 
-    with tempfile.TemporaryDirectory() as d:
-        for name, data in (('presenting.coach.marker', b'presenting coach@p shell 61\n'), ('section.tabs.marker', b'tabs@p shell 61\n1'),
-                           ('model.coachHome.marker', b'coachHome@p shell 61\n0'), ('notes.txt', b'x')):
-            with open(os.path.join(d, name), 'wb') as f:
-                f.write(data)
-        cx = type('C', (), {})()
-        cx.rep = Rep()
-        left = clear_runner_markers(cx, 'x', d)
-        files = {n: open(os.path.join(d, n), 'rb').read() for n in sorted(os.listdir(d))}
-        case('the runner\'s leftovers: a screen marker removed, a section left at 1 put to 0, the rest untouched, said as a fact',
-             files == {'model.coachHome.marker': b'coachHome@p shell 61\n0', 'notes.txt': b'x', 'section.tabs.marker': b'tabs@p shell 61\n0'}
-             and len(left) == 2 and len(cx.rep.facts) == 1, (files, left, cx.rep.facts))
+        def check(self, s, name, ok, detail=''):
+            self.rows.append((s, name, bool(ok), detail))
+            return ok
+
+        def failed(self, word):
+            return [r for r in self.rows if word in r[1] and not r[2]]
+
+    saved = PASS
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            PASS = Pass(None, os.path.join(d, 'out'), '27.0-tabs', 'tabs')
+            os.makedirs(PASS.out)
+            PASS.scenario = 'chat'
+            pdir = os.path.join(d, 'probe')
+            os.makedirs(pdir)
+
+            class FakeSim:
+                seen = []
+
+                def screenshot(self, path):
+                    self.seen.append(os.path.exists(go_path(pdir, '04-chat', 'one')))
+                    time.sleep(0.02)
+                    with open(path, 'wb') as f:
+                        f.write(b'png')
+
+            t_mark = int(time.time() * 1000)
+            rec = shoot_mark(FakeSim(), {'ev': 'mark', 'label': 'one', 'wall': t_mark}, '04-chat', pdir, {'one': mark('one')})
+            case('a mark\'s go file is written only once its shot is on disk (none while it was taken)', FakeSim.seen == [False]
+                 and os.path.isfile(go_path(pdir, '04-chat', 'one')) and rec['ok'] and rec['tag'] == '04-chat'
+                 and rec['file'] == '27.0-tabs-chat-04-chat-one.png' and rec['end'] >= t_mark and rec['transient'] is False,
+                 (FakeSim.seen, rec))
+
+            def wait_ev(label, wall, **res):
+                return Events([{'ev': 'js', 'label': 'shot-wait ' + label, 'wall': wall, 'result': res}])
+
+            end = 1000000
+            cases = (
+                ('the page went on after the shot ended: held still', wait_ev('a', end + 40, ok=True, waited=500), False, None),
+                ('the page went on at the very end: held still', wait_ev('a', end, ok=True, waited=500), False, None),
+                ('the page went on before the shot ended (a go file seen too early): late, both times named',
+                 wait_ev('a', end - 300, ok=True, waited=100), True, 'before the shot ended at %d' % end),
+                ('the wait hit its cap: late', wait_ev('a', end + 60000, ok=False, waited=60000, last='status 404'), True, 'the cap (60000 ms)'),
+                ('no Capacitor to wait in: late, its error named', wait_ev('a', end + 5, ok=False, error='no Capacitor.convertFileSrc'), True, 'no Capacitor'),
+                ('the page never answered the wait: late', Events([]), True, 'never answered'),
+            )
+            for what, ev, late, why in cases:
+                r = judge_shots([{'label': 'a', 'end': end}], ev)[0]
+                case('judge_shots: %s' % what, r['late'] is late and (why is None and 'why' not in r or why is not None and why in (r.get('why') or '')), r)
+
+            # the aggregates on a pass's records, launches and shots
+            PASS = Pass(None, None, '27.0-tabs', 'tabs')
+            run = [Entry('chat', None, None, False, False, 'x'), Entry('counters', None, None, False, True, 'x'),
+                   Entry('inactive', None, None, True, False, 'x')]
+            rec_of = lambda sc, label, lw, vis: {'scenario': sc, 'tag': '01-' + sc, 'label': label, 'leftWindow': lw, 'leftWindowAny': lw,
+                                                 'visEvents': vis, 'fellBack': None}
+            PASS.records = [rec_of('chat', 'up', 0, []), rec_of('counters', 'before', 0, []), rec_of('counters', 'out', 1, ['hidden@5']),
+                            rec_of('inactive', 'away', 0, ['hidden@9'])]
+            PASS.launches = [('chat', '01-chat', False), ('counters', '02-counters', False)]
+            PASS.shots = [{'file': 'a.png', 'ok': True, 'late': False, 'transient': False},
+                          {'file': 'b.png', 'ok': True, 'late': True, 'transient': True, 'why': 'the cap'}]
+            cx = type('C', (), {})()
+            cx.rep = Rep()
+            aggregates(cx, run)
+            case('the aggregates pass a clean pass: a counters state after its leave and a backgrounded one exempt, a late '
+                 'transient shot a fact', not [r for r in cx.rep.rows if not r[2]] and any('transient' in f[1] for f in cx.rep.facts),
+                 [r for r in cx.rep.rows if not r[2]] or cx.rep.facts)
+            PASS.records.append(rec_of('counters', 'early', 0, ['hidden@1']))
+            PASS.records.append(rec_of('chat', 'later', 1, []))
+            PASS.launches.append(('chat', '03-chat-lime', True))
+            PASS.shots.append({'file': 'c.png', 'ok': True, 'late': True, 'transient': False, 'why': 'too early'})
+            cx.rep = Rep()
+            aggregates(cx, run)
+            case('the aggregates fail a leave outside a leaves scenario, a counters state hidden before its leave, a timed-out '
+                 'launch, a late shot that is not transient',
+                 len(cx.rep.failed('never left its window')) == 1 and len(cx.rep.failed('visibilitychange')) == 1
+                 and len(cx.rep.failed('ran its steps to the end')) == 1 and len(cx.rep.failed('held still')) == 1
+                 and 'early' in str(cx.rep.failed('visibilitychange')[0][3]) and '03-chat-lime' in str(cx.rep.failed('to the end')[0][3])
+                 and 'c.png' in str(cx.rep.failed('held still')[0][3]), cx.rep.rows)
+
+            # what the runner's terminate leaves before a verdict launch
+            def fpshell(files):
+                f = tempfile.mkdtemp(dir=d)
+                for name, data in files.items():
+                    with open(os.path.join(f, name), 'wb') as fh:
+                        fh.write(data)
+                return f
+
+            files = {'presenting.coach.marker': b'presenting coach@p shell 61\n', 'presenting.coachHome.marker': b'presenting coachHome@p shell 61\n',
+                     'section.tabs.marker': b'tabs@p shell 61\n1', 'model.coachHome.marker': b'coachHome@p shell 61\n0', 'notes.txt': b'x'}
+            last_state = {'shell': {'screens': {'markers': ['presenting coach@p shell 61', 'tabs@p shell 61\n0'], 'up': ['coachHome', 'coach']}}}
+            for timed in (False, True):
+                PASS.last = {'scenario': 'wckill', 'tag': '05-wckill', 'timedOut': timed, 'state': last_state}
+                folder = fpshell(files)
+                cx.rep = Rep()
+                found = clear_runner_markers(cx, 'marker', folder)
+                left = {x: open(os.path.join(folder, x), 'rb').read() for x in sorted(os.listdir(folder))}
+                kinds = {f: k for f, k, _ in found}
+                gone = left == {'model.coachHome.marker': b'coachHome@p shell 61\n0', 'notes.txt': b'x', 'section.tabs.marker': b'tabs@p shell 61\n0'}
+                if not timed:
+                    fails = [r for r in cx.rep.rows if not r[2]]
+                    case('the runner\'s leftovers: the screen marker the last state listed with its screen up removed as a fact; one '
+                         'it did not list, and a section left at 1, a failed check naming both files and the launch (each gone or put to 0)',
+                         gone and kinds == {'presenting.coach.marker': 'runner', 'presenting.coachHome.marker': 'unexplained',
+                                            'section.tabs.marker': 'unexplained'} and len(fails) == 1
+                         and all(w in str(fails[0]) for w in ('presenting.coachHome.marker', 'section.tabs.marker', '05-wckill'))
+                         and len(cx.rep.facts) == 1 and 'presenting.coach.marker' in cx.rep.facts[0][1], (left, found, cx.rep.rows, cx.rep.facts))
+                else:
+                    case('after a launch that timed out the same leftovers are facts (the runner ended it wherever it was), the check passes',
+                         gone and kinds['presenting.coachHome.marker'] == 'timed out' and kinds['section.tabs.marker'] == 'timed out'
+                         and not [r for r in cx.rep.rows if not r[2]] and len(cx.rep.rows) == 1 and len(cx.rep.facts) == 2, (found, cx.rep.rows))
+            PASS.last = {'scenario': 'counters', 'tag': '09-counters', 'timedOut': False,
+                         'state': {'shell': {'screens': {'markers': ['presenting coach@p shell 61'], 'up': []}}}}
+            folder = fpshell({'presenting.coach.marker': b'presenting coach@p shell 61\n'})
+            cx.rep = Rep()
+            found = clear_runner_markers(cx, 'inactive', folder)
+            case('a screen marker listed while its screen was not up is no leftover of the runner\'s: a failed check',
+                 [k for _, k, _ in found] == ['unexplained'] and [r[2] for r in cx.rep.rows] == [False] and not os.listdir(folder), (found, cx.rep.rows))
+
+            # the drawn bar: a band of a shot's pixels, read back through sips
+            png = os.path.join(d, 'bar.png')
+            w, h = 40, 90
+            raw = b''.join(b'\x00' + bytes((240, 240, 240) if y < 60 else (20, 20, 20)) * w for y in range(h))
+
+            def chunk(t, data):
+                return struct.pack('>I', len(data)) + t + data + struct.pack('>I', zlib.crc32(t + data) & 0xffffffff)
+
+            with open(png, 'wb') as f:
+                f.write(b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0))
+                        + chunk(b'IDAT', zlib.compress(raw)) + chunk(b'IEND', b''))
+            data = png_bmp(png)
+            if not data:
+                case('sips turns a PNG into a BMP (the drawn bar\'s reader)', False, 'sips gave nothing')
+            else:
+                dark_l, light_l, mixed = bmp_luma(data, (0, 60, 40, 90)), bmp_luma(data, (0, 0, 40, 60)), bmp_luma(data, (0, 50, 40, 70))
+                case('a band\'s mean luminance is read from the shot\'s rows, top to bottom (dark 20, light 240, half each 130)',
+                     bmp_size(data) == (w, h) and abs(dark_l - 20) < 1 and abs(light_l - 240) < 1 and abs(mixed - 130) < 1, (dark_l, light_l, mixed))
+                PASS.shots = [{'tag': '06-chat-lime', 'label': 'lime', 'ok': True, 'path': png, 'file': 'bar.png'}]
+                st = {'shell': {'root': {'bar': {'frame': {'x': 0, 'y': 30, 'w': 20, 'h': 15}}, 'web': {'frame': {'x': 0, 'y': 0, 'w': 20, 'h': 45}}}}}
+                luma, seen = drawn_bar(st, '06-chat-lime', 'lime')
+                miss, why = drawn_bar(st, '06-chat-lime', 'toast')
+                case('drawn_bar reads the bar\'s frame in points at the shot\'s scale (20 points over 40 px: the dark band)',
+                     luma is not None and abs(luma - 20) < 1 and seen.get('scale') == 2.0 and seen.get('px') == [0, 60, 40, 90]
+                     and miss is None and 'no shot' in why, (luma, seen, why))
+    finally:
+        PASS = saved
     if bad:
         print('native-shell self-test: %d of %d cases wrong' % (len(bad), n[0]))
         return 1
@@ -1648,8 +2168,7 @@ def main():
         sys.exit(2)
     if opts.list:
         for e in entries:
-            flags = ', '.join(x for x, on in (('backgrounds', e.backgrounds), ('leaves', e.leaves)) if on)
-            print('%-12s %s%s%s' % (e.name, e.source, '' if e.rank is None else ' rank %s' % e.rank, ' (%s)' % flags if flags else ''))
+            print(list_line(e))
         sys.exit(0)
     if not opts.phone or not opts.app:
         ap.error('--phone and --app are needed (or --list, --self-test)')
@@ -1665,29 +2184,38 @@ def main():
         sys.exit(2)
     os.makedirs(opts.out, exist_ok=True)
     sim = Sim(opts.phone)
+    rt, name = sim.runtime()   # simctl's list: no boot needed
+    osv = rt.replace('iOS-', '').replace('-', '.')
+    major = int(osv.split('.')[0]) if osv.split('.')[0].isdigit() else 0
+    kind = 'classic' if (opts.root == 'classic' or (major and major < 26)) else 'tabs'
+    here, skipped = for_root(run, kind)
+    head = '== native shell scenarios on %s (%s, %s): the %s root%s' % (name, rt, opts.phone, kind,
+                                                                         ' by the policy offs file' if opts.root == 'classic' else '')
+    if not here:
+        print('%s: nothing to run on it (%s), so the pass ends here, before any boot or install' % (
+            head, ', '.join('%s: %s' % (e.name, roots_word(e)) for e in skipped)), flush=True)
+        sys.exit(0)
     cold = not booted(opts.phone)
     sim.boot()
     if cold:
         settle()
-    rt, name = sim.runtime()
-    osv = rt.replace('iOS-', '').replace('-', '.')
-    major = int(osv.split('.')[0]) if osv.split('.')[0].isdigit() else 0
-    kind = 'classic' if (opts.root == 'classic' or (major and major < 26)) else 'tabs'
     global PASS
     PASS = Pass(sim, opts.out, '%s-%s' % (osv, kind), kind, OFFS_ARGS if opts.root == 'classic' else [])
     rep = Report('%s %s, the %s root' % (name, rt, kind))
-    print('== native shell scenarios on %s (%s, %s): the %s root%s' % (name, rt, opts.phone, kind,
-          ' by the policy offs file' if opts.root == 'classic' else ''), flush=True)
+    print(head, flush=True)
     c = Ctx(sim, rep, opts, kind, osv, major)
     t0 = time.time()
     PASS.scenario = 'setup'
+    if skipped:
+        rep.fact('setup', 'not run on the %s root (never counted as run): %s' % (
+            kind, ', '.join('%s (%s)' % (e.name, roots_word(e)) for e in skipped)))
     try:
         ready = prepare(c)
     except Exception as e:
         traceback.print_exc()
         ready = rep.check('setup', 'ran to the end', False, repr(e)[:300])
     if ready:
-        for e in run:
+        for e in here:
             PASS.scenario = e.name
             clear_shots(e.name)
             print('-- %s' % e.name, flush=True)
@@ -1697,7 +2225,7 @@ def main():
                 traceback.print_exc()
                 rep.check(e.name, 'ran to the end', False, repr(ex)[:300])
         PASS.scenario = 'end'
-        aggregates(c, run)
+        aggregates(c, here)
     else:
         rep.check('setup', 'the scenarios run only on the root they are written for: none ran', False, c.root)
     print('== %s: %d checks, %d failed, %.0f s' % (rep.label, len(rep.rows), len(rep.failed), time.time() - t0), flush=True)

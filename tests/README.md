@@ -234,14 +234,20 @@ left decides the root; `--keep-data` installs over it), seeds the probe's key, a
 starter programme and a short conversation, and checks the root its launches
 build before any scenario runs.
 
-**Build 60's nine, under both roots**: `smoke` (`-fpSmoke` logging
-`fp: ping ok v1`, the root, hello's negotiation, the flag's 83-point bar, and
-Settings › About's Native tab bar and Native Coach rows: "Off by the policy
-file" and "On · the iPhone's own chat screen" on the classic root by policy);
+**Build 60's nine and `teardown`, under both roots**: `smoke` (`-fpSmoke` logging
+`fp: ping ok v1` in that launch's process, the root, hello's negotiation, the
+flag's 83-point bar, Settings › About's Native tab bar and Native Coach rows:
+"Off by the policy file" and "On · the iPhone's own chat screen" on the classic
+root by policy, and the share hook's `pendingShare.jpg` in the App Group's
+container with the page's own share reads held off);
 `chat` (classic: presented `.overFullScreen`; tab root: pushed on the NATIVE Coach
 stack, `host: stack`, not modal, the web view hidden in the Coach slot, the bar
 shown; a message, the model switch, a forwarded confirm and Undo toast, the
-screen marker, Back to the hub with the page still covered, Lime dark); `focus`
+screen marker, Back to the hub with the page still covered; Lime dark on a light
+phone and Heavyweight light on a phone set to dark (`simctl ui appearance`, put
+back after), on the tab root the bar both as the root asks for it and as the shot
+draws it: the mean luminance of the bar's frame, under 80 for Lime, over 170 for
+Heavyweight, read through `sips`); `focus`
 (a focused web field, then the chat up and down by the page, Back and the edge
 pan, or navPop on the tab root: no keyboard comes back, the document not
 scrolled; `interactivePop` on with Back, off in setup); `wckill` (WebContent
@@ -252,30 +258,48 @@ and then the hub's: the web Coach once, About's row and counters, Try again);
 `policy` (`screens.coach` "off" at once, on the tab root `screens.coachHome` too,
 the bar staying); `breaker` (three timeouts: pings on the classic root, `coach.*`
 intents on the tab root, which count for the chat alone); `counters` (the web view
-out of its window; on the tab root a stray selection, listed by both 61 sheets);
-`inactive` (no marker while the app is away). Spec 118 holds the page's half of
-build 60's (its C5 cases), specs 122-127 the page's half of the tab root's.
+out of its window; on the tab root a stray selection, listed by both 61 sheets;
+after that nothing leaves the window or hides the page again);
+`inactive` (no marker while the app is away); `teardown` (plan delta 17.10, 20-order
+9 item 35: the scene torn down and connected again by the App's replay,
+`sceneCycle`, with the chat up, since UIKit never destroys an iPhone app's only
+scene: a new root in a new window around a new web view, and 5 s later the web
+view, the root and the window it replaced all let go, ShellProbe's `replaced`).
+Spec 118 holds the page's half of build 60's (its C5 cases), specs 122-127 the
+page's half of the tab root's.
 
 **Modules.** Every `tools/shellscen/*.py` (not `_*.py`) is loaded with importlib
-and exports `SCENARIOS = [(name, function, rank, backgrounds), ...]`, with an
-optional fifth item `leaves`; the nine run first, then the modules' by rank (ties
-by file name, then place); `--only` takes any name, and a module that does not
-load stops the run before the build. A module reaches the runner's helpers with
+and exports `SCENARIOS = [(name, function, rank, backgrounds[, marks]), ...]`;
+`marks` is `True`/`False` (`leaves`) or a dict `{'leaves': bool, 'roots':
+'tabs' | 'classic' | 'both'}` with either key left out, so a tab-root-only row
+is `(name, function, rank, False, {'roots': 'tabs'})`. The base ten run first,
+then the modules' by rank (ties by file name, then place); a pass on a root a row
+leaves out skips it and says so (never counted as run), and a pass with nothing
+of `--only` to run on its root ends before it boots or installs anything;
+`--list` shows a row's roots when they are not both. `--only` takes any name,
+and a module that does not load or a malformed row stops the run before the
+build. A module reaches the runner's helpers with
 `import native_shell as shell` (`shell_probe`, `state`, `js`, `wait`, `mark`,
-`intent`, `step`, `shot`, `sim_lock_held`, the readers and About's steps; the
-docstring of `tools/native-shell.py` lists them) and gets the context `c`
-(`c.sim`, `c.rep`, `c.root`, `c.tabs`, `c.os`, `c.page`, `c.shell`).
+`intent`, `step`, `shot`, `sim_lock_held`, `appearance`, `drawn_bar`, the readers
+and About's steps; the docstring of `tools/native-shell.py` lists them) and gets
+the context `c` (`c.sim`, `c.rep`, `c.root`, `c.tabs`, `c.os`, `c.page`,
+`c.shell`).
 
 **What every run checks besides**: over every state of every launch,
 `leftWindow` and `leftWindowAny` 0 (but in scenarios that take the web view out
 on purpose, `leaves`), no `visibilitychange` (but where the app goes to the
-background, `backgrounds`), no fallback for want of a hello; each mark holds the
-app still until its shot is on disk (the probe waits in the page for a go file
-the runner writes once `simctl io screenshot` has returned, 60 s at most), so a
-shot never shows the next step however slow a loaded machine makes it; a late
-one fails, but for a `transient` mark (a toast, whose own life is shorter: its
-cap stays under it), which is reported. Before a launch that reads verdicts, the
-markers the runner's own terminate left go (a fact says which). Shots land in
+background, `backgrounds`, and in a `leaves` scenario once it has left), no
+fallback for want of a hello, every launch run to its end (no probe timed out);
+each mark holds the app still until its shot is on disk (the probe waits in the
+page for a go file the runner writes once `simctl io screenshot` has returned,
+60 s at most), so a shot never shows the next step however slow a loaded machine
+makes it: a shot counts only when the page went on at or after the shot's end (the
+wait's wall time), else it is late and fails, but for a `transient` mark (a toast,
+whose own life is shorter: its cap stays under it), which is reported. Before a
+launch that reads verdicts, what the launch before it left goes: a screen marker
+its last state listed with the screen up is removed (a fact); any other screen
+marker, or a section or model marker at 1, is a failed check naming the file and
+that launch (a fact when that launch timed out). Shots land in
 `screenshots/out/native-shell/` as
 `<runtime>-<root>-<scenario>-<launch>-<label>.png`, a scenario's older shots of
 the same runtime and root removed first: read every one.

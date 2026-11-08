@@ -15,19 +15,24 @@
 #   ./tests/native-shell.sh --no-build=any   # reuse the last build whatever tree it came from (its identity first)
 #   ./tests/native-shell.sh --only chat,wckill
 #   ./tests/native-shell.sh --keep-data      # install over the phone's container instead of a fresh one
-#   ./tests/native-shell.sh --list           # every scenario in run order, the modules' included (no build)
+#   ./tests/native-shell.sh --list           # every scenario in run order, the modules' included, with the roots of a
+#                                            # row that does not run on both (no build)
 #
-# Scenarios (build 60's nine, under both roots): smoke (-fpSmoke's ping, the root the launch built, hello, the flag's
-# bar, About's rows), chat (classic: presented .overFullScreen over the page; tab root: pushed on the NATIVE Coach tab's
-# stack; a message, the model switch, a forwarded confirm and Undo toast, the screen marker, Back, the rooms'
-# appearance), focus (a focused web field, then the chat up and down by the page, Back and the edge pan or navPop: no
-# keyboard comes back, the document not scrolled; interactivePop on with Back, off in setup), wckill (WebContent killed
-# with the chat up: taken over and resynced on the new boot, the Coach tab NATIVE throughout, nothing resent, the open
-# confirm stale), marker (a planted crash marker brings back the web Coach once; on the tab root the hub's marker too),
-# policy (screens.coach "off" at once; on the tab root screens.coachHome too), breaker (three timeouts turn it off for
-# the page build), counters (the web view out of its window; on the tab root a stray selection), inactive (no marker
-# while the app is away). Then every scenario of tests/tools/shellscen/*.py, by rank. Shots land in
-# screenshots/out/native-shell/ as <runtime>-<root>-<scenario>-...png: look at them.
+# Scenarios (build 60's nine and teardown, under both roots): smoke (-fpSmoke's ping, the root the launch built,
+# hello, the flag's bar, About's rows, the share hook's file), chat (classic: presented .overFullScreen over the page;
+# tab root: pushed on the NATIVE Coach tab's stack; a message, the model switch, a forwarded confirm and Undo toast, the
+# screen marker, Back, the rooms' appearance: Lime dark on a light phone, Heavyweight light on a dark one, on the tab
+# root the bar as drawn too), focus (a focused web field, then the chat up and down by the page, Back and the edge pan or
+# navPop: no keyboard comes back, the document not scrolled; interactivePop on with Back, off in setup), wckill
+# (WebContent killed with the chat up: taken over and resynced on the new boot, the Coach tab NATIVE throughout, nothing
+# resent, the open confirm stale), marker (a planted crash marker brings back the web Coach once; on the tab root the
+# hub's marker too), policy (screens.coach "off" at once; on the tab root screens.coachHome too), breaker (three timeouts
+# turn it off for the page build), counters (the web view out of its window; on the tab root a stray selection),
+# inactive (no marker while the app is away), teardown (the scene torn down and connected again with the chat up: the
+# web view, the root and the window it held all let go). Then every scenario of tests/tools/shellscen/*.py, by rank; a
+# row marked {'roots': 'tabs'} (or 'classic') runs on that root's passes only, and a pass with nothing of --only to run
+# ends before it installs anything. Shots land in screenshots/out/native-shell/ as <runtime>-<root>-<scenario>-...png:
+# look at them.
 #
 # The simulator is named by UDID (never "booted"); the default is the phone of the first paired iPhone + Watch on the
 # runtime, as test-native.sh picks it, else the runtime's first iPhone. Each pass replaces the app's data (the app
