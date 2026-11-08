@@ -654,6 +654,7 @@ function shellMock(arg) {
     st.switches = { tabs: scene.switches.tabs };
     st.policy = copy(scene.policy);
     st.counters.strays = Object.assign(count(), { launch: scene.strays, total: scene.strays });
+    st.counters.leftAny = count();   // delta 17.1, as FPCore writes it: the mock's web view never leaves its window
     return st;
   }
   function status(a) {
