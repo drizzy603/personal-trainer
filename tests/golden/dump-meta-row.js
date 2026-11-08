@@ -26,8 +26,11 @@
 // compare only what no text rasterizer decides: the file's version, notes and avatar, its cases in order (room, width,
 // size, label), the computed styles that lay the row out (`styles`: the row, the label, its ::before, the tile) and
 // the row's boxes with its label empty, which no glyph moves (`boxes`: the row's left and width, the label's left, the
-// tile's width and height), each length within 0.05 px (the layout's 1/64 px steps through the zoom). Even on
-// the Mac a device scale factor of 2 moves 35 of the first 180 tiles by 0.01 pt, with the same page, faces and engine.
+// tile's width and height, and the row's flex items: each it holds, an element by its class, left and width and text
+// of its own as text, and the content of its ::before and ::after), each length within 0.05 px (the layout's 1/64 px
+// steps through the zoom). The items are named because an item added to the row, between the label and the tile or by
+// its CSS, moves neither (spec 126 adds one each way and holds that this check fails on it). Even on the Mac a device
+// scale factor of 2 moves 35 of the first 180 tiles by 0.01 pt, with the same page, faces and engine.
 // FP_META_ROW_PLATFORM=linux runs the other platforms' check on a Mac.
 'use strict';
 const fs = require('fs');
@@ -53,14 +56,16 @@ const LABELS = [
   'COACH · WK 06 / 12 · STRENGTH-ENDURANCE',
   'COACH · WK 06 / 12 · UPPER / LOWER',
 ];
-// The computed styles that lay the row out, per element (the label's text inherits the label's).
+// The computed styles that lay the row out, per element (the label's text inherits the label's; those that move only
+// where its text breaks, such as its indent, ligatures, caps and synthesis, show in no box).
 const STYLES = {
   row: ['display', 'flex-direction', 'flex-wrap', 'justify-content', 'align-items', 'column-gap', 'padding-left',
     'padding-right', 'border-left-width', 'border-right-width'],
   label: ['display', 'align-items', 'column-gap', 'flex-grow', 'flex-shrink', 'flex-basis', 'min-width', 'max-width',
     'margin-left', 'margin-right', 'padding-left', 'padding-right', 'font-family', 'font-size', 'font-weight',
-    'font-style', 'font-stretch', 'font-variant-numeric', 'font-feature-settings', 'font-variation-settings',
-    'font-kerning', 'letter-spacing', 'word-spacing', 'text-transform', 'white-space-collapse', 'text-wrap-mode',
+    'font-style', 'font-stretch', 'font-size-adjust', 'font-synthesis', 'font-variant-numeric', 'font-variant-ligatures',
+    'font-variant-caps', 'font-feature-settings', 'font-variation-settings', 'font-kerning', 'text-rendering',
+    'letter-spacing', 'word-spacing', 'text-indent', 'text-transform', 'white-space-collapse', 'text-wrap-mode',
     'text-wrap-style', 'word-break', 'overflow-wrap', 'line-break', 'hyphens'],
   before: ['content', 'display', 'width', 'height', 'flex-grow', 'flex-shrink', 'margin-left', 'margin-right'],
   ava: ['display', 'box-sizing', 'width', 'height', 'min-width', 'max-width', 'flex-grow', 'flex-shrink', 'flex-basis',
@@ -70,7 +75,8 @@ const STYLES = {
 const AVATAR = 'K';
 
 // Runs in the page: every case of one room at the viewport's width, as {label, size, lines, tile}, and per size the
-// row's styles and boxes with its label empty ({size, styles, box}).
+// row's styles and boxes with its label empty ({size, styles, box}). arg.extra: HTML written into the row before the
+// tile at each paint (spec 126's item the page does not have), or ''.
 async function measure(arg) {
   const out = [], frames = [];
   _paintTheme(arg.room);
@@ -88,13 +94,23 @@ async function measure(arg) {
   for (const [size, zoom] of arg.sizes) {
     applyDynamicType(zoom);
     render();
+    if (arg.extra) ava().insertAdjacentHTML('beforebegin', arg.extra);
     // the styles and boxes with no text in the label, so no glyph moves them (a tile's used width is its own)
     label().textContent = '';
     ava().textContent = arg.avatar;
     const r = row().getBoundingClientRect(), l = label().getBoundingClientRect(), a = ava().getBoundingClientRect();
+    // the row's flex items, named because an item added beside the label and the tile moves neither: each the row
+    // holds (an element by its class, left and width; text of its own as text) and the content of its ::before and
+    // ::after (none: no item)
+    const items = [];
+    for (const n of row().childNodes) {
+      if (n.nodeType === 1) { const b = n.getBoundingClientRect(); items.push([n.getAttribute('class') || n.localName, round(b.left), round(b.width)]); }
+      else if (n.nodeType === 3 && /[^ \t\n\f\r]/.test(n.data)) items.push(['#text', n.data.trim()]);
+    }
     frames.push({ size, styles: { row: pick(getComputedStyle(row()), arg.styles.row), label: pick(getComputedStyle(label()), arg.styles.label),
       before: pick(getComputedStyle(label(), '::before'), arg.styles.before), ava: pick(getComputedStyle(ava()), arg.styles.ava) },
-      box: { row: [round(r.left), round(r.width)], label: round(l.left), tile: [round(a.width), round(a.height)] } });
+      box: { row: [round(r.left), round(r.width)], label: round(l.left), tile: [round(a.width), round(a.height)], items,
+        pseudo: ['::before', '::after'].map((p) => getComputedStyle(row(), p).getPropertyValue('content')) } });
     for (const text of arg.labels) {
       const el = label();
       el.textContent = text;
@@ -119,16 +135,20 @@ async function measure(arg) {
   return { cases: out, frames };
 }
 
-// The file's text as the page lays the cases out now.
-async function pageLayout() {
-  const cases = [], styles = [], boxes = [];
-  for (const room of ROOMS) {
+// The file's text as the page lays the cases out now. Spec 126 narrows it (o.rooms, o.widths, o.labels) and gives the
+// row an item the page does not have (o.extra: `html` written into the row before the tile at each paint, or `css`
+// added to the page) to hold that the check off darwin sees one.
+async function pageLayout(o = {}) {
+  const extra = o.extra || {}, cases = [], styles = [], boxes = [];
+  for (const room of o.rooms || ROOMS) {
     const app = await boot({ seed: { kt_apikey: 'sk-ant-golden', kt_coach_msgs: '[]', kt_user_name: 'Kalani' }, store: 'classic',
       page: { timezoneId: 'UTC' }, init: CLOCK_INIT });
     try {
-      for (const width of WIDTHS) {
+      if (extra.css) await app.page.addStyleTag({ content: extra.css });
+      for (const width of o.widths || WIDTHS) {
         await app.page.setViewportSize({ width, height: 844 });
-        const got = await app.page.evaluate(measure, { room, sizes: SIZES, labels: LABELS, avatar: AVATAR, styles: STYLES });
+        const got = await app.page.evaluate(measure, { room, sizes: SIZES, labels: o.labels || LABELS, avatar: AVATAR,
+          styles: STYLES, extra: extra.html || '' });
         for (const c of got.cases) cases.push({ room, width, size: c.size, label: c.label, lines: c.lines, tile: c.tile });
         for (const f of got.frames) {
           boxes.push(Object.assign({ room, width, size: f.size }, f.box));
@@ -153,8 +173,9 @@ async function pageLayout() {
       '(38 px x zoom unless the label is wider than its room: both flex-shrink 1, in proportion to their inner flex base sizes).',
       'CoachHomeViewTests.testTheMetaLabelBreaksWhereTheWebsDoes holds HomeMetaRow.layout to every case.',
       'styles (per room and size: the computed styles that lay the row out) and boxes (per room, width and size: the row\'s',
-      'left and width, the label\'s left, the tile\'s width and height, in px), read with the label empty, are what no',
-      'text rasterizer decides: off darwin the check holds those and the cases\' order, not the lines and tiles.',
+      'left and width, the label\'s left, the tile\'s width and height, in px, and the row\'s flex items: each element by',
+      'its class, left and width, text of its own, the content of its ::before and ::after), read with the label empty,',
+      'are what no text rasterizer decides: off darwin the check holds those and the cases\' order, not the lines and tiles.',
     ],
     avatar: AVATAR,
     styles,
@@ -163,10 +184,9 @@ async function pageLayout() {
   };
   return JSON.stringify(file, null, 1) + '\n';
 }
-// What differs between the file and the page's layout now (`text`, from pageLayout): nothing, or the parts that
-// differ. On darwin the file whole, byte for byte; elsewhere only what no text rasterizer decides (the notes above).
-function drift(text, platform = process.env.FP_META_ROW_PLATFORM || process.platform) {
-  const file = fs.existsSync(OUT) ? fs.readFileSync(OUT, 'utf8') : '';
+// What differs between a file's text (`file`) and the page's layout (`text`, from pageLayout): nothing, or the parts
+// that differ. On darwin the file whole, byte for byte; elsewhere only what no text rasterizer decides (the notes above).
+function compare(file, text, platform = process.env.FP_META_ROW_PLATFORM || process.platform) {
   if (platform === 'darwin') return file === text ? [] : ['the file, byte for byte (its lines and tiles included)'];
   let had;
   try { had = JSON.parse(file); } catch (e) { return ['the file (unreadable: ' + e.message + ')']; }
@@ -192,12 +212,16 @@ function drift(text, platform = process.env.FP_META_ROW_PLATFORM || process.plat
   if (order(had) !== order(now)) bad.push('the cases (room, width, size, label, in order)');
   return bad;
 }
+// What differs between the file and the page's layout now (`text`, from pageLayout).
+function drift(text, platform) {
+  return compare(fs.existsSync(OUT) ? fs.readFileSync(OUT, 'utf8') : '', text, platform);
+}
 
 // What the check holds on this platform, in words.
 function holds(platform = process.env.FP_META_ROW_PLATFORM || process.platform) {
   return platform === 'darwin' ? 'byte for byte' : 'what no text rasterizer decides (the lines and tiles: on darwin only)';
 }
-module.exports = { pageLayout, drift, holds, OUT };
+module.exports = { pageLayout, compare, drift, holds, OUT };
 
 if (require.main === module) {
   (async () => {

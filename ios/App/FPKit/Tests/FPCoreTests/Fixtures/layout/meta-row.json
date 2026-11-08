@@ -8,8 +8,9 @@
   "(38 px x zoom unless the label is wider than its room: both flex-shrink 1, in proportion to their inner flex base sizes).",
   "CoachHomeViewTests.testTheMetaLabelBreaksWhereTheWebsDoes holds HomeMetaRow.layout to every case.",
   "styles (per room and size: the computed styles that lay the row out) and boxes (per room, width and size: the row's",
-  "left and width, the label's left, the tile's width and height, in px), read with the label empty, are what no",
-  "text rasterizer decides: off darwin the check holds those and the cases' order, not the lines and tiles."
+  "left and width, the label's left, the tile's width and height, in px, and the row's flex items: each element by",
+  "its class, left and width, text of its own, the content of its ::before and ::after), read with the label empty,",
+  "are what no text rasterizer decides: off darwin the check holds those and the cases' order, not the lines and tiles."
  ],
  "avatar": "K",
  "styles": [
@@ -46,12 +47,18 @@
     "font-weight": "700",
     "font-style": "normal",
     "font-stretch": "100%",
+    "font-size-adjust": "none",
+    "font-synthesis": "weight style small-caps",
     "font-variant-numeric": "tabular-nums",
+    "font-variant-ligatures": "normal",
+    "font-variant-caps": "normal",
     "font-feature-settings": "normal",
     "font-variation-settings": "normal",
     "font-kerning": "auto",
+    "text-rendering": "auto",
     "letter-spacing": "1px",
     "word-spacing": "0px",
+    "text-indent": "0px",
     "text-transform": "uppercase",
     "white-space-collapse": "collapse",
     "text-wrap-mode": "wrap",
@@ -125,12 +132,18 @@
     "font-weight": "700",
     "font-style": "normal",
     "font-stretch": "100%",
+    "font-size-adjust": "none",
+    "font-synthesis": "weight style small-caps",
     "font-variant-numeric": "tabular-nums",
+    "font-variant-ligatures": "normal",
+    "font-variant-caps": "normal",
     "font-feature-settings": "normal",
     "font-variation-settings": "normal",
     "font-kerning": "auto",
+    "text-rendering": "auto",
     "letter-spacing": "1px",
     "word-spacing": "0px",
+    "text-indent": "0px",
     "text-transform": "uppercase",
     "white-space-collapse": "collapse",
     "text-wrap-mode": "wrap",
@@ -204,12 +217,18 @@
     "font-weight": "700",
     "font-style": "normal",
     "font-stretch": "100%",
+    "font-size-adjust": "none",
+    "font-synthesis": "weight style small-caps",
     "font-variant-numeric": "tabular-nums",
+    "font-variant-ligatures": "normal",
+    "font-variant-caps": "normal",
     "font-feature-settings": "normal",
     "font-variation-settings": "normal",
     "font-kerning": "auto",
+    "text-rendering": "auto",
     "letter-spacing": "1px",
     "word-spacing": "0px",
+    "text-indent": "0px",
     "text-transform": "uppercase",
     "white-space-collapse": "collapse",
     "text-wrap-mode": "wrap",
@@ -283,12 +302,18 @@
     "font-weight": "700",
     "font-style": "normal",
     "font-stretch": "100%",
+    "font-size-adjust": "none",
+    "font-synthesis": "weight style small-caps",
     "font-variant-numeric": "normal",
+    "font-variant-ligatures": "normal",
+    "font-variant-caps": "normal",
     "font-feature-settings": "\"cv02\", \"cv03\", \"cv04\"",
     "font-variation-settings": "normal",
     "font-kerning": "auto",
+    "text-rendering": "auto",
     "letter-spacing": "1.4px",
     "word-spacing": "0px",
+    "text-indent": "0px",
     "text-transform": "none",
     "white-space-collapse": "collapse",
     "text-wrap-mode": "wrap",
@@ -362,12 +387,18 @@
     "font-weight": "700",
     "font-style": "normal",
     "font-stretch": "100%",
+    "font-size-adjust": "none",
+    "font-synthesis": "weight style small-caps",
     "font-variant-numeric": "normal",
+    "font-variant-ligatures": "normal",
+    "font-variant-caps": "normal",
     "font-feature-settings": "\"cv02\", \"cv03\", \"cv04\"",
     "font-variation-settings": "normal",
     "font-kerning": "auto",
+    "text-rendering": "auto",
     "letter-spacing": "1.4px",
     "word-spacing": "0px",
+    "text-indent": "0px",
     "text-transform": "none",
     "white-space-collapse": "collapse",
     "text-wrap-mode": "wrap",
@@ -441,12 +472,18 @@
     "font-weight": "700",
     "font-style": "normal",
     "font-stretch": "100%",
+    "font-size-adjust": "none",
+    "font-synthesis": "weight style small-caps",
     "font-variant-numeric": "normal",
+    "font-variant-ligatures": "normal",
+    "font-variant-caps": "normal",
     "font-feature-settings": "\"cv02\", \"cv03\", \"cv04\"",
     "font-variation-settings": "normal",
     "font-kerning": "auto",
+    "text-rendering": "auto",
     "letter-spacing": "1.4px",
     "word-spacing": "0px",
+    "text-indent": "0px",
     "text-transform": "none",
     "white-space-collapse": "collapse",
     "text-wrap-mode": "wrap",
@@ -501,6 +538,22 @@
    "tile": [
     38,
     38
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     16,
+     7
+    ],
+    [
+     "kt-meta-ava",
+     266,
+     38
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
    ]
   },
   {
@@ -515,6 +568,22 @@
    "tile": [
     42.55,
     42.55
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     17.91,
+     7.83
+    ],
+    [
+     "kt-meta-ava",
+     259.55,
+     42.55
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
    ]
   },
   {
@@ -529,6 +598,22 @@
    "tile": [
     47.11,
     47.11
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     19.83,
+     8.67
+    ],
+    [
+     "kt-meta-ava",
+     253.06,
+     47.11
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
    ]
   },
   {
@@ -543,6 +628,22 @@
    "tile": [
     38,
     38
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     20,
+     7
+    ],
+    [
+     "kt-meta-ava",
+     317,
+     38
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
    ]
   },
   {
@@ -557,6 +658,22 @@
    "tile": [
     42.55,
     42.55
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     22.39,
+     7.83
+    ],
+    [
+     "kt-meta-ava",
+     310.06,
+     42.55
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
    ]
   },
   {
@@ -571,6 +688,22 @@
    "tile": [
     47.11,
     47.11
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     24.8,
+     8.67
+    ],
+    [
+     "kt-meta-ava",
+     303.09,
+     47.11
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
    ]
   },
   {
@@ -585,6 +718,22 @@
    "tile": [
     38,
     38
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     20,
+     7
+    ],
+    [
+     "kt-meta-ava",
+     332,
+     38
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
    ]
   },
   {
@@ -599,6 +748,22 @@
    "tile": [
     42.55,
     42.55
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     22.39,
+     7.83
+    ],
+    [
+     "kt-meta-ava",
+     325.06,
+     42.55
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
    ]
   },
   {
@@ -613,6 +778,22 @@
    "tile": [
     47.11,
     47.11
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     24.8,
+     8.67
+    ],
+    [
+     "kt-meta-ava",
+     318.09,
+     47.11
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
    ]
   },
   {
@@ -627,6 +808,22 @@
    "tile": [
     38,
     38
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     20,
+     7
+    ],
+    [
+     "kt-meta-ava",
+     344,
+     38
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
    ]
   },
   {
@@ -641,6 +838,22 @@
    "tile": [
     42.55,
     42.55
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     22.39,
+     7.83
+    ],
+    [
+     "kt-meta-ava",
+     337.06,
+     42.55
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
    ]
   },
   {
@@ -655,6 +868,22 @@
    "tile": [
     47.11,
     47.11
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     24.8,
+     8.67
+    ],
+    [
+     "kt-meta-ava",
+     330.09,
+     47.11
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
    ]
   },
   {
@@ -669,6 +898,22 @@
    "tile": [
     38,
     38
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     20,
+     7
+    ],
+    [
+     "kt-meta-ava",
+     382,
+     38
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
    ]
   },
   {
@@ -683,6 +928,22 @@
    "tile": [
     42.55,
     42.55
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     22.39,
+     7.83
+    ],
+    [
+     "kt-meta-ava",
+     375.06,
+     42.55
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
    ]
   },
   {
@@ -697,6 +958,22 @@
    "tile": [
     47.11,
     47.11
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     24.8,
+     8.67
+    ],
+    [
+     "kt-meta-ava",
+     368.09,
+     47.11
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
    ]
   },
   {
@@ -711,6 +988,22 @@
    "tile": [
     38,
     38
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     16,
+     7
+    ],
+    [
+     "kt-meta-ava",
+     266,
+     38
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
    ]
   },
   {
@@ -725,6 +1018,22 @@
    "tile": [
     42.55,
     42.55
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     17.91,
+     7.83
+    ],
+    [
+     "kt-meta-ava",
+     259.55,
+     42.55
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
    ]
   },
   {
@@ -739,6 +1048,22 @@
    "tile": [
     47.11,
     47.11
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     19.83,
+     8.67
+    ],
+    [
+     "kt-meta-ava",
+     253.06,
+     47.11
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
    ]
   },
   {
@@ -753,6 +1078,22 @@
    "tile": [
     38,
     38
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     20,
+     7
+    ],
+    [
+     "kt-meta-ava",
+     317,
+     38
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
    ]
   },
   {
@@ -767,6 +1108,22 @@
    "tile": [
     42.55,
     42.55
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     22.39,
+     7.83
+    ],
+    [
+     "kt-meta-ava",
+     310.06,
+     42.55
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
    ]
   },
   {
@@ -781,6 +1138,22 @@
    "tile": [
     47.11,
     47.11
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     24.8,
+     8.67
+    ],
+    [
+     "kt-meta-ava",
+     303.09,
+     47.11
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
    ]
   },
   {
@@ -795,6 +1168,22 @@
    "tile": [
     38,
     38
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     20,
+     7
+    ],
+    [
+     "kt-meta-ava",
+     332,
+     38
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
    ]
   },
   {
@@ -809,6 +1198,22 @@
    "tile": [
     42.55,
     42.55
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     22.39,
+     7.83
+    ],
+    [
+     "kt-meta-ava",
+     325.06,
+     42.55
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
    ]
   },
   {
@@ -823,6 +1228,22 @@
    "tile": [
     47.11,
     47.11
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     24.8,
+     8.67
+    ],
+    [
+     "kt-meta-ava",
+     318.09,
+     47.11
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
    ]
   },
   {
@@ -837,6 +1258,22 @@
    "tile": [
     38,
     38
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     20,
+     7
+    ],
+    [
+     "kt-meta-ava",
+     344,
+     38
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
    ]
   },
   {
@@ -851,6 +1288,22 @@
    "tile": [
     42.55,
     42.55
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     22.39,
+     7.83
+    ],
+    [
+     "kt-meta-ava",
+     337.06,
+     42.55
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
    ]
   },
   {
@@ -865,6 +1318,22 @@
    "tile": [
     47.11,
     47.11
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     24.8,
+     8.67
+    ],
+    [
+     "kt-meta-ava",
+     330.09,
+     47.11
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
    ]
   },
   {
@@ -879,6 +1348,22 @@
    "tile": [
     38,
     38
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     20,
+     7
+    ],
+    [
+     "kt-meta-ava",
+     382,
+     38
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
    ]
   },
   {
@@ -893,6 +1378,22 @@
    "tile": [
     42.55,
     42.55
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     22.39,
+     7.83
+    ],
+    [
+     "kt-meta-ava",
+     375.06,
+     42.55
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
    ]
   },
   {
@@ -907,6 +1408,22 @@
    "tile": [
     47.11,
     47.11
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     24.8,
+     8.67
+    ],
+    [
+     "kt-meta-ava",
+     368.09,
+     47.11
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
    ]
   }
  ],

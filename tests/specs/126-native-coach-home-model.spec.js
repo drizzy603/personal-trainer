@@ -38,8 +38,10 @@
 //   as Fixtures/layout/meta-row.json says (tests/golden/dump-meta-row.js), the file CoachHomeViewTests holds the
 //   native row to: byte for byte on darwin, where the file is made and where publish.sh runs the suite before every
 //   publish; elsewhere (CI's ubuntu-latest Chromium, whose text goes through FreeType) only what no text rasterizer
-//   decides: the cases in order, the row's computed styles and its boxes with the label empty (the lines and tiles
-//   come from glyph advances; even the Mac's device scale factor 2 moves 35 of the first 180 tiles by 0.01 pt).
+//   decides: the cases in order, the row's computed styles and its boxes with the label empty, the row's flex items
+//   among them (the lines and tiles come from glyph advances; even the Mac's device scale factor 2 moves 35 of the
+//   first 180 tiles by 0.01 pt). An item added to the row moves neither the label nor the tile: off darwin the check
+//   still fails on one, an element written into the row or a ::after its CSS adds.
 // Every boot names its shell (the mark above): FP_SHELL_INERT runs skip this spec.
 const fs = require('fs');
 const path = require('path');
@@ -533,4 +535,21 @@ serial('golden: the Coach hub\'s meta row lays out as Fixtures/layout/meta-row.j
   assert(bad.length === 0, 'the page lays out the meta row otherwise than ' +
     path.relative(path.join(__dirname, '..', '..'), meta.OUT) + ' says (' + meta.holds() + '): ' + bad.join(', ') +
     ': run node tests/golden/dump-meta-row.js on a Mac, then CoachHomeViewTests on a simulator');
+});
+
+// Off darwin the check reads no glyph, so it holds the row's flex items: an item the page does not have moves neither the
+// label nor the tile, and the check still names the boxes (and nothing else), as the byte-for-byte check on darwin fails.
+serial('golden: off darwin the meta row\'s check still sees an item added to the row (an element, or a ::after its CSS adds)', async () => {
+  const meta = require('../golden/dump-meta-row');
+  const o = { rooms: ['heavyweight'], widths: [320], labels: ['COACH · WK 06 / 12'] };
+  const base = await meta.pageLayout(o);
+  for (const [what, extra] of [
+    ['an element before the tile', { html: '<div class="kt-meta-x" style="width:20px;height:20px;flex-shrink:0"></div>' }],
+    ['a ::after the row\'s CSS adds', { css: '.kt-meta-row::after{content:"";width:20px;height:20px;flex-shrink:0}' }],
+  ]) {
+    const text = await meta.pageLayout(Object.assign({ extra }, o));
+    const off = meta.compare(base, text, 'linux');
+    assert(J(off) === J(['boxes']), what + ': off darwin the check found ' + J(off));
+    assert(meta.compare(base, text, 'darwin').length === 1, what + ': on darwin the check found nothing');
+  }
 });

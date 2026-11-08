@@ -97,9 +97,10 @@ hub's groups of rows, the room's tokens with the hub's `home*` sizes; never the 
 `Fixtures/tabs` and `Fixtures/coachHome`: the page-built ones from `node tests/golden/dump-coach-home.js`, the hand-made
 ones from `Tools/tabs-fixtures.js` and `Tools/coach-home-fixtures.js` (see `Tests/FPCoreTests/Fixtures/README.md`). The
 hub's meta row as the page lays it out is `Fixtures/layout/meta-row.json`, from `node tests/golden/dump-meta-row.js` on
-a Mac (checked byte for byte on darwin; on CI's Linux only the cases, the row's styles and its boxes, since the lines and
-tiles come from the text rasterizer). The label and the headline break where the phone's web view does: `WebLineBreaks`
-(FPUI), WebKit 26.5's breakable positions, never after a slash inside a name, after a hyphen, at a space before a slash.
+a Mac (checked byte for byte on darwin; on CI's Linux only the cases, the row's styles and its boxes, the row's flex
+items among them, since the lines and tiles come from the text rasterizer). The label and the headline break where the
+phone's web view does: `WebLineBreaks` (FPUI), WebKit 26.5's breakable positions, never after a slash inside a name,
+after a hyphen, at a space before a slash.
 
 `CoachHomeModelTests` reads both kinds. Each page-built `Fixtures/coachHome` file (P6) is read as the page's whole
 model, contract 6.2's keys in their JSON types (rev, boot, room, paper, dynTypeOn, route and resume as sent; meta, hero,

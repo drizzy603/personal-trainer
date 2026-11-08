@@ -15,7 +15,8 @@
 #    tile's width) equals Fixtures/layout/meta-row.json, which CoachHomeViewTests (FPUITests, on a simulator) holds
 #    the native row to; `node tests/golden/dump-meta-row.js` (on a Mac) rewrites it. Byte for byte on darwin only:
 #    the lines and tiles come from the text's glyph advances, so elsewhere (CI's Linux, where spec 126 runs the same
-#    check) it holds what no text rasterizer decides, the cases, the row's computed styles and its boxes.
+#    check) it holds what no text rasterizer decides, the cases, the row's computed styles and its boxes, the row's
+#    flex items among them.
 # 5. swift test: CoachModelTests, BlocksTests, CoachHomeModelTests and TabsModelTests decode every fixture
 #    with FPCore.
 set -e
