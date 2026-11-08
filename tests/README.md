@@ -306,29 +306,51 @@ the same runtime and root removed first: read every one.
 
 ## The live native chat in test-native.sh
 
-`../test-native.sh` drives the live chat (plan task C7) after its routes, through
-`tools/native-chat.py` on the same phone and container: `-fpSmoke`'s ping; the
-keyboard sequences (the simulator's software keyboard turned on for them: the
-native composer on the keys, typed words in the chat's store, Back with the keys
-up, the composer's words kept across a present and a relaunch, a web field's keys
-gone when the chat covers it, a short chat's newest message in view as the keys
-come up); a real coach turn from the native composer on
-`tools/coach-stub.py`, a stand-in for Anthropic's Messages API on the Mac's
-loopback (the Debug argument `-fpApiBase` hands it to the page as
-`window.__FP_SHELL.dev.api`; spec 121 holds the page to taking only a loopback
-origin): the echo, Thinking, the reply with a tool pill and PLAN CHANGES, Undo
-through the forwarded confirm, Keep changes, Send and Stop while scrolled to the
-top each bringing the end into view, a reader scrolled up keeping their place; then
-`coach/chat` by launch argument in both rooms x `simctl ui appearance light|dark`
-x `content_size large|extra-extra-large`; the app's Larger Text off keeping the empty composer at its Large
-height. It puts back what it changed in the container and the
-phone's settings. `python3 tools/coach-stub.py --script FILE` serves the stand-in
-on its own (one JSON line per request).
-
-On an iOS 26+ phone the launches (`-fpOffline`, no policy file) take the tab root
-the same way, where `native-chat.py`, written for 60's chat over the page, fails,
-and `../test-native.sh` exits 1 after the routes, the store check and the watch;
-the classic root comes with the same `{"tabs": false}` switch file.
+`../test-native.sh` drives the live native Coach (plan tasks C7 and T21) after its
+routes, through `tools/native-chat.py` on the same phone and container, under one
+root: `--root tabs` (the default: `-fpOffline` alone, so an iOS 26+ phone builds
+the tab root, the chat pushed on the native Coach tab's stack) or `--root classic`
+(section 6's policy offs written into the container as `fp-policy-offs.json`, every
+launch with `-fpPolicyFile fp-policy-offs.json -fpPolicyEvery 0`: build 60's look,
+the chat presented `.overFullScreen`, the only root where that style is asserted;
+an iOS 17 or 18 phone builds the classic root either way). `prepare` keeps every
+localStorage value but the key's (only whether there is one and whether it is the
+probe's), adds the probe's key and a starter programme where there are none, and
+checks the root: a tab pass that finds the classic one (a decline, a verdict, a
+trip, the bar's switch off: plan delta 16.7) turns it back on through TrovoShell and
+launches again; the shell's folder and UserDefaults copies are kept before the
+first launch and put back after the last (`tools/probe-selftest.py`'s helpers).
+Then: `-fpSmoke`'s ping and the root's pieces negotiated; the keyboard sequences
+(the simulator's software keyboard turned on, the phone at Large: the native
+composer on the keys, typed words in the chat's store, Back with the keys up, a
+pop to the hub on the tab root, the composer's words kept across a present and a
+relaunch, a web field's keys gone when the chat covers it, on the tab root when the
+Coach tab is selected, a short chat's newest message in view as the keys come up,
+and the page's pending photo in the native composer, its preview measured in the
+shots: 140 pt with the keys down, 96 with them up, N5's cap); a real coach turn
+from the native composer on `tools/coach-stub.py`, a stand-in for Anthropic's
+Messages API on the Mac's loopback (the Debug argument `-fpApiBase` hands it to the
+page as `window.__FP_SHELL.dev.api`; spec 121 holds the page to taking only a
+loopback origin; every other launch gets a closed loopback port): the echo,
+Thinking, the reply with a tool pill and PLAN CHANGES, Undo through the forwarded
+confirm, Keep changes, Send and Stop while scrolled to the top each bringing the end
+into view, a reader scrolled up keeping their place, the chat where the root puts
+it through the turn (on the tab root pushed, Coach selected, the bar visible);
+`connect` on the tab root (the key taken out inside the page, the native connect
+screen in both rooms with its ground drawn in the room, an invalid key refused with
+the page's toast, the probe's key saved on the stand-in and verified, the hub;
+neither key in a probe log); then, in both rooms x `simctl ui appearance
+light|dark` x `content_size large|extra-extra-large`, three launches by route:
+`coach/chat`, `coach` (the native hub, its ground drawn in the room) and
+`log/workout` (a web tab under the glass bar), the bar asking for the room's look
+and drawing it (the mean luminance of its frame in the shot, `native-shell.py`'s
+bounds); the app's Larger Text off keeping the empty composer at its Large height;
+`restore` in two launches, never a reload. It puts back what it changed in the
+container and the phone's settings. Every mark holds the app until its shot is on
+disk (`native-shell.py`'s go files). Shots in `screenshots/out/native/`
+(`coach-chat-*`, `coach-home-*`, `tabs-log-*`, `connect-*`, `keys-*`, `live-*`;
+`classic-` in front on the classic root). `python3 tools/coach-stub.py --script
+FILE` serves the stand-in on its own (one JSON line per request).
 
 ## The probe's self-test and the Release strings check
 
