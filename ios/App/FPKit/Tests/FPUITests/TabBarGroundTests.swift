@@ -11,11 +11,12 @@ import FPCore
 /// iOS 26.x draws the glass bar, its platter and its items, in the style it reads from what is drawn under the bar only
 /// where a scroll view lies under it, and in the phone's style everywhere else, whatever the bar and its container wear
 /// (TabBarLook). Measured in the app on iOS 26.5 (the selected Coach item against the capsule around it, from the
-/// screenshot's pixels): the hub, whose ScrollView reaches under the bar, gave Lime on a light phone dark glass at 4.7:1
-/// and Heavyweight on a dark phone light glass at 5.8:1; the pushed chat, whose conversation ends above its composer,
-/// gave Lime light glass with its near-white item at 1.4:1 and Heavyweight grey glass under its blue item at 1.0:1. With
-/// a scroll view in the room's ground under the stack the chat read 4.7:1 and 6.1:1. iOS 27 draws the glass in its
-/// container's style whatever lies under it.
+/// screenshot's pixels): the hub, whose ScrollView reaches under the bar, gave Lime on a light phone dark glass at 4.73:1
+/// and Heavyweight on a dark phone light glass at 5.84:1; the pushed chat, whose conversation ends above its composer,
+/// gave Lime light glass with its near-white item at 1.36:1 and Heavyweight grey glass under its blue item at 1.04:1.
+/// Over the stack's ground (a scroll view in the room's background under the stack) the chat read 4.73:1 and 5.85:1 and
+/// every Coach screen 4.73:1 or more in both rooms and both phone appearances. iOS 27 draws the glass in its container's
+/// style whatever lies under it.
 ///
 /// This host composites nothing (it has no window scene: `drawHierarchy` answers false and the glass is never drawn, so
 /// the platter's content keeps the phone's style on 26.x whatever lies under it), so the drawn contrast is read in the

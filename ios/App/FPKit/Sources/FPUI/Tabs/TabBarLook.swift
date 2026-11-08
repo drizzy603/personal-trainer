@@ -14,13 +14,21 @@ import FPCore
 ///   controller and on the bar's container (RootTabController's `paintBarContainer`: on iOS 27 the glass platter's content
 ///   takes its style from there, not from the bar), and never on the window, the root or a slot: the web view's traits,
 ///   its keyboards and the page's `prefers-color-scheme` stay the phone's (`maps/shell.md:331`).
-/// - What the glass draws its content in differs by runtime (the H9 review's renders on 26.5 and 27.0, both rooms, both
-///   phone appearances): iOS 27 takes the container's style, so the bar wears the room whatever is under it (over
-///   content unlike the room the glass turns grey and the items keep the room's colours); iOS 26.x reads the style from
-///   what is drawn under the bar, whatever the bar or its container wear: over the room's own page (its ground) that is
-///   the room's style, while content unlike it flips the bar (black under Heavyweight draws dark glass with white items;
-///   white under Lime light glass, on which Lime's near-white selected item is all but unreadable). A test window draws
-///   nothing, so RootTabControllerTests walks the platter on iOS 27 only.
+/// - What the glass draws its platter and its items in differs by runtime (the H9 review's renders and H9 fix-1's app
+///   runs on 26.5 and 27.0, both rooms, both phone appearances): iOS 27 takes the container's style, so the bar wears the
+///   room whatever is under it (over content unlike the room the glass turns grey and the items keep the room's colours).
+///   iOS 26.x reads the style from what is drawn under the bar only where a scroll view lies under it, whatever the bar
+///   or its container wear, and takes the phone's style where none does. So every Coach screen stands on the stack's
+///   ground, a scroll view in the room's background under the stack (CoachSlotController's `ground`): without it the
+///   pushed chat, whose conversation ends above its composer, gave Lime on a light phone light glass with its near-white
+///   selected item at 1.36:1 against its capsule and Heavyweight on a dark phone grey glass under its blue item at
+///   1.04:1; over the ground every Coach screen reads 4.73:1 or more in both rooms and both phone appearances (the
+///   selected item against its capsule in the screenshot's pixels; 5.82:1 and 18.23:1 on 27.0). On a web tab and on Coach
+///   WEB the page's own scroll view lies under the bar: the room's page gives the room's style, while content unlike it
+///   flips the bar (black under Heavyweight draws dark glass with white items; white under Lime light glass, on which
+///   Lime's near-white selected item is all but unreadable), so the page keeps its own ground under the bar. A test window
+///   is never drawn (no window scene), so there the platter's content keeps the phone's style on 26.x: RootTabControllerTests
+///   walks the platter on iOS 27 only and TabBarGroundTests checks the ground under every Coach screen.
 /// - The glass bar draws its unselected items in its own colour: on iOS 27.0 neither `unselectedItemTintColor` nor a
 ///   UITabBarAppearance's normal item colours change them (H9's by-hand run). `idle` is set all the same.
 /// - The room's `bg` is the ground the Coach tab shows while WAITING and while held (contract 1.4, 8.1).
