@@ -760,7 +760,9 @@ def scen_smoke(c):
         return
     # Settings > About under build 61's binary (contract 10.5): the Native tab bar row says why the root is what it is,
     # and the Native Coach row reads the piece that hosts the Coach (_fpCoachHost).
-    ev = shell_probe(c.sim, 'smoke-about', [[wait(1000), *about(sheet='', label='about'), mark('about')]])
+    # Then the share hook (delta 17.7: T18's share scenarios need this build's App Group container), after the page's
+    # boot read of a pending share (+2.5 s).
+    ev = shell_probe(c.sim, 'smoke-about', [[wait(1000), *about(sheet='', label='about'), mark('about'), {'op': 'share', 'comment': ''}, wait(300)]])
     ab = about_of(ev)
     if c.tabs:
         want_t, want_c, why = TABS_ON, COACH_TAB_ON, 'the tab root live'
@@ -772,6 +774,16 @@ def scen_smoke(c):
                 {'row': ab.get('tabsRow'), 'tabs': ab_screen(ab, 'tabs'), 'fellBack': (ab.get('status') or {}).get('fellBack')})
     c.rep.check(s, 'Settings > About > %s says "%s"' % (about_words(ab)['title'], want_c), ab.get('sub') == want_c
                 and about_words(ab)['title'] in (ab.get('row') or ''), {'row': ab.get('row'), 'coach': ab_screen(ab, 'coach'), 'coachHome': ab_screen(ab, 'coachHome')})
+    # The share hook writes its JPEG into the group's container (stored file), never the base64 slot; the file goes again
+    # at once, so no later launch's page picks a share up.
+    se = ev.first('share') or {}
+    jpg = os.path.join(gc, 'pendingShare.jpg') if gc else ''
+    there = bool(jpg) and os.path.isfile(jpg)
+    c.rep.check(s, 'the share hook writes pendingShare.jpg into the App Group\'s container (stored file, delta 17.7)',
+                se.get('ran') is True and se.get('stored') == 'file' and se.get('legacy') is False and there,
+                {k: se.get(k) for k in ('ran', 'stored', 'legacy', 'jpeg', 'bytes', 'error')} | {'file': there})
+    if there:
+        os.remove(jpg)
 
 
 def scen_chat(c):
