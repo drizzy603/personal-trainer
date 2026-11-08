@@ -1,4 +1,5 @@
 #if os(iOS)
+import CoreText
 import SwiftUI
 import UIKit
 import Vision
@@ -287,21 +288,25 @@ final class CoachHomeRenderTests: XCTestCase {
     /// inside another (the title's "Coach" is not the meta row's COACH, nor "ready." the body's "thread"). Every string
     /// the model shows is one the source holds, so what is drawn is the page's own words and never a default of the
     /// decoder or the view. The avatar, a lone letter that the recognizer reads in Lime and seldom on Heavyweight's
-    /// blue disc, is held by its tile instead (`checkAvatar`). The view's own marks (the meta row's disc, a row's
-    /// chevron, CONNECT's arrow, the icons) are no letters or digits and are not text.
+    /// blue disc, is held by its tile instead (`checkAvatar`). The meta label is held by its pixels as well
+    /// (`checkMetaLabel`), on every runtime. The view's own marks (the
+    /// meta row's disc, a row's chevron, CONNECT's arrow, the icons) are no letters or digits and are not text.
     func testEveryStringARenderDrawsIsTheFixtures() throws {
-        var lines = 0, strings = 0, avatars = 0
+        var lines = 0, strings = 0, avatars = 0, labels = 0
         for (name, json) in try Self.sources() {
             let file = CoachHomeFixtures.strings(json)
             for (roomName, room, model) in try Self.models(json) {
                 let shown = Self.shown(model)
                 for s in shown { XCTAssertTrue(file.contains(s), "\(name) \(roomName): \(s.debugDescription) is a string of the source") }
-                let words = Self.shown(model, avatar: false)
                 for (screen, sizeName, size) in [(Self.phone, "large", DynamicTypeSize.large), (Self.zoomed, "xxLarge", .xxLarge)] {
                     let what = "\(name) \(roomName) \(screen.name) \(sizeName)"
                     let image = CoachRenderTests.render(Phone(model: model, size: size, screen: screen, unscrolled: true), size: nil,
                                                         phone: .light, width: screen.size.width)
-                    let read = try DrawnText.read(image)
+                    let all = try DrawnText.read(image)
+                    let words = Self.shown(model, avatar: false), read = all
+                    if try checkMetaLabel(of: json, in: room, model: model, drawn: image, screen: screen, size: size, what) != nil {
+                        labels += 1
+                    }
                     let match = DrawnText.match(lines: read.map(\.text), strings: words)
                     for (i, line) in read.enumerated() {
                         let count = DrawnText.normalize(line.text).count
@@ -320,7 +325,7 @@ final class CoachHomeRenderTests: XCTestCase {
                     XCTAssertEqual(match.missing, [], "\(what): pieces of the model's strings not drawn at their place (read: \(read.map(\.text)))")
                     XCTAssertEqual(match.extra, [], "\(what): pieces drawn where the model has none (\(words))")
                     if let avatar = model.meta.avatar, !avatar.isEmpty {
-                        try checkAvatar(avatar, of: json, in: room, drawn: image, read: read, screen: screen, size: size, what)
+                        try checkAvatar(avatar, of: json, in: room, drawn: image, read: all, screen: screen, size: size, what)
                         avatars += 1
                     }
                 }
@@ -329,11 +334,14 @@ final class CoachHomeRenderTests: XCTestCase {
         XCTAssertGreaterThan(lines, 0, "text was read off the renders")
         XCTAssertGreaterThan(strings, 0, "the models show strings")
         XCTAssertGreaterThan(avatars, 0, "avatars were drawn")
+        XCTAssertGreaterThan(labels, 0, "meta labels were drawn")
     }
 
     /// The avatar is drawn from the model, in its tile at the meta row's end: the column drawn again with another
-    /// letter differs from `drawn` (the model's own) inside the tile alone (38 px at the column's right gutter, under
-    /// the row's 17 px), and whatever the recognizer read inside the tile is the model's letter.
+    /// letter differs from `drawn` (the model's own) inside the tile alone (at the column's right gutter, under the
+    /// row's 17 px, as wide as the row's layout makes it: `HomeMetaRow.layout`, 38 px unless the label needs its room)
+    /// and centred in it, so a tile drawn wider or narrower than the web's moves the letter off its middle; and whatever
+    /// the recognizer read inside the tile is the model's letter.
     private func checkAvatar(_ avatar: String, of json: JSONValue, in room: Room?, drawn: UIImage, read: [DrawnText.Line], screen: Screen,
                              size: DynamicTypeSize, _ what: String, file: StaticString = #filePath, line: UInt = #line) throws {
         let other = DrawnText.normalize(avatar).map(DrawnText.fold) == ["w"] ? "K" : "W"
@@ -344,11 +352,14 @@ final class CoachHomeRenderTests: XCTestCase {
         XCTAssertEqual(again.size, drawn.size, "\(what): another avatar letter leaves the column's size as it is", file: file, line: line)
         let t = RoomTheme(home: model, system: size)
         let side = t.px(38)
+        let width = HomeMetaRow.layout(model.meta, t, width: screen.size.width).tile
         let right = screen.size.width - CoachHomeView.gutter(t, width: screen.size.width)
-        let tile = CGRect(x: right - side, y: screen.top + t.px(17), width: side, height: 2 * side).insetBy(dx: -1, dy: -1)
+        let tile = CGRect(x: right - width, y: screen.top + t.px(17), width: width, height: 2 * side).insetBy(dx: -1, dy: -1)
         let changed = try XCTUnwrap(Self.differingBox(drawn, again), "\(what): another avatar draws another letter: the avatar is drawn",
                                     file: file, line: line)
         XCTAssertTrue(tile.contains(changed), "\(what): the avatar is drawn in its tile (\(changed) in \(tile))", file: file, line: line)
+        XCTAssertEqual(changed.midX, right - width / 2, accuracy: 1,
+                       "\(what): the letter sits in the middle of a tile \(width) pt wide (\(changed))", file: file, line: line)
         for l in read where tile.contains(CGPoint(x: l.box.midX, y: l.box.midY)) {
             XCTAssertEqual(DrawnText.normalize(l.text).map(DrawnText.fold), DrawnText.normalize(avatar).map(DrawnText.fold),
                            "\(what): read \(l.text.debugDescription) in the avatar's tile, which shows \(avatar.debugDescription)",
@@ -356,14 +367,145 @@ final class CoachHomeRenderTests: XCTestCase {
         }
     }
 
+    /// The meta label is drawn from the model, line by line where the row's layout breaks it (`HomeMetaRow.layout`),
+    /// held by its pixels rather than by text recognition: the lines are the label word for word (in capitals in
+    /// Heavyweight); and the column drawn again with every Latin letter and digit of the label turned to another
+    /// (`turned`, with lines that break the same) differs from `drawn`, left of the avatar's tile, in one band of rows
+    /// per line that holds such a letter, top to bottom inside the meta row, each band starting at its line's first
+    /// such letter, reaching past the second-to-last and ending within the line, and nowhere else. So a line not
+    /// drawn, drawn out of order, cut short or run on, or a label drawn anywhere but in its row fails, whatever a
+    /// recognizer reads off it. Returns the label's box (its dot and lines, left of the tile), where the lines a
+    /// recognizer reads are the label's; nil when there is no label.
+    private func checkMetaLabel(of json: JSONValue, in room: Room?, model: CoachHomeModel, drawn: UIImage, screen: Screen,
+                                size: DynamicTypeSize, _ what: String, file: StaticString = #filePath, line: UInt = #line) throws -> CGRect? {
+        guard !model.meta.label.isEmpty else { return nil }
+        let t = RoomTheme(home: model, system: size)
+        let width = screen.size.width
+        let layout = HomeMetaRow.layout(model.meta, t, width: width)
+        let words = model.meta.label.split(whereSeparator: { " \t\n\r\u{0C}".contains($0) }).joined(separator: " ")
+        XCTAssertEqual(layout.lines.joined(separator: " "), t.flavor == .paper ? words.uppercased() : words,
+                       "\(what): the label's lines are the label, word for word", file: file, line: line)
+        // another label, of other letters, breaking where this one does and moving the tile least (Lime's face is
+        // monospaced: not at all)
+        var other: (model: CoachHomeModel, layout: HomeMetaRow.Layout)?
+        for shift in 1...25 {
+            let json2 = Self.with(label: Self.turned(model.meta.label, by: shift), json)
+            let m = try room.map { try CoachHomeFixtures.model(json2, in: $0) } ?? CoachHomeModel(json: json2)
+            let l = HomeMetaRow.layout(m.meta, RoomTheme(home: m, system: size), width: width)
+            guard l.lines.map(\.count) == layout.lines.map(\.count) else { continue }
+            if other.map({ abs($0.layout.tile - layout.tile) > abs(l.tile - layout.tile) }) ?? true { other = (m, l) }
+        }
+        let turned = try XCTUnwrap(other, "\(what): a label of other letters breaking as \(layout.lines) does", file: file, line: line)
+        let again = CoachRenderTests.render(Phone(model: turned.model, size: size, screen: screen, unscrolled: true), size: nil,
+                                            phone: .light, width: width)
+        XCTAssertEqual(again.size, drawn.size, "\(what): another label breaking as this one leaves the column's size as it is",
+                       file: file, line: line)
+        let style = HomeMetaRow.labelStyle(t)
+        let face = CoachInline.baseFont(style, theme: t)
+        func measured(_ s: String) -> CGFloat {
+            let text = NSAttributedString(string: s, attributes: [.font: face, .kern: t.px(style.tracking ?? 0)])
+            return CGFloat(CTLineGetTypographicBounds(CTLineCreateWithAttributedString(text), nil, nil, nil))
+        }
+        let gutter = CoachHomeView.gutter(t, width: width)
+        let start = gutter + t.px(7) + t.px(9), right = width - gutter
+        let split = model.meta.avatar != nil ? right - max(layout.tile, turned.layout.tile) : right + 1
+        let top = screen.top + t.px(17)
+        let height = max(CGFloat(layout.lines.count) * face.lineHeight, model.meta.avatar != nil ? t.px(38) : 0)
+        let row = CGRect(x: 0, y: top, width: width, height: height).insetBy(dx: 0, dy: -1)
+        let diff = try XCTUnwrap(Self.differences(drawn, again, split: split), file: file, line: line)
+        if let tail = diff.right {
+            XCTAssertTrue(row.contains(tail), "\(what): right of the label's room only the row changes (\(tail) in \(row))", file: file, line: line)
+        }
+        let lines = zip(layout.lines, turned.layout.lines).filter { $0.0.contains(where: Self.turnable) }
+        XCTAssertEqual(diff.bands.count, lines.count,
+                       "\(what): one band of changed rows per line of \(layout.lines) (\(diff.bands))", file: file, line: line)
+        for ((own, alt), band) in zip(lines, diff.bands) {
+            // the two lines letter for letter (a turned letter is one letter), so one offset names a place in both
+            let o = Array(own), a = Array(alt)
+            let marks = o.indices.filter { Self.turnable(o[$0]) }
+            let lead = measured(String(o[..<marks[0]]))
+            let reach = marks.count < 2 ? lead : max(measured(String(o[...marks[marks.count - 2]])), measured(String(a[...marks[marks.count - 2]])))
+            let end = max(measured(own), measured(alt))
+            XCTAssertTrue(row.contains(band), "\(what): \(own.debugDescription) is drawn in the meta row (\(band) in \(row))", file: file, line: line)
+            XCTAssertTrue((start + lead - 1.5 ... start + lead + 3).contains(band.minX),
+                          "\(what): \(own.debugDescription) starts at its first letter (\(band.minX), \(start + lead))", file: file, line: line)
+            XCTAssertGreaterThan(band.maxX, start + reach, "\(what): \(own.debugDescription) is drawn to its last letter (\(band))",
+                                 file: file, line: line)
+            XCTAssertLessThanOrEqual(band.maxX, start + end + 1, "\(what): \(own.debugDescription) ends within its line (\(band))",
+                                     file: file, line: line)
+        }
+        return CGRect(x: 0, y: row.minY - 1, width: split, height: row.height + 2)
+    }
+
+    /// Whether a character is one `turned` turns: a Latin letter or a digit.
+    static func turnable(_ c: Character) -> Bool { c.isASCII && (c.isLetter || c.isNumber) }
+
+    /// A string with every Latin letter turned `shift` places on in its alphabet (its case kept) and every digit one to
+    /// nine on; any other character as it is, so a label turned breaks at its spaces as the label does.
+    static func turned(_ s: String, by shift: Int) -> String {
+        String(String.UnicodeScalarView(s.unicodeScalars.map { u -> Unicode.Scalar in
+            let v = u.value, n = UInt32(shift)
+            switch v {
+            case 65...90: return Unicode.Scalar(65 + (v - 65 + n) % 26) ?? u
+            case 97...122: return Unicode.Scalar(97 + (v - 97 + n) % 26) ?? u
+            case 48...57: return Unicode.Scalar(48 + (v - 48 + 1 + (n - 1) % 9) % 10) ?? u
+            default: return u
+            }
+        }))
+    }
+
     /// A source's JSON with its meta row's avatar replaced.
     static func with(avatar: String, _ json: JSONValue) -> JSONValue {
+        with(meta: "avatar", .string(avatar), json)
+    }
+
+    /// A source's JSON with its meta row's label replaced.
+    static func with(label: String, _ json: JSONValue) -> JSONValue {
+        with(meta: "label", .string(label), json)
+    }
+
+    private static func with(meta key: String, _ value: JSONValue, _ json: JSONValue) -> JSONValue {
         guard case .object(var o) = json else { return json }
         var meta: [String: JSONValue] = [:]
         if case .object(let m)? = o["meta"] { meta = m }
-        meta["avatar"] = .string(avatar)
+        meta[key] = value
         o["meta"] = .object(meta)
         return .object(o)
+    }
+
+    /// Where two renders of one size differ, in points: left of `split`, the box of each band of pixel rows that holds a
+    /// difference (rows two or more apart start another band), top to bottom; at or right of it, the box of every
+    /// difference. Nil when the renders are not of one size.
+    static func differences(_ a: UIImage, _ b: UIImage, split: CGFloat) -> (bands: [CGRect], right: CGRect?)? {
+        guard let ca = a.cgImage, let cb = b.cgImage, ca.width == cb.width, ca.height == cb.height else { return nil }
+        let x = CoachRenderTests.bytes(ca), y = CoachRenderTests.bytes(cb)
+        let k = CGFloat(ca.width) / a.size.width
+        let cut = Int((split * k).rounded(.down))
+        typealias Box = (minX: Int, maxX: Int, minY: Int, maxY: Int)
+        var bands: [Box] = [], right: Box?
+        for py in 0..<ca.height {
+            let rowStart = py * ca.width * 4
+            var lo = Int.max, hi = -1
+            for px in 0..<ca.width {
+                let i = rowStart + px * 4
+                guard x[i] != y[i] || x[i + 1] != y[i + 1] || x[i + 2] != y[i + 2] else { continue }
+                if px < cut {
+                    lo = min(lo, px); hi = max(hi, px)
+                } else {
+                    right = right.map { (min($0.minX, px), max($0.maxX, px), $0.minY, py) } ?? (px, px, py, py)
+                }
+            }
+            guard hi >= 0 else { continue }
+            if let last = bands.last, py - last.maxY <= 2 {
+                bands[bands.count - 1] = (min(last.minX, lo), max(last.maxX, hi), last.minY, py)
+            } else {
+                bands.append((lo, hi, py, py))
+            }
+        }
+        func box(_ r: Box) -> CGRect {
+            CGRect(x: CGFloat(r.minX) / k, y: CGFloat(r.minY) / k, width: CGFloat(r.maxX - r.minX + 1) / k, height: CGFloat(r.maxY - r.minY + 1) / k)
+        }
+        return (bands.map(box), right.map(box))
     }
 
     /// The smallest box (in points) holding every pixel in which two renders of one size differ; nil when none does.
@@ -399,9 +541,10 @@ final class CoachHomeRenderTests: XCTestCase {
     /// there. Probed on iOS 27.0 over the hand-made fixtures, the page-built ones (P6) and the variant, both rooms, at
     /// 390 pt large and at 320 pt .xxLarge: every line was read in the column's order but the avatar's (read beside the
     /// meta label's line or between its two lines, and on Heavyweight's blue disc often not at all), none with more
-    /// than one error. iOS 26.5 reads them within the same allowance too, but it read Lime's meta label at 320 pt
-    /// .xxLarge, while that broke as "COACH · WK 06 / 12" over "· BUILD", in the Cyrillic capitals drawn like its Latin
-    /// ones (`latin`), and it reads a wrapped label's disc with one of its lines (`ordered`).
+    /// than one error. iOS 26.5 reads every line within the same allowance, the meta label's included wherever the view
+    /// draws it (probed again 2026-11-03 with Xcode 27.2: every render of testEveryStringARenderDrawsIsTheFixtures), and
+    /// a wrapped label's disc with one of its lines (`ordered`); what it misread were labels drawn wrong, the old break's
+    /// "· BUILD" (CI's run 40886265725) and the lines drawn in the other order, read as Cyrillic or not at all.
     enum DrawnText {
         static let wildcard: Character = "\u{FFFD}"
 
@@ -470,9 +613,9 @@ final class CoachHomeRenderTests: XCTestCase {
         }
 
         /// The letters the recognizer trades for one another, as one (probed: "l0g." for "log.", "APl" for "API"; on
-        /// iOS 26.5, Cyrillic capitals for the Latin ones they are drawn like: "• СОАСН : WК 06 / 12" for Lime's meta
-        /// label "COACH · WK 06 / 12 · BUILD" at 320 pt .xxLarge): a zero is an o, a one and an i (a capital I
-        /// lowercased) are an l, and a Cyrillic letter is the Latin letter it is drawn like (`latin`).
+        /// iOS 26.5, Cyrillic capitals for the Latin ones they are drawn like, "• СОАСН : WК 06 / 12" for Lime's meta
+        /// label "COACH · WK 06 / 12 · BUILD"): a zero is an o, a one and an i (a capital I lowercased) are an l, and a
+        /// Cyrillic letter is the Latin letter it is drawn like (`latin`).
         static func fold(_ c: Character) -> Character {
             switch c {
             case "0": return "o"
@@ -488,9 +631,9 @@ final class CoachHomeRenderTests: XCTestCase {
         /// request said (probed with revisions 2 and 3, automatic language detection off, `recognitionLanguages` en-US,
         /// en-GB, en-US and fr-FR, or none: every one read the same Cyrillic letters), in its own render and in two of
         /// the three iOS 27.0 renders it was given (the two runtimes draw the same lines; only their glyphs' edge
-        /// pixels differ). iOS 27.0's recognizer reads all of them in Latin, and iOS 26.5's reads the label in Latin
-        /// since it breaks as the web's does ("COACH · WK 06 / 12 ·" over "BUILD"): which script a recognizer takes a
-        /// face's capitals for is no part of what is drawn. Only these look-alikes are one letter: a Cyrillic П or И is
+        /// pixels differ); iOS 27.0's recognizer reads all of them in Latin. Which script a recognizer takes a face's
+        /// capitals for is no part of what is drawn: the fold keeps such a look-alike read from counting as a misread
+        /// letter. Only these look-alikes are one letter: a Cyrillic П or И is
         /// no Latin letter, and a Latin letter is never taken for another.
         static let latin: [Character: Character] = [
             "\u{0430}": "a", "\u{0432}": "b", "\u{0435}": "e", "\u{043A}": "k", "\u{043C}": "m", "\u{043D}": "h",
