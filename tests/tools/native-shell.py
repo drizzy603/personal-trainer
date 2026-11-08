@@ -132,8 +132,11 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 _spec = importlib.util.spec_from_file_location('native_store', os.path.join(HERE, 'native-store.py'))
 ns = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(ns)   # its Sim, Events, read_log and Report (nothing runs on import)
-# The modules import this file by this name (its own has a hyphen).
-sys.modules.setdefault('native_shell', sys.modules[__name__])
+# The modules import this file by this name (its own has a hyphen). A tool that loads this file with importlib and does
+# not register it first (probe-selftest.py) finds no entry under its spec's name, and needs none: only main() loads the
+# modules.
+if __name__ in sys.modules:
+    sys.modules.setdefault('native_shell', sys.modules[__name__])
 
 Sim, Events, read_log, Report = ns.Sim, ns.Events, ns.read_log, ns.Report
 SCEN_DIR = os.path.join(HERE, 'shellscen')
