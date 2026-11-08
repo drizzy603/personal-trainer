@@ -946,7 +946,7 @@ def _scene_tabs(c, s):
     reads = replay_reads(ev, cycle)
     c.rep.check(s, 'one page at a time (the old web view released) by the status read after the replay', reads[0]['alive'] == 1 and reads[0]['detached'] == 1,
                 reads_text(reads[:1]))
-    c.rep.check(s, '5 s after the replay still one page: the old root and the old window (each holds the old page) are gone too',
+    c.rep.check(s, '5 s after the replay still one page: nothing holds the old page any more (the hook round reads the old root and window themselves gone)',
                 reads[1]['alive'] == 1 and reads[1]['detached'] == 1 and (reads[1]['after'] or 0) >= 5, reads_text(reads[1:]))
     c.in_step(s, 'scene 2', ev)
     c.note_state(s, ev)
