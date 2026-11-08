@@ -246,7 +246,7 @@ shown; a message, the model switch, a forwarded confirm and Undo toast, the
 screen marker, Back to the hub with the page still covered; Lime dark on a light
 phone and Heavyweight light on a phone set to dark (`simctl ui appearance`, put
 back after), on the tab root the bar both as the root asks for it and as the shot
-draws it: the mean luminance of the bar's frame, under 80 for Lime, over 170 for
+draws it: the mean luminance of the bar's frame, under 80 for Lime, over 200 for
 Heavyweight, read through `sips`); `focus`
 (a focused web field, then the chat up and down by the page, Back and the edge
 pan, or navPop on the tab root: no keyboard comes back, the document not

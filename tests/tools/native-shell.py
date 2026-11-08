@@ -145,10 +145,13 @@ BAR_H, BAR_SAFE = 83, (34, 0)  # the tab root's bar (delta 14.1): 83 on every iP
 MARK_HOLD = 250               # the probe's own hold at a mark (ms), before it waits for the runner's shot of it
 SHOT_CAP = 60000              # the longest a mark waits for its shot (ms): past it the probe goes on, and the shot is late
 ROOTS = ('tabs', 'classic')   # the roots a pass builds, and a scenario row's `roots` names
-# The bar as a shot draws it: the mean luminance (0-255) of its frame. Measured at 64cba89 on the chat's shots: Lime's
-# dark glass over the dark Coach stack 35 on iOS 27.0, the light glass of H9f1 over it 129 on iOS 26.5, Heavyweight's
-# paper 239-240 on both runtimes.
-DARK_BAR_MAX, LIGHT_BAR_MIN = 80, 170
+# The bar as a shot draws it: the mean luminance (0-255) of its frame, as measured on the chat's shots (64cba89,
+# 655eb6a), (the room's look, the fault's): Lime's dark glass over the dark Coach stack 35 on iOS 27.0, H9f1's light
+# glass over it 128-129 on iOS 26.5; Heavyweight's light bar over paper 239 on both runtimes, the phone light or dark,
+# and iOS 26.5's dark glass over paper on a phone set to dark 162 (H9f1's too). Each bound keeps at least a third of the
+# gap between the two on either side (the self-test holds it), so a fault a shade off still fails.
+BAR_LOOKS = {'dark': (35, 128), 'light': (239, 162)}
+DARK_BAR_MAX, LIGHT_BAR_MIN = 80, 200
 OFFS_FILE = 'fp-policy-offs.json'
 GROUP = 'group.app.kt.trainer'   # the App Group (a build signed to run locally has its container)
 # Plan 13-tests-release.md section 6's offs (T7): build 61 builds the classic root, build 60 is unchanged.
@@ -1097,8 +1100,8 @@ def scen_chat(c):
                     and rbar(dp).get('containerStyle') in ('light', None),
                     '%s / bar %s, container %s' % (cd.get('interfaceStyle'), rbar(dp).get('style'), rbar(dp).get('containerStyle')))
         luma, seen = drawn_bar(dp, ev.tag, 'dark-phone')
-        c.rep.check(s, 'Heavyweight\'s bar draws light on a phone set to dark (the mean luminance of its frame in the shot over %d of 255)'
-                    % LIGHT_BAR_MIN, luma is not None and luma > LIGHT_BAR_MIN, seen)
+        c.rep.check(s, 'Heavyweight\'s bar draws light on a phone set to dark (the mean luminance of its frame in the shot over %d of 255; '
+                    'iOS 26.5\'s dark glass there is H9f1\'s too)' % LIGHT_BAR_MIN, luma is not None and luma > LIGHT_BAR_MIN, seen)
     else:
         c.rep.check(s, 'Heavyweight on a phone set to dark: the chat stays light (overrideUserInterfaceStyle, the room\'s)',
                     cd.get('presented') and cd.get('interfaceStyle') == LIGHT, {k: cd.get(k) for k in ('presented', 'interfaceStyle', 'style')})
@@ -2136,6 +2139,11 @@ def self_test():
                 case('drawn_bar reads the bar\'s frame in points at the shot\'s scale (20 points over 40 px: the dark band)',
                      luma is not None and abs(luma - 20) < 1 and seen.get('scale') == 2.0 and seen.get('px') == [0, 60, 40, 90]
                      and miss is None and 'no shot' in why, (luma, seen, why))
+            (good_d, bad_d), (good_l, bad_l) = BAR_LOOKS['dark'], BAR_LOOKS['light']
+            case('the drawn bar\'s bounds keep a third of the measured gap on either side (dark %s between %s and %s, light %s '
+                 'between %s and %s)' % (DARK_BAR_MAX, good_d, bad_d, LIGHT_BAR_MIN, bad_l, good_l),
+                 good_d + (bad_d - good_d) / 3.0 <= DARK_BAR_MAX <= bad_d - (bad_d - good_d) / 3.0
+                 and bad_l + (good_l - bad_l) / 3.0 <= LIGHT_BAR_MIN <= good_l - (good_l - bad_l) / 3.0, (DARK_BAR_MAX, LIGHT_BAR_MIN))
     finally:
         PASS = saved
     if bad:
