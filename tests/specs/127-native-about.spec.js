@@ -22,8 +22,9 @@
 //   61 and nothing under 60; a 60 TrovoShell under a 61 flag (no setSwitch) shows no tab bar row.
 // - P14 fix-1 (delta 17.1, H11's counters.leftAny): both 61 sheets list "Left its window in any state" right after
 //   "Left its window while open", reading counters.leftAny (a value apart from leftWindow's, so a row reading the
-//   wrong field fails; a status without the field reads 0); the mock's own status carries leftAny as FPCore writes
-//   it; build 60's sheet (inert, coach) keeps its own four rows, none for leftAny even when a status carries it.
+//   wrong field fails; a status without the field reads 0 while its other counters, none of them 0, read their own,
+//   so no fallback to another counter passes); the mock's own status carries leftAny as FPCore writes it; build 60's
+//   sheet (inert, coach) keeps its own four rows, none for leftAny even when a status carries it.
 // Every boot names its shell (the mark above): FP_SHELL_INERT runs skip this spec.
 const { boot, assert, run, CANONICAL_61, SHELL_METHODS, BASE_PAGE } = require('../lib/harness');
 
@@ -550,8 +551,11 @@ serial('P14 fix-1: both 61 sheets list "Left its window in any state" right afte
   const reads = (launch, total) => launch + ' this launch · ' + total + ' in all';
   // leftAny apart from leftWindow (0, 0): a row reading the wrong field fails
   const st = ST61({ counters: Object.assign({}, COUNTERS, { leftAny: count(1, 2, AT) }) });
+  // The same without leftAny and every other counter apart from 0 (leftWindow 3, 4 and hidden 5, 6 here; strays,
+  // trips and markers already are), so the row's 0 cannot come from a fallback to another counter.
   const bare = JSON.parse(J(st));
   delete bare.counters.leftAny;
+  Object.assign(bare.counters, { leftWindow: count(3, 4, AT), hidden: count(5, 6, AT) });
   const app = await pageBoot('tabs', { init: SAFETY + 'window.__fpShellStatus = ' + J(st) + ';' });
   try {
     await ready(app);
@@ -566,11 +570,14 @@ serial('P14 fix-1: both 61 sheets list "Left its window in any state" right afte
       // the status sent, the same without leftAny, then the mock's own (window.__fpShellStatus null)
       return { sent: await read(), bare: await read(bare), mock: await read(null) };
     }, bare);
+    assert(J(out.sent.leftAny) === J(count(1, 2, AT)) && out.bare.leftAny === 'absent',
+      'the page read the status sent (leftAny 1, 2), then the same without the field: ' + J({ sent: out.sent.leftAny, bare: out.bare.leftAny }));
     for (const k of ['chat', 'tabs']) {
       const s = out.sent[k], b = out.bare[k], m = out.mock[k];
       assert(s && J(s.map((r) => r[0])) === J(ORDER), k + ': six SAFETY rows, "' + LEFT + '" right after "Left its window while open": ' + J(s));
       assert(J(s[1]) === J([LEFT, SUB, reads(1, 2)]) && s[0][2] === reads(0, 0), k + ': the row reads counters.leftAny (1, 2), not leftWindow (0, 0): ' + J(s.slice(0, 2)));
-      assert(b && J(b[1]) === J([LEFT, SUB, reads(0, 0)]), k + ': a status without leftAny reads 0: ' + J(b));
+      assert(b && J(b.map((r) => r[0])) === J(ORDER) && J(b[1]) === J([LEFT, SUB, reads(0, 0)]) && b[0][2] === reads(3, 4) && b[2][2] === reads(5, 6),
+        k + ': a status without leftAny reads 0 there, while leftWindow (3, 4) and hidden (5, 6) read their own: ' + J(b));
       assert(m && J(m[1]) === J([LEFT, SUB, reads(0, 0)]), k + ': the mock\'s own status reads 0: ' + J(m));
     }
     const la = out.mock.leftAny;
