@@ -37,7 +37,8 @@ env:
   # day; runner-images' README still badges it a preview). Its image of 2026-10-26 has macOS 27, Xcode 27.0, 27.1
   # (27A9275, the default) and 27.2 RC, and the iOS 27.0 and 27.1 runtimes, none of 26.x. macos-latest is macos-26
   # (image of 2026-10-26: Xcode 26.0.1 to 26.6, the iOS 26.2, 26.4.1 and 26.5 runtimes, no Xcode 27); both checked in
-  # runner-images on 2026-11-02. The app build, fpkit-mac and fpkit-ios' iOS 27 parts run on xcode-27 with this Xcode.
+  # runner-images on 2026-11-02. The app build, fpkit-mac, fpkit-ios' iOS 27 parts and the release job (disabled) run on
+  # xcode-27 with this Xcode.
   XCODE_SHIP: '27.1'
   # The newest Xcode on macos-26, the only image with iOS 26.x runtimes: fpkit-ios' iOS 26 parts (that job's comment).
   XCODE_FLOOR: '26.6'
@@ -52,10 +53,10 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'npm'
@@ -100,7 +101,7 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Select the Xcode the app ships with
         run: bash .github/scripts/select-xcode.sh "$XCODE_SHIP"
@@ -188,7 +189,7 @@ jobs:
           - { part: rest-26, runner: macos-26, xcode: floor, ios: '26.5' }
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # The scripts below check the tests' split, pick the simulator and name the failures; each *-test.sh beside them
       # runs that script on made-up inputs, so a script that would run the wrong classes, take another runtime or hide a
@@ -275,17 +276,19 @@ jobs:
           echo "::notice title=toolchain::$(xcodebuild -version | tr '\n' ' ') on ${{ steps.sim.outputs.name }}"
           .github/scripts/annotate-xc.sh "$RUNNER_TEMP/build.log" "$RUNNER_TEMP/test.log"
 
+  # Disabled (if: false). Were it enabled, it would archive with the Xcode the app ships with, on the build job's image
+  # and by the build job's selection step: XCODE_SHIP (CI's 27.1 until the image carries 27.2's release; see env).
   release:
     name: Archive + TestFlight upload
     if: false
-    runs-on: macos-latest
+    runs-on: xcode-27
     needs: build
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'npm'
@@ -295,6 +298,9 @@ jobs:
 
       - name: Bump build number + sync web
         run: ./release-ios.sh
+
+      - name: Select the Xcode the app ships with
+        run: bash .github/scripts/select-xcode.sh "$XCODE_SHIP"
 
       - name: Import signing certificate
         env:
