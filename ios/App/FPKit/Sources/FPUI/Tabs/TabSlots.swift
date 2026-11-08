@@ -3,10 +3,10 @@ import UIKit
 
 // The tab root's slots (build 61, 11-shell.md H4; contract 1.2-1.4, 6.3, 7.4, 8.2): three plain containers the web
 // view moves between (Log, Progress, Settings) and the Coach slot, which holds the web view's waiting place and the
-// Coach tab's own navigation stack above it, on the stack's ground (H9 fix-1). Every container gives the web view its whole bounds and pins nothing to
-// the safe area (contract 7.4: pinning resized the page on every hide and show of the bar), and no slot carries the
-// room's `overrideUserInterfaceStyle`: it would reach the web view's traits, its keyboards and `prefers-color-scheme`
-// (the bar and the Coach stack take it, TabBarLook).
+// Coach tab's own navigation stack above it, on the stack's ground (H9 fix-1). Every container gives the web view its
+// whole bounds and pins nothing to the safe area (contract 7.4: pinning resized the page on every hide and show of the
+// bar), and no slot carries the room's `overrideUserInterfaceStyle`: it would reach the web view's traits, its
+// keyboards and `prefers-color-scheme` (the bar and the Coach stack take it, TabBarLook).
 
 /// A web tab's slot (Log, Progress, Settings): a plain full-bleed container. While it holds the web controller, the
 /// status bar's style and visibility are that controller's (Capacitor's bridge controller, as on a classic root).
