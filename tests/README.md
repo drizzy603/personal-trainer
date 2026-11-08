@@ -343,8 +343,10 @@ neither key in a probe log); then, in both rooms x `simctl ui appearance
 light|dark` x `content_size large|extra-extra-large`, three launches by route:
 `coach/chat`, `coach` (the native hub, its ground drawn in the room) and
 `log/workout` (a web tab under the glass bar), the bar asking for the room's look
-and drawing it (the mean luminance of its frame in the shot, `native-shell.py`'s
-bounds); the app's Larger Text off keeping the empty composer at its Large height;
+and, over the chat and the hub, drawing it (the mean luminance of its frame in the
+shot, `native-shell.py`'s bounds; over a web tab the glass shows the page's own
+cards through it, so only the look asked is checked there); the app's Larger Text
+off keeping the empty composer at its Large height;
 `restore` in two launches, never a reload. It puts back what it changed in the
 container and the phone's settings. Every mark holds the app until its shot is on
 disk (`native-shell.py`'s go files). Shots in `screenshots/out/native/`

@@ -60,8 +60,10 @@ Scenarios, in this order (prepare and restore always run; --only picks among the
            large|extra-extra-large), on the live turns, three launches by route: coach/chat (the chat native, pushed
            on the NATIVE Coach stack, Coach selected, the bar visible; drawn in its room whatever the phone says; at the
            phone's text size), coach (the native hub at the stack's root, its ground drawn in its room) and log/workout
-           (a web tab under the glass bar, the page in its room); on each the bar asks for the room's look and draws
-           it (the mean luminance of its frame in the shot: Lime dark, Heavyweight light). On the classic root:
+           (a web tab under the glass bar, the page in its room); on each the bar asks for the room's look, and over
+           the chat and the hub, where the room's own ground lies under the glass, it draws it (the mean luminance of
+           its frame in the shot: Lime dark, Heavyweight light; over a web tab the glass shows the page's own cards
+           through it, so the look asked is what is checked there). On the classic root:
            coach/chat presented .overFullScreen, coach and log/workout the page's own under its own tab bar. Shots
            coach-chat-*, coach-home-*, tabs-log-*; the phone's settings go back
   textoff  the phone at extra-extra-large and the app's Larger Text turned off with the chat up: the empty composer is as
@@ -388,16 +390,20 @@ def bound(look):
     return 'under %d' % nsh.DARK_BAR_MAX if look == 'dark' else 'over %d' % nsh.LIGHT_BAR_MIN
 
 
-def bar_look(c, s, combo, e, tag, label, room):
-    """The tab root's bar in the room's look, as the root asks for it (its style and its container's) and as the shot
-    draws it (the mean luminance of its frame: native-shell.py's drawn_bar)."""
+def bar_look(c, s, combo, e, tag, label, room, drawn=True):
+    """The tab root's bar in the room's look, as the root asks for it (its style and its container's) and, with `drawn`,
+    as the shot draws it (the mean luminance of its frame: native-shell.py's drawn_bar). The drawn look is judged only
+    over a native Coach-tab screen, where the room's own ground lies under the glass: over a web tab the glass shows the
+    page's content through it, and a blue or lime card under the bar moves its mean luminance across either bound with
+    the bar itself in the room's look (iOS 27.0, extra-extra-large Log: Heavyweight 192.5, Lime 80.1)."""
     want = LOOK[room]
     rb = rbar(e)
     c.check(s, '%s: the bar asks for the room\'s look (%s), whatever the phone says' % (combo, want),
             rb.get('style') == want and rb.get('containerStyle') in (want, None), short(rb, ('style', 'containerStyle', 'hidden')))
-    luma, seen = nsh.drawn_bar(e, tag, label)
-    c.check(s, '%s: the bar draws %s in the shot (the mean luminance of its frame %s of 255; on iOS 26.5 the glass the other '
-               'way is H9f1)' % (combo, want, bound(want)), looks(luma, want), seen)
+    if drawn:
+        luma, seen = nsh.drawn_bar(e, tag, label)
+        c.check(s, '%s: the bar draws %s in the shot (the mean luminance of its frame %s of 255; on iOS 26.5 the glass the other '
+                   'way is H9f1)' % (combo, want, bound(want)), looks(luma, want), seen)
 
 
 # ── the page's side ──────────────────────────────────────────────────────────────────────────────────────────────────
@@ -1030,7 +1036,7 @@ def combo_log(c, s, room, name, combo):
                 and 'coach' not in up_list(e) and p.get('tabsMode') and p.get('tabsDisplay') == 'none',
                 {'wait': w, 'selected': root(e).get('selected'), 'tab': p.get('tab'), 'web': short(rw, ('slot', 'inWindow', 'hidden')),
                  'bar': short(rb, ('hidden', 'h')), 'up': up_list(e), 'tabsMode': p.get('tabsMode'), 'tabsDisplay': p.get('tabsDisplay')})
-        bar_look(c, s, combo, e, ev.tag, name, room)
+        bar_look(c, s, combo, e, ev.tag, name, room, drawn=False)
     else:
         c.check(s, '%s: Log under the page\'s own tab bar (no native screen up)' % combo, w.get('met') is True and p.get('tab') == 'log'
                 and up_list(e) == [] and p.get('tabsDisplay') not in (None, 'none'),
