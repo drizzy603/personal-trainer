@@ -99,8 +99,10 @@ ones from `Tools/tabs-fixtures.js` and `Tools/coach-home-fixtures.js` (see `Test
 hub's meta row as the page lays it out is `Fixtures/layout/meta-row.json`, from `node tests/golden/dump-meta-row.js` on
 a Mac (checked byte for byte on darwin; on CI's Linux only the cases, the row's styles and its boxes, the row's flex
 items among them, since the lines and tiles come from the text rasterizer). The label and the headline break where the
-phone's web view does: `WebLineBreaks` (FPUI), WebKit 26.5's breakable positions, never after a slash inside a name,
-after a hyphen, at a space before a slash.
+phone's web view does: `WebLineBreaks` (FPUI) gives WebKit's breakable positions (iOS 26.5's; on iOS 27 the curly
+quotes and the guillemets take sides, as that runtime's WebKit gives them): a break after a hyphen ("STRENGTH-" over
+"ENDURANCE") and at a space before a slash ("UPPER" over "/ LOWER"), never after a slash inside a name
+("HYPERTROPHY/STRENGTH").
 
 `CoachHomeModelTests` reads both kinds. Each page-built `Fixtures/coachHome` file (P6) is read as the page's whole
 model, contract 6.2's keys in their JSON types (rev, boot, room, paper, dynTypeOn, route and resume as sent; meta, hero,
