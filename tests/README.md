@@ -348,7 +348,11 @@ shot, `native-shell.py`'s bounds; over a web tab the glass shows the page's own
 cards through it, so only the look asked is checked there); the app's Larger Text
 off keeping the empty composer at its Large height;
 `restore` in two launches, never a reload. It puts back what it changed in the
-container and the phone's settings. Every mark holds the app until its shot is on
+container and the phone's settings, and ends only once the simulator's cfprefsd
+answers again: the put-back stops it around its edit, launchd holds back a daemon
+it started less than 10 s ago, and a launch meanwhile waits at its first
+preferences read (test-native.sh's boot shot, 4 s after its relaunch, came out
+black). Every mark holds the app until its shot is on
 disk (`native-shell.py`'s go files). Shots in `screenshots/out/native/`
 (`coach-chat-*`, `coach-home-*`, `tabs-log-*`, `connect-*`, `keys-*`, `live-*`;
 `classic-` in front on the classic root). `python3 tools/coach-stub.py --script

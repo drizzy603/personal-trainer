@@ -20,7 +20,10 @@ installed over: prepare checks the root its launches build, and a tab pass that 
 crash verdict, a breaker's trip, the bar's switch off: plan delta 16.7) turns it back on through TrovoShell (About's Try
 again: reset tabs, coachHome and coach, the bar's switch on) and launches again. The shell's folder (Application
 Support/FPShell) and its UserDefaults copies are kept before the first launch and put back after the last, as
-probe-selftest.py does (its helpers), with the offs file a classic pass wrote.
+probe-selftest.py does (its helpers), with the offs file a classic pass wrote. The put-back stops the simulator's
+cfprefsd around its edit, and launchd holds back a daemon it started less than 10 s ago: the run ends only once the
+daemon answers again (prefs_back), so the launch that follows the run (test-native.sh's clean relaunch and its boot
+shot) does not wait at its first preferences read.
 
 Scenarios, in this order (prepare and restore always run; --only picks among the others):
   prepare  what the container holds, kept to put back at the end (every localStorage value but the key's, which is never
@@ -89,6 +92,7 @@ import json
 import os
 import shutil
 import struct
+import subprocess
 import sys
 import tempfile
 import time
@@ -1134,6 +1138,27 @@ def tree_bytes(folder):
     return out
 
 
+PREFS_BACK_MOST = 40
+
+
+def prefs_back(sim, most=PREFS_BACK_MOST):
+    """The simulator's preferences daemon answering again, after the put-back's stops: the seconds it took, None when it
+    did not answer within `most`. The put-back stops cfprefsd three times within seconds (probe-selftest.py's
+    prefs_settle: before its edit, after it, and for the read back); any process's read starts the daemon again in
+    between, and launchd starts a daemon that ran under 10 s only once the 10 s are over (its throttle). Until then
+    every process in the simulator waits at its first preferences read: a launch draws nothing of its own, on a black
+    screen or its launch screen. test-native.sh's boot shot, 4 s after its clean relaunch, came out black (iOS 26.5,
+    2026-11-09): the app's first log line came 8.5 s after its launch, and a read after a young daemon's stop
+    measured 7.7 to 10.4 s. A read of the global domain from outside the app's container (nothing of the app's is
+    read or written) waits for the daemon as the app would, and returns once it is back."""
+    t0 = time.time()
+    try:
+        sim.sh('xcrun', 'simctl', 'spawn', sim.udid, 'defaults', 'read', '-g', 'AppleLocale', check=False, timeout=most)
+    except subprocess.TimeoutExpired:
+        return None
+    return time.time() - t0
+
+
 def put_back_shell(c, kept):
     """After the last launch: the shell's folder and copies as found (a decline, a verdict, a switch, the counters, the
     markers the run's own terminations left), the offs file as found; all read back."""
@@ -1157,6 +1182,10 @@ def put_back_shell(c, kept):
                 not diff and (os.path.exists(offs) == (kept['offs'] is not None)), diff)
     finally:
         shutil.rmtree(kept['tmp'], ignore_errors=True)
+        took = prefs_back(sim)
+        c.check('restore', 'the phone\'s preferences daemon answers again before the run hands the phone back (launchd holds back a '
+                           'cfprefsd stopped young; a launch meanwhile waits at its first preferences read)', took is not None,
+                'no answer in %d s' % PREFS_BACK_MOST if took is None else 'after %.1f s' % took)
 
 
 # ── the run's own checks ─────────────────────────────────────────────────────────────────────────────────────────────
