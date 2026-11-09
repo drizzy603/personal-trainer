@@ -20,6 +20,11 @@
 //   #fp-chat-retry resets coachHome then coach); both 61 sheets list the shell-wide counters with "Tab changes outside
 //   the funnel"; the tab bar's sheet pads as the chat's does in both modes; dev.nav settings/tabs-sheet opens it under
 //   61 and nothing under 60; a 60 TrovoShell under a 61 flag (no setSwitch) shows no tab bar row.
+// - P14 fix-1 (delta 17.1, H11's counters.leftAny): both 61 sheets list "Left its window in any state" right after
+//   "Left its window while open", reading counters.leftAny (a value apart from leftWindow's, so a row reading the
+//   wrong field fails; a status without the field reads 0 while its other counters, none of them 0, read their own,
+//   so no fallback to another counter passes); the mock's own status carries leftAny as FPCore writes it; build 60's
+//   sheet (inert, coach) keeps its own four rows, none for leftAny even when a status carries it.
 // Every boot names its shell (the mark above): FP_SHELL_INERT runs skip this spec.
 const { boot, assert, run, CANONICAL_61, SHELL_METHODS, BASE_PAGE } = require('../lib/harness');
 
@@ -527,4 +532,73 @@ serial('dev.nav settings/tabs-sheet opens the tab bar\'s sheet under 61 and noth
     });
     assert(!out.row && !out.check && out.title === 'Native Coach', 'no setSwitch: no tab bar row and no Check the switches now; the Native Coach row stays: ' + J(out));
   } finally { await c.close(); }
+});
+
+// ── P14 fix-1: About's SAFETY row for leftAny (delta 17.1) ───────────────────────────────────────────────────────────
+// In the page: a sheet body's SAFETY rows in order, each [label, note, value] (_fpStoreStat's three parts); null
+// without the eyebrow.
+const SAFETY = `window.__safety = (id) => {
+  const b = document.getElementById(id), eb = b && [...b.children].find((x) => x.textContent === 'SAFETY'), r = [];
+  for (let el = eb && eb.nextElementSibling; el; el = el.nextElementSibling) {
+    const l = el.firstElementChild, n = l && l.firstElementChild, v = el.lastElementChild;
+    r.push([l && l.firstChild && l.firstChild.nodeType === 3 ? l.firstChild.textContent : null, n ? n.textContent : null, v && v !== l ? v.textContent : null]);
+  }
+  return eb ? r : null;
+};`;
+serial('P14 fix-1: both 61 sheets list "Left its window in any state" right after "Left its window while open", reading counters.leftAny (0 for a status without it); the mock\'s status carries leftAny as FPCore writes it; build 60\'s sheet has no such row', async () => {
+  const LEFT = 'Left its window in any state', SUB = 'Stays 0: not in the background either, nor for a link or a share';
+  const ORDER = ['Left its window while open', LEFT, 'Hidden while in use', 'Tab changes outside the funnel', 'Breaker trips', 'Crash markers'];
+  const reads = (launch, total) => launch + ' this launch · ' + total + ' in all';
+  // leftAny apart from leftWindow (0, 0): a row reading the wrong field fails
+  const st = ST61({ counters: Object.assign({}, COUNTERS, { leftAny: count(1, 2, AT) }) });
+  // The same without leftAny and every other counter apart from 0 (leftWindow 3, 4 and hidden 5, 6 here; strays,
+  // trips and markers already are), so the row's 0 cannot come from a fallback to another counter.
+  const bare = JSON.parse(J(st));
+  delete bare.counters.leftAny;
+  Object.assign(bare.counters, { leftWindow: count(3, 4, AT), hidden: count(5, 6, AT) });
+  const app = await pageBoot('tabs', { init: SAFETY + 'window.__fpShellStatus = ' + J(st) + ';' });
+  try {
+    await ready(app);
+    const out = await ev(app, async (bare) => {
+      const read = async (s) => {
+        await __again(s);
+        openNativeChatSheet(); openNativeTabsSheet();
+        await __until(() => !_fpChat.busy); await __w(0);
+        const c = _fpChat.st && _fpChat.st.counters;
+        return { chat: __safety('fpChatBody'), tabs: __safety('fpTabsBody'), leftAny: c ? (c.leftAny === undefined ? 'absent' : c.leftAny) : null };
+      };
+      // the status sent, the same without leftAny, then the mock's own (window.__fpShellStatus null)
+      return { sent: await read(), bare: await read(bare), mock: await read(null) };
+    }, bare);
+    assert(J(out.sent.leftAny) === J(count(1, 2, AT)) && out.bare.leftAny === 'absent',
+      'the page read the status sent (leftAny 1, 2), then the same without the field: ' + J({ sent: out.sent.leftAny, bare: out.bare.leftAny }));
+    for (const k of ['chat', 'tabs']) {
+      const s = out.sent[k], b = out.bare[k], m = out.mock[k];
+      assert(s && J(s.map((r) => r[0])) === J(ORDER), k + ': six SAFETY rows, "' + LEFT + '" right after "Left its window while open": ' + J(s));
+      assert(J(s[1]) === J([LEFT, SUB, reads(1, 2)]) && s[0][2] === reads(0, 0), k + ': the row reads counters.leftAny (1, 2), not leftWindow (0, 0): ' + J(s.slice(0, 2)));
+      assert(b && J(b.map((r) => r[0])) === J(ORDER) && J(b[1]) === J([LEFT, SUB, reads(0, 0)]) && b[0][2] === reads(3, 4) && b[2][2] === reads(5, 6),
+        k + ': a status without leftAny reads 0 there, while leftWindow (3, 4) and hidden (5, 6) read their own: ' + J(b));
+      assert(m && J(m[1]) === J([LEFT, SUB, reads(0, 0)]), k + ': the mock\'s own status reads 0: ' + J(m));
+    }
+    const la = out.mock.leftAny;
+    assert(la && typeof la === 'object' && J(Object.keys(la).sort()) === '["last","launch","total"]' && la.launch === 0 && la.total === 0 && la.last === null,
+      'the mock\'s status carries counters.leftAny as FPCore writes it ({launch, total, last}): ' + J(la));
+  } finally { await app.close(); }
+  // build 60's binary (inert, coach): its own four SAFETY rows, none for leftAny even when a status carries it
+  const st60 = (coach) => ({ v: 1, shell: '60', page: null, verdicts: [], screens: { coach },
+    counters: { since: AT - 86400000, leftWindow: count(0, 0), hidden: count(0, 0), trips: count(0, 0),
+      markers: Object.assign(count(0, 0), { found: [] }), leftAny: count(1, 2, AT) } });
+  for (const [shell, coach] of [['inert', OFF('policy')], ['coach', piece({ live: true })]]) {
+    const b = await pageBoot(shell, { init: SAFETY + 'window.__fpShellStatus = ' + J(st60(coach)) + ';' });
+    try {
+      await ready(b);
+      const rows = await ev(b, async () => {
+        await __again();
+        openNativeChatSheet(); await __until(() => !_fpChat.busy); await __w(0);
+        return __safety('fpChatBody');
+      });
+      assert(rows && J(rows.map((r) => r[0])) === J(['Left its window while open', 'Hidden under a native screen', 'Breaker trips', 'Crash markers']),
+        shell + ' (build 60): the sheet\'s own four rows, no "' + LEFT + '": ' + J(rows));
+    } finally { await b.close(); }
+  }
 });

@@ -2,6 +2,7 @@
 import CoreText
 import SwiftUI
 import UIKit
+import WebKit
 import XCTest
 @testable import FPUI
 import FPCore
@@ -981,42 +982,45 @@ final class CoachHomeViewTests: XCTestCase {
         XCTAssertEqual(lines("your coach.", plain - 10, tracking: -2.6, font: inter), ["your coach."], "11 letters at -2.6 make room")
     }
 
-    /// The meta label breaks where the web's does. The lines below are the page's own: `.kt-meta-label` as renderCoach
-    /// draws the hub in each room with each fixture's label (Chromium, each letter's line read off its client rect) at
-    /// 320 and 390 pt and the root zoom of each text size (1, 1.12, 1.24). The label is one line wherever the web draws
-    /// one, as the row keeps no gap of its own between the label and the avatar's tile (Lime's "… · BUILD" at 320 pt
-    /// .xLarge and "… · STRENGTH" at 390 pt .xxLarge, which a 12 px gap wrapped); where it wraps, the separator ends
-    /// the first line ("COACH · WK 06 / 12 ·" over "BUILD"), never leads the second ("· BUILD", as SwiftUI's own
-    /// breaker had it, to keep a word from standing alone). Laid out, the label (the dot, its gap and the lines: one
-    /// element for VoiceOver) is as tall as its lines and as wide as the widest, so the view draws those lines and no
-    /// others.
+    /// The meta row lays out as the web's does: every case of Fixtures/layout/meta-row.json, the page's own
+    /// `.kt-meta-row` drawn by renderCoach in Chromium in both rooms, at 320, 375, 390, 402 and 440 pt and the root zoom
+    /// of each text size (1, 1.12, 1.24), with the fixtures' labels, three multi-word block names a coach may write and
+    /// three whose break the web view's own rules decide (tests/golden/dump-meta-row.js; tests/golden/check.sh and spec
+    /// 126 fail when the page changes it; WebKit lays every case out in the same lines), comes out of
+    /// `HomeMetaRow.layout` in the page's lines with the page's tile width. So the label is one line wherever the web
+    /// draws one (the row keeps no gap of its own); where it wraps, the separator ends a line ("COACH · WK 06 / 12 ·"
+    /// over "BUILD"), never leads the next ("· BUILD", SwiftUI's own breaker); and the tile gives the label the room the
+    /// web's flexbox gives it ("… · FOUNDATION" over "PHASE" with the tile at 36.4 of its 42.6 pt in Heavyweight at
+    /// 320 pt .xLarge; a tile kept at 38 px broke "… · HYPERTROPHY ACCUMULATION" in three lines at 320 pt .xxLarge, where
+    /// the web draws two), its width the web's within a tenth of a point; a slash inside a name never ends a line ("… ·"
+    /// over "HYPERTROPHY/STRENGTH", where CoreText's typesetter broke "HYPERTROPHY/" over "STRENGTH"), a hyphen may
+    /// ("… · STRENGTH-" over "ENDURANCE"), and so may the space before a slash ("… · UPPER" over "/ LOWER" in Lime at
+    /// 320 pt .xLarge: `WebLineBreaks`). Laid out (every case at 320 and 390 pt), the
+    /// label (the dot, its gap and the lines: one element
+    /// for VoiceOver) starts at the gutter, as tall as its lines and as wide as the widest, so the view draws those
+    /// lines and no others (CoachHomeRenderTests holds the drawn tile's width by its letter's place).
     func testTheMetaLabelBreaksWhereTheWebsDoes() throws {
-        let build = "COACH \u{00B7} WK 06 / 12 \u{00B7} BUILD", strength = "COACH \u{00B7} WK 06 / 12 \u{00B7} STRENGTH"
-        let first = "COACH \u{00B7} WK 06 / 12 \u{00B7}"
-        let cases: [(fixture: String, room: Room, width: CGFloat, size: DynamicTypeSize, web: [String])] = [
-            ("hub-empty", .lime, 390, .large, [build]),
-            ("hub-empty", .lime, 320, .xLarge, [build]),
-            ("hub-empty", .lime, 390, .xxLarge, [build]),
-            ("hub-empty", .lime, 320, .xxLarge, [first, "BUILD"]),
-            ("hub-empty", .heavyweight, 320, .xxLarge, [build]),
-            ("lone-surrogates", .lime, 320, .large, [strength]),
-            ("lone-surrogates", .lime, 390, .xxLarge, [strength]),
-            ("lone-surrogates", .lime, 320, .xLarge, [first, "STRENGTH"]),
-            ("lone-surrogates", .lime, 320, .xxLarge, [first, "STRENGTH"]),
-            ("lone-surrogates", .heavyweight, 390, .xxLarge, [strength]),
-            ("lone-surrogates", .heavyweight, 320, .xLarge, [strength]),
-            ("lone-surrogates", .heavyweight, 320, .xxLarge, [first, "STRENGTH"]),
-            ("hub-programme", .lime, 320, .xxLarge, ["COACH \u{00B7} WK 06 / 12"]),
-        ]
-        for c in cases {
-            let what = "\(c.fixture) \(c.room.id) at \(Int(c.width)) pt, \(c.size)"
-            let m = try CoachHomeFixtures.model(c.fixture, in: c.room)
-            let t = RoomTheme(home: m, system: c.size)
-            XCTAssertEqual(HomeMetaRow.labelLines(m.meta, t, width: c.width), c.web, "\(what): the web's lines")
-            let hosted = Hosted(Phone(model: m, host: Recorder().host(), size: c.size, unscrolledWidth: c.width),
-                                size: CGSize(width: c.width, height: 844))
-            let label = try XCTUnwrap(hosted.elements.first { $0.label == m.meta.label }, "\(what): the meta label")
-            hosted.close()
+        let file = try LayoutFixtures.metaRow()
+        let sizes = Dictionary(uniqueKeysWithValues: CoachRenderTests.sizes)
+        let hub = try CoachHomeFixtures.json("hub-empty")
+        var wrapped = 0, narrowed = 0, hosted = 0
+        XCTAssertGreaterThanOrEqual(file.cases.count, 270, "every room, width, size and label")
+        for c in file.cases {
+            let what = "\(c.label.debugDescription) in \(c.room.id) at \(Int(c.width)) pt, \(c.size)"
+            let size = try XCTUnwrap(sizes[c.size], "\(what): a text size the hub draws at")
+            let json = CoachHomeRenderTests.with(label: c.label, CoachHomeRenderTests.with(avatar: file.avatar, hub))
+            let m = try CoachHomeFixtures.model(json, in: c.room)
+            let t = RoomTheme(home: m, system: size)
+            let layout = HomeMetaRow.layout(m.meta, t, width: c.width)
+            XCTAssertEqual(layout.lines, c.lines, "\(what): the web's lines")
+            XCTAssertEqual(layout.tile, c.tile, accuracy: 0.1, "\(what): the web's tile width")
+            if c.lines.count > 1 { wrapped += 1 }
+            if c.tile < t.px(38) - 0.5 { narrowed += 1 }
+            guard c.width == 320 || c.width == 390 else { continue }
+            let phone = Hosted(Phone(model: m, host: Recorder().host(), size: size, unscrolledWidth: c.width),
+                               size: CGSize(width: c.width, height: 844))
+            let label = try XCTUnwrap(phone.elements.first { $0.label == CoachHomeSpeech.meta(m.meta) }, "\(what): the meta label")
+            phone.close()
             let style = HomeMetaRow.labelStyle(t)
             let face = CoachInline.baseFont(style, theme: t)
             // a line's drawn width: its letters in the face, each tracked, the space it may end on hanging
@@ -1025,13 +1029,96 @@ final class CoachHomeViewTests: XCTestCase {
                 let line = CTLineCreateWithAttributedString(text)
                 return CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil) - CTLineGetTrailingWhitespaceWidth(line))
             }
-            let widest = c.web.map(drawn).max() ?? 0
+            let widest = c.lines.map(drawn).max() ?? 0
             XCTAssertEqual(label.frame.minX, CoachHomeView.gutter(t, width: c.width), accuracy: 0.5, "\(what): at the gutter")
-            XCTAssertEqual(label.frame.height, CGFloat(c.web.count) * face.lineHeight, accuracy: 1,
-                           "\(what): \(c.web.count) line(s) of the face (\(label.frame))")
+            XCTAssertEqual(label.frame.height, CGFloat(c.lines.count) * face.lineHeight, accuracy: 1,
+                           "\(what): \(c.lines.count) line(s) of the face (\(label.frame))")
             XCTAssertEqual(label.frame.width, t.px(7) + t.px(9) + widest, accuracy: 2,
-                           "\(what): the dot, its gap and the widest of \(c.web) (\(label.frame))")
+                           "\(what): the dot, its gap and the widest of \(c.lines) (\(label.frame))")
+            hosted += 1
         }
+        XCTAssertGreaterThan(wrapped, 0, "some label wraps")
+        XCTAssertGreaterThan(narrowed, 0, "some tile gives way")
+        XCTAssertGreaterThan(hosted, 0, "some layouts were drawn")
+    }
+
+    /// The meta label and the headline end their lines where the phone's web view does (`WebLineBreaks`, which
+    /// `CoachHomeView.headlineLines` breaks at): laid out in this runtime's own WKWebView in a zero-width box (lang en,
+    /// white-space normal, so every break is taken), every pair of characters from `!` to U+00FF between letters ("A"
+    /// + a + b + "A", 36,100: WebKit's table), each of those and 22 characters past U+00FF after a space, those 22
+    /// (dashes, curly quotes, an ellipsis, letters of other scripts, ideographs and their punctuation, a combining mark,
+    /// symbols, an emoji) before and after every one of them, and block names a coach may write (the golden's labels,
+    /// slashes and hyphens beside letters and digits, dashes, brackets) break at the offsets `WebLineBreaks.breaks`
+    /// gives, string for string (the quotes with sides on iOS 27 and later, as that runtime's WebKit has them). A letter's line is read off its widest client rect: on iOS the bounding rect of a
+    /// letter right after a soft break also spans the line before. CoreText's typesetter breaks 423 of the printable
+    /// ASCII pairs otherwise (after "/", "!" or "|", never at a space before "/" or ")"), so a breaker that is not the
+    /// web view's fails here, on each runtime the tests run on.
+    func testTheTextBreaksWhereThePhonesWebViewDoes() async throws {
+        try await WebKitWarmUp.ensure()
+        let low = (Array(0x21...0x7E) + Array(0xA0...0xFF)).map { String(Character(Unicode.Scalar(UInt8($0)))) }
+        let past = ["\u{2013}", "\u{2014}", "\u{2019}", "\u{2018}", "\u{201C}", "\u{201D}", "\u{2010}", "\u{2011}", "\u{2026}",
+                    "\u{0100}", "\u{0411}", "\u{4E2D}", "\u{3001}", "\u{300C}", "\u{300D}", "\u{0301}", "\u{20AC}", "\u{2122}",
+                    "\u{2022}", "\u{2192}", "\u{1F600}", "\u{00B7}"]
+        var strings: [String] = []
+        for a in low { for b in low { strings.append("A" + a + b + "A") } }
+        for b in low + past { strings.append("A " + b + "A") }
+        for x in past { for b in low + past { strings.append("A" + x + b + "A"); strings.append("A" + b + x + "A") } }
+        strings += try LayoutFixtures.metaRow().cases.map(\.label).reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }
+        strings += ["PUSH/PULL/LEGS", "5/3/1 BBB", "WK 06 / 12", "UPPER / LOWER", "DELOAD + TEST", "BASE (AEROBIC)", "BASE(AEROBIC)",
+                    "PRE-COMPETITION", "RE-ENTRY", "STRENGTH-HYPERTROPHY BLOCK", "A-1", "1-2", "(-1)", "X -1", "A--B", "-A",
+                    "WEEK 3\u{2014}DELOAD", "STRENGTH\u{2013}POWER", "COACH\u{2019}S PICK", "\u{00C9}T\u{00C9}/HIVER",
+                    "\u{00C9}T\u{00C9}-HIVER", "WHAT?NOW", "WHAT?!NOW", "A [B]", "PEAK\u{00A0}WEEK / TEST",
+                    "\u{0416}\u{0418}\u{041C}/\u{0422}\u{042F}\u{0413}\u{0410}", "\u{4E2D}\u{6587}\u{8BAD}\u{7EC3}",
+                    "ATHLETE\u{2019}S/RUNNER", "x\u{2013}!y z\u{2014}(w)"]
+        let view = WKWebView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        view.loadHTMLString("<!doctype html><html lang=\"en\"><body></body></html>", baseURL: URL(string: "https://fp.test/"))
+        let deadline = Date().addingTimeInterval(10)
+        while true {
+            if !view.isLoading, (try? await view.evaluateJavaScript("document.readyState")) as? String == "complete" { break }
+            guard Date() < deadline else { return XCTFail("the probe page did not load") }
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+        let list = try XCTUnwrap(String(data: JSONSerialization.data(withJSONObject: strings), encoding: .utf8))
+        // each string's line starts after the first: a letter whose line is not the one before's (spaces hang)
+        let script = """
+            (function (strings) {
+              var host = document.createElement('div'), all = document.createDocumentFragment(), boxes = [], out = [];
+              host.lang = 'en';
+              host.style.cssText = 'position:absolute;left:0;top:0;width:0;font:16px monospace;white-space:normal;';
+              for (var k = 0; k < strings.length; k++) {
+                var d = document.createElement('div');
+                d.textContent = strings[k]; all.appendChild(d); boxes.push(d);
+              }
+              host.appendChild(all);
+              document.body.appendChild(host);   // laid out once, then only read
+              for (var k = 0; k < strings.length; k++) {
+                var s = strings[k], n = boxes[k].firstChild, r = document.createRange(), last = null, starts = [];
+                for (var i = 0; i < s.length; i++) {
+                  if (s[i] === ' ') continue;
+                  r.setStart(n, i); r.setEnd(n, i + 1);
+                  var rects = r.getClientRects(), box = null;
+                  for (var j = 0; j < rects.length; j++) if (!box || rects[j].width >= box.width) box = rects[j];
+                  var top = Math.round((box || r.getBoundingClientRect()).top);
+                  if (last !== null && top !== last) starts.push(i);
+                  last = top;
+                }
+                out.push(starts);
+              }
+              host.remove();
+              return JSON.stringify(out);
+            })(\(list))
+            """
+        let raw = try await view.evaluateJavaScript(script)
+        let answer = try XCTUnwrap(raw as? String, "the probe's answer")
+        let web = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(answer.utf8)) as? [[Int]], answer.prefix(200).description)
+        XCTAssertEqual(web.count, strings.count, "one answer per string")
+        var wrong: [String] = []
+        for (s, w) in zip(strings, web) {
+            let native = WebLineBreaks.breaks(in: s)
+            if native != w { wrong.append("\(s.debugDescription): web view \(w), native \(native)") }
+        }
+        XCTAssertEqual(wrong.count, 0, "\(wrong.count) of \(strings.count) strings break otherwise than the web view: \(wrong.prefix(24).joined(separator: "; "))")
+        XCTAssertGreaterThan(strings.count, 45_600, "every pair, and the names, were laid out")
     }
 
     /// The help is one element whose two paragraphs draw as two lines (its "\n" a line break, as the web's <br>).

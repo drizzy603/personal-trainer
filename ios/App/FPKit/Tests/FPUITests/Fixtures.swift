@@ -74,6 +74,36 @@ enum CoachFixtures {
     }
 }
 
+/// The page's own layouts the native views are held to (Tests/FPCoreTests/Fixtures/layout), read from the source tree.
+enum LayoutFixtures {
+    /// The Coach hub's meta row as the page lays it out (tests/golden/dump-meta-row.js).
+    static let metaRowFile: URL = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent().deletingLastPathComponent()
+        .appendingPathComponent("FPCoreTests/Fixtures/layout/meta-row.json")
+
+    /// One meta row case: the label in a room at a phone width and a text size (large, xLarge or xxLarge), as drawn.
+    struct MetaRow {
+        let room: Room, width: CGFloat, size: String, label: String, lines: [String], tile: CGFloat
+    }
+
+    /// The avatar letter every case was drawn with, and every case in file order. A file of another version, or a case
+    /// without its fields, is an error, never skipped.
+    static func metaRow() throws -> (avatar: String, cases: [MetaRow]) {
+        func unreadable(_ why: String) -> Error {
+            CocoaError(.fileReadCorruptFile, userInfo: [NSFilePathErrorKey: metaRowFile.path, NSDebugDescriptionErrorKey: why])
+        }
+        let o = try JSONSerialization.jsonObject(with: Data(contentsOf: metaRowFile)) as? [String: Any]
+        guard o?["v"] as? Int == 1 else { throw unreadable("v is not 1") }
+        guard let avatar = o?["avatar"] as? String, let cases = o?["cases"] as? [[String: Any]] else { throw unreadable("no avatar or cases") }
+        return (avatar, try cases.enumerated().map { i, c in
+            guard let room = c["room"] as? String, let width = c["width"] as? Double, let size = c["size"] as? String,
+                  let label = c["label"] as? String, let lines = c["lines"] as? [String], let tile = c["tile"] as? Double
+            else { throw unreadable("case \(i) lacks one of room, width, size, label, lines, tile") }
+            return MetaRow(room: Room(id: room), width: CGFloat(width), size: size, label: label, lines: lines, tile: CGFloat(tile))
+        })
+    }
+}
+
 /// The coach home fixtures FPCoreTests decodes (Tests/FPCoreTests/Fixtures/coachHome: CoachHomeModel v1, the hub and
 /// the connect screen), read from the source tree as CoachFixtures reads the chat's. The folder is listed, never named
 /// file by file, so the page-built fixtures (plan task P6) join the hand-made ones as they land. Never

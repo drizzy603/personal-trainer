@@ -4,7 +4,8 @@
 The web app ships its fonts as latin + latin-ext woff2 subsets in assets/fonts (Inter, JetBrains
 Mono and Archivo are variable). Native code needs static TrueType files, so each face the views use
 is instanced from both subsets at its weight, the two are merged into one file (so "Łydka" or
-"Čučoriedka" stay in the face instead of dropping to SF mid-word), and the face is renamed
+"Čučoriedka" stay in the face instead of dropping to SF mid-word; a code point both map draws and
+kerns as latin's, as the browser's unicode-range picks it: `unmap`), and the face is renamed
 "<Family> FP" so it can never collide with a system or app font. Every file keeps its copyright
 record and carries the SIL Open Font License 1.1 notice and URL (the web subsets drop them), which
 is how OFL fonts may travel inside an app. Output is byte-for-byte reproducible.
@@ -92,16 +93,31 @@ def static(path, weight):
         if t in f: del f[t]
     return f
 
+def unmap(f, mapped):
+    """Drops from a later subset's cmap every code point an earlier one maps (its glyphs stay: its own composites,
+    Ą on A, still draw). The subsets share a few code points (A, Á, Ă, the space, combining marks; Inter's Ä and ’), and
+    fontTools' Merger takes each shared one as a duplicate to disambiguate: it keeps the earlier glyph in the cmap and
+    adds a locl lookup to every latn language system that swaps it for the later subset's copy (A for A.1), which no
+    kerning pair names, so "TA" or "AV" set unkerned. The browser picks one subset per code point by unicode-range,
+    latin first, and kerns with that subset's pairs; with no duplicate left, the merged face does the same."""
+    for t in f['cmap'].tables:
+        for u in [u for u in t.cmap if u in mapped]:
+            del t.cmap[u]
+
 for d in OUT.values():
     os.makedirs(d, exist_ok=True)
 tmp = tempfile.mkdtemp()
 for stem, family, psfam, weight, style, sets in FACES:
     parts = []
+    mapped = set()
     for sub in ('latin', 'latin-ext'):
         p = os.path.join(tmp, '%s-%s-%d.ttf' % (stem, sub, weight))
-        static(os.path.join(SRC, '%s-%s.woff2' % (stem, sub)), weight).save(p)
+        part = static(os.path.join(SRC, '%s-%s.woff2' % (stem, sub)), weight)
+        unmap(part, mapped)
+        mapped |= set(part.getBestCmap())
+        part.save(p)
         parts.append(p)
-    # latin first: where both subsets map a code point (space, digits), latin's glyph wins
+    # latin first: where both subsets map a code point (the space, A), latin's glyph is the one text draws (`unmap`)
     f = Merger().merge(parts)
     ps = psfam + '-' + style
     rename(f, family + ' FP', style, ps)

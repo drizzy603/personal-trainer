@@ -95,7 +95,14 @@ order and glyphs are the shell's; compiled per-room defaults for the first frame
 the Coach tab's root (the hub or the connect screen, `resume` for the shell's hold, meta, hero, the connect block, the
 hub's groups of rows, the room's tokens with the hub's `home*` sizes; never the key). Their fixtures are in
 `Fixtures/tabs` and `Fixtures/coachHome`: the page-built ones from `node tests/golden/dump-coach-home.js`, the hand-made
-ones from `Tools/tabs-fixtures.js` and `Tools/coach-home-fixtures.js` (see `Tests/FPCoreTests/Fixtures/README.md`).
+ones from `Tools/tabs-fixtures.js` and `Tools/coach-home-fixtures.js` (see `Tests/FPCoreTests/Fixtures/README.md`). The
+hub's meta row as the page lays it out is `Fixtures/layout/meta-row.json`, from `node tests/golden/dump-meta-row.js` on
+a Mac (checked byte for byte on darwin; on CI's Linux only the cases, the row's styles and its boxes, the row's flex
+items among them, since the lines and tiles come from the text rasterizer). The label and the headline break where the
+phone's web view does: `WebLineBreaks` (FPUI) gives WebKit's breakable positions (iOS 26.5's; on iOS 27 the curly
+quotes and the guillemets take sides, as that runtime's WebKit gives them): a break after a hyphen ("STRENGTH-" over
+"ENDURANCE") and at a space before a slash ("UPPER" over "/ LOWER"), never after a slash inside a name
+("HYPERTROPHY/STRENGTH").
 
 `CoachHomeModelTests` reads both kinds. Each page-built `Fixtures/coachHome` file (P6) is read as the page's whole
 model, contract 6.2's keys in their JSON types (rev, boot, room, paper, dynTypeOn, route and resume as sent; meta, hero,
@@ -219,7 +226,8 @@ Debug `-fpClearVerdicts` could clear a verdict. Build 61's status adds the reaso
 piece needs), the root built at scene connect, the fallback (`fellBack {why, at}`), the shell's switches, the policy
 file's last check (`status {refresh: true}`, About's "Check the switches now", fetches it first, at most once a minute)
 and two counters, the strays (selections made outside the funnel) and `leftAny` (ShellWebView's moves out of its
-window in any app state, H11; the page's sheet does not list it yet); `reset` also forgets the piece's decline.
+window in any app state, H11; both 61 sheets list it as "Left its window in any state" (web 20261108-1)); `reset`
+also forgets the piece's decline.
 
 Debug launch arguments (besides FPHost's): `-fpSmoke` (after each hello a ping through the real link, logged as
 `fp: ping ok v1`, subsystem `app.kt.trainer`), `-fpShellProbe <steps file>` with `-fpShellProbeLog <name>`; FPHost's
@@ -429,11 +437,14 @@ the Coach stack's root through `RootTabController.setHome(_:)`, so the Coach tab
 
 Tests (FPUITests): `CoachHomeViewTests` (every coachHome fixture laid out in both rooms, VoiceOver's order and traits,
 the key field secure, autocorrecting nothing and taking no focus by itself, one action per press, a typed canary leaving
-no trace), `CoachHomeStoreTests` (models in rev order, a document going, the presses as intents, the key sent once,
-`describe()`, CoachHomeRoot in a window and as a Coach stack's root) and `CoachHomeRenderTests`, which draws every
-`Fixtures/coachHome` file and the `built-connect` variant in both rooms, light and dark, at `.large`, `.xLarge` and
-`.xxLarge`, on 390 × 844 and 320 × 568 over the 83 pt bar, and holds Larger Text's growth and cap, the column's exact
-end, and every string the model shows read back off the render by Vision (`DrawnText`; the avatar by its tile). With
+no trace, the meta row's lines and avatar tile as the page lays them out: `Fixtures/layout/meta-row.json`, from
+`node tests/golden/dump-meta-row.js`, and every break `WebLineBreaks` gives laid out in the runtime's own WKWebView:
+every pair of characters up to U+00FF and 22 past it), `CoachHomeStoreTests` (models in rev order, a document going, the presses as
+intents, the key sent once, `describe()`, CoachHomeRoot in a window and as a Coach stack's root) and
+`CoachHomeRenderTests`, which draws every `Fixtures/coachHome` file and the `built-connect` variant in both rooms, light
+and dark, at `.large`, `.xLarge` and `.xxLarge`, on 390 × 844 and 320 × 568 over the 83 pt bar, and holds Larger Text's
+growth and cap, the column's exact end, and every string the model shows read back off the render by Vision
+(`DrawnText`; the avatar by its tile; the meta label by its pixels too, on every runtime). With
 `TEST_RUNNER_FPUI_SHOTS` it writes `native/home/<fixture>/...`, from which no contact sheet is made yet
 (`Tools/chat-contact/run.sh` runs CoachRenderTests alone).
 
