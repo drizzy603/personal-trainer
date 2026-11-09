@@ -27,14 +27,27 @@ import FPCore
 final class TabBarGroundTests: XCTestCase {
     nonisolated private static let heavy = TabsModel.defaults(for: .heavyweight)
     nonisolated private static let lime = TabsModel.defaults(for: .lime)
-    /// Rigs stay alive to the end (their windows hidden), as RootTabControllerTests keeps its own.
-    static var kept: [RootRig] = []
+    /// The case's rigs, each let go when the case ends (each holds a WebContent process): no case here counts the web
+    /// view's moves out of its window, so none waits for a late one as RootTabControllerTests does.
+    private var rigs: [RootRig] = []
+
+    override func setUp() async throws {
+        try XCTSkipUnless(ProcessInfo.processInfo.isOperatingSystemAtLeast(OperatingSystemVersion(majorVersion: 26, minorVersion: 0, patchVersion: 0)),
+                          "the tab root exists only on iOS 26 and later (D39)")
+        try await WebKitWarmUp.ensure()
+    }
+
+    override func tearDown() async throws {
+        for r in rigs { r.letGo() }
+        rigs = []
+        try await super.tearDown()
+    }
 
     private func rig(_ look: TabsModel, first: String = "coach") -> RootRig {
-        for r in Self.kept { r.window.isHidden = true }
+        for r in rigs { r.window.isHidden = true }
         let r = RootRig(first: first, look: look)
         r.root.view.layoutIfNeeded()
-        Self.kept.append(r)
+        rigs.append(r)
         return r
     }
 
@@ -93,6 +106,21 @@ final class TabBarGroundTests: XCTestCase {
         return found
     }
 
+    /// Every scroll view in the whole window, whatever its background, that is shown and covers the whole bar: all but the
+    /// page's own (the web view and what it holds) and the bar's (the bar and the container that draws it).
+    private func underBar(_ r: RootRig) -> [UIScrollView] {
+        let bar = r.root.tabBar.convert(r.root.tabBar.bounds, to: nil).insetBy(dx: 0.5, dy: 0.5)
+        let own: UIView = r.root.barContainer ?? r.root.tabBar
+        var found: [UIScrollView] = []
+        func walk(_ v: UIView) {
+            if v === r.webView || v === own { return }
+            if let s = v as? UIScrollView, Self.shown(s), s.convert(s.bounds, to: nil).contains(bar) { found.append(s) }
+            v.subviews.forEach(walk)
+        }
+        walk(r.window)
+        return found
+    }
+
     /// Every screen the Coach stack shows puts the room's ground in a scroll view under the whole bar, in both rooms: the
     /// WAITING ground, the hub (its own ScrollView reaches under the bar, its background clear over the room's), the
     /// connect screen and the chat pushed over the hub (its conversation ends above its composer). Without it, iOS 26.x
@@ -132,8 +160,9 @@ final class TabBarGroundTests: XCTestCase {
         }
     }
 
-    /// Where the page is the tab (Coach WEB, a web tab), the Coach stack's ground is never under the bar: the web view's
-    /// own scroll view is, so iOS 26.x reads the page there as on every web tab.
+    /// Where the page is the tab (Coach WEB, a web tab), the Coach stack's ground is never under the bar: only the web
+    /// view's own scroll view is (no other scroll view in the whole window covers the bar), so iOS 26.x reads the page
+    /// there as on every web tab.
     func testWhereThePageIsTheTabNoGroundOfTheStackLiesUnderTheBar() throws {
         for look in [Self.lime, Self.heavy] {
             let r = rig(look)
@@ -145,14 +174,44 @@ final class TabBarGroundTests: XCTestCase {
             XCTAssertTrue(r.webView.superview === r.root.coachSlot.webArea, "the page in the Coach slot's web area")
             XCTAssertTrue(Self.shown(r.webView), "the page shows")
             XCTAssertEqual(grounds(r, look), [], "\(look.room.id) Coach WEB: no ground of the stack over the page")
+            XCTAssertEqual(underBar(r), [], "\(look.room.id) Coach WEB: no scroll view but the page's under the bar")
             r.root.setHome(r.home)
             settle(r)
             r.root.select("log", source: .page(intent: nil))
             settle(r)
-            XCTAssertEqual(grounds(r, look), [], "\(look.room.id) Log: no ground of the stack under the bar")
+            XCTAssertTrue(Self.shown(r.webView), "\(look.room.id) Log: the page shows")
+            XCTAssertEqual(underBar(r), [], "\(look.room.id) Log: no scroll view but the page's under the bar")
+            let stray = UIScrollView(frame: r.window.bounds)
+            r.window.addSubview(stray)
+            XCTAssertEqual(underBar(r), [stray], "\(look.room.id) Log: the walk does find a scroll view put under the bar")
+            stray.removeFromSuperview()
             r.root.select("coach", source: .page(intent: nil))
             settle(r)
             XCTAssertFalse(grounds(r, look).isEmpty, "\(look.room.id) NATIVE again: the ground is back under the bar")
+        }
+    }
+
+    /// The fallback (contract 10.3) turns the Coach tab WEB where it stands and hides the bar for good: the ground goes
+    /// with the stack, and nothing of the Coach slot shows over the page.
+    func testTheFallbackTakesTheGroundAwayWithTheStack() throws {
+        for look in [Self.lime, Self.heavy] {
+            let r = rig(look)
+            r.root.setHome(r.home)
+            settle(r)
+            XCTAssertFalse(grounds(r, look).isEmpty, "\(look.room.id) NATIVE: the ground under the bar")
+            r.root.fallBack(why: .failures, at: Date())
+            settle(r)
+            XCTAssertEqual(r.root.coachMode, .web)
+            XCTAssertTrue(r.root.isTabBarHidden, "the bar hidden for good")
+            let slot = r.root.coachSlot
+            XCTAssertTrue(r.webView.superview === slot.webArea, "the page in the Coach slot, where Coach stands")
+            XCTAssertTrue(Self.shown(r.webView), "the page shows")
+            XCTAssertTrue(slot.ground.isHidden, "\(look.room.id): the ground hidden with the stack")
+            let page = r.webView.convert(r.webView.bounds, to: nil)
+            let over = slot.view.subviews.filter {
+                $0 !== slot.webArea && Self.shown($0) && $0.convert($0.bounds, to: nil).intersects(page)
+            }
+            XCTAssertTrue(over.isEmpty, "\(look.room.id): nothing of the Coach slot over the page: \(over)")
         }
     }
 
@@ -175,6 +234,8 @@ final class TabBarGroundTests: XCTestCase {
         XCTAssertFalse(g.scrollsToTop, "a status bar tap never scrolls it")
         XCTAssertTrue(g.accessibilityElementsHidden, "VoiceOver never sees it")
         XCTAssertEqual(g.contentInsetAdjustmentBehavior, .never)
+        XCTAssertTrue(g.topEdgeEffect.isHidden, "UIKit draws no edge effect at its top")
+        XCTAssertTrue(g.bottomEdgeEffect.isHidden, "nor at its bottom, over the bar")
         XCTAssertFalse(r.webView.isDescendant(of: g), "it never holds the web view")
         XCTAssertFalse(r.nav.view.isDescendant(of: g), "nor the stack")
         XCTAssertEqual(g.overrideUserInterfaceStyle, .unspecified, "it carries no style")
