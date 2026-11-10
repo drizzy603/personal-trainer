@@ -418,16 +418,22 @@ final class ShellBridgeTests: XCTestCase {
     }
 
     /// A page whose `shell.covered` never answers (a state intent stalled in the page) and whose `ping` answers, never
-    /// answers (`window.__pingDead`), or starts a navigation that never commits (`window.__pingNavigates`, a URL).
+    /// answers (`window.__pingDead`), or starts a navigation that never commits (`window.__pingNavigates`, a URL). An
+    /// unanswered call's promise is kept in `window.__pending`, as ShellBridgeTabsTests' page keeps its own: WebKit fails
+    /// a call whose promise the page's garbage collector took ("Completion handler for function call is no longer
+    /// reachable"), where a page that does not answer must stay silent until its timeout. Under load the collector got
+    /// there first: the navigating ping ended `gone` on that error before the case had timed it out (2 of 20 on iOS
+    /// 27.0 beside 20 'yes').
     static let stallPage = """
         <!doctype html><meta charset="utf-8"><title>fp</title><script>
-        window.__got = [];
+        window.__got = []; window.__pending = [];
+        window.__never = function () { var p = new Promise(function () {}); window.__pending.push(p); return p; };
         window.FPScreens = { v: 1, call: function (name, args) {
           window.__got.push(name);
-          if (name === 'shell.covered') return new Promise(function () {});
+          if (name === 'shell.covered') return window.__never();
           if (name === 'ping') {
-            if (window.__pingNavigates) { location.href = window.__pingNavigates; return new Promise(function () {}); }
-            return window.__pingDead ? new Promise(function () {}) : Promise.resolve({ ok: true, v: 1 });
+            if (window.__pingNavigates) { location.href = window.__pingNavigates; return window.__never(); }
+            return window.__pingDead ? window.__never() : Promise.resolve({ ok: true, v: 1 });
           }
           return Promise.resolve({ ok: true });
         } };
