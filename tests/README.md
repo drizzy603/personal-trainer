@@ -334,7 +334,9 @@ no window, so `TabBarGroundTests` holds what 26.x reads (the stack's ground unde
 every Coach screen, out of the view tree in WEB) and this tool what it draws: with
 the ground taken away (H9's code) the run fails on iOS 26.5, Lime on a light phone
 at 1.36:1 and Heavyweight on a dark phone at 1.04:1 on WAITING, the chat and the
-chat under a toast. The platter's numbers cover the iPhone 17 Pro's bar (402 x 83
+chat under a toast (as the run stood before the round trip), and with the ground
+not put back after WEB (a scratch change) on the chat pushed after the round trip
+alone, at the same two numbers. The platter's numbers cover the iPhone 17 Pro's bar (402 x 83
 pt, the runs here) and the Pro Max's (440 x 83 pt, read in frames of both paired
 phones); a bar of another size ends the run with exit 2: measure its platter and
 add it to `PLATTERS`. The run replaces the app and its data on the

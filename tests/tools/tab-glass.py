@@ -36,7 +36,9 @@ as the page flips it: toggleNativeChat):
              hidden stack still holds the hub, the stack's ground out of the view tree
   hubagain   the hub again, the switch put back: NATIVE once more, the ground back under the stack
   chatagain  the chat pushed over that hub: its conversation ends above its composer, so the stack's ground alone lies
-             under the bar there
+             under the bar there, and a ground that did not come back after WEB shows here alone (a scratch app that
+             never puts it back, iOS 26.5: 1.36:1 in Lime on a light phone and 1.04:1 in Heavyweight on a dark one,
+             every other check of the run passing)
 Each shot is read only for the state it claims: the probe's state just before it must show Coach selected, the bar
 shown, the tab's mode (NATIVE or WEB), its root (connect or hub), the chat pushed or not and the toast up. The fourth
 launch's shots also need the hub NATIVE before the switch went off, the tab WEB while it was off, and the switch off
