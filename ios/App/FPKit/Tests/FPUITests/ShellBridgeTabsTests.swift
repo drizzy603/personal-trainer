@@ -26,6 +26,8 @@ final class TabsScene {
     var root: RootTabController?
     /// VoiceOver's screen changes: "web" (the web view), "top" (the Coach stack's top view), "view" (another), "nil".
     var posts: [String] = []
+    /// The stand-in page loaded in the web view (`load`).
+    var pageUp = false
 
     init(bridge: ShellBridge) {
         self.bridge = bridge
@@ -234,7 +236,10 @@ final class ShellBridgeTabsTests: XCTestCase {
         while Date() < deadline {
             try await Task.sleep(nanoseconds: 50_000_000)
             let ready = "typeof window.FPScreens === 'object' && typeof window.__fpOld === 'undefined'"
-            if !s.webView.isLoading, (try? await s.webView.evaluateJavaScript(ready)) as? Bool == true { return }
+            if !s.webView.isLoading, (try? await s.webView.evaluateJavaScript(ready)) as? Bool == true {
+                s.pageUp = true
+                return
+            }
         }
         throw PageDidNotLoad()
     }
@@ -416,8 +421,39 @@ final class ShellBridgeTabsTests: XCTestCase {
     private func expect(_ what: @autoclosure () -> String, within timeout: Double = 4, file: StaticString = #filePath, line: UInt = #line,
                         _ ok: () async -> Bool) async throws -> Bool {
         let done = try await until(timeout, ok)
-        if !done { XCTFail("never: " + what(), file: file, line: line) }
+        if !done { XCTFail("never: " + what() + (await silentPages()), file: file, line: line) }
         return done
+    }
+
+    /// For a wait that ran out: says so when a scene's stand-in page is no longer there to answer (its `FPScreens` gone
+    /// with a web process WebKit started over, or no answer to a script in 5 s). The case fails either way (a page that
+    /// stops answering is what `tabs` trips on, and the case cannot tell a machine that took the page's process from a
+    /// shell that stalled it), but its line then names the likelier cause on a shared runner: CI run 42522381728's
+    /// test02 heard nothing from its page after the hello, while WebKit was refused the end of a web process ("Client
+    /// not entitled"), and the same job passed when run again.
+    private func silentPages() async -> String {
+        for s in scenes where s.pageUp && s.webView.live {
+            if !(await pageAnswers(s)) {
+                return " (the stand-in page is gone or no longer answers: its WebKit process ended or stalled, the machine's doing unless the case stalls it)"
+            }
+        }
+        return ""
+    }
+
+    private func pageAnswers(_ s: TabsScene, within seconds: Double = 5) async -> Bool {
+        await withCheckedContinuation { (c: CheckedContinuation<Bool, Never>) in
+            var open = true   // the main thread's alone: the answer and the timer both come there
+            s.webView.evaluateJavaScript("typeof window.FPScreens === 'object'") { value, _ in
+                guard open else { return }
+                open = false
+                c.resume(returning: value as? Bool == true)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + seconds) {
+                guard open else { return }
+                open = false
+                c.resume(returning: false)
+            }
+        }
     }
 
     /// Before a read that says the page heard nothing (more): the link idle (nothing queued for the page and none on its
@@ -755,8 +791,8 @@ final class ShellBridgeTabsTests: XCTestCase {
         try await expect("the bar's restate, answered") { await self.calls(s, "tabs.bar").count == 2 && b.pageLink.pending == 0 }
         let bars = await calls(s, "tabs.bar")
         XCTAssertEqual(bars.map(\.h), [0, 0])
-        XCTAssertEqual(bars.map(\.safe), [bars[0].safe, bars[0].safe])
-        XCTAssertEqual(bars[1].rev, (bars[0].rev ?? 0) + 1, "the restate takes a new rev")
+        XCTAssertEqual(bars.map(\.safe), [bars.first?.safe, bars.first?.safe])
+        XCTAssertEqual(bars.count == 2 ? bars[1].rev : nil, (bars.first?.rev ?? 0) + 1, "the restate takes a new rev")
         XCTAssertEqual(b.pageLink.records.filter { $0.name == "tabs.bar" }.map(\.outcome), ["failed timeout", "done"])
         let selects = await calls(s, "tabs.select")
         XCTAssertEqual(selects.count, 5, "the tap's own tabs.select went once and was answered: no restate for it")
