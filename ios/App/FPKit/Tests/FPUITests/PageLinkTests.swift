@@ -126,10 +126,13 @@ final class PageLinkTests: XCTestCase {
     }
 
     func testAnswersAreClassifiedAsTheBreakerCountsThem() async throws {
-        link.timeoutScale = 0.1   // 2 s -> 0.2 s
         let refused = await send(.coachRetry)
         XCTAssertEqual(refused, .answered(.refused("stale")), "the page's own refusal is an answer")
+        // the clock scaled down for the one the page never answers alone: the answers around it keep their 2 s (at 0.2 s
+        // a loaded machine lets an answer run out too)
+        link.timeoutScale = 0.1   // 2 s -> 0.2 s
         let timedOut = await send(.coachStop)
+        link.timeoutScale = 1
         XCTAssertEqual(timedOut, .answered(.failed(.timeout)))
         let threw = await send(.coachBack)
         guard case .answered(.failed(.javascript))? = threw else { return XCTFail("a script error: \(String(describing: threw))") }
