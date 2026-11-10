@@ -2,6 +2,24 @@ import Foundation
 import XCTest
 import FPCore
 
+/// The CPU time the calling thread spends in `body`, in seconds: clock_gettime(CLOCK_THREAD_CPUTIME_ID) before and after
+/// (N16). The decode budgets (testSixtyMessagesDecodeQuickly, CoachHomeModelTests.testA4KBModelDecodesQuickly) are held
+/// to it, not to the wall clock, which on a loaded Mac also counts the time the thread waits for a core: the wall-clock
+/// bounds failed gates at load 28-78. The decoders run on the calling thread, so this is all of their work.
+func threadCPUSeconds(file: StaticString = #filePath, line: UInt = #line, _ body: () throws -> Void) rethrows -> Double {
+    func now() -> Double {
+        var t = timespec()
+        let rc = clock_gettime(CLOCK_THREAD_CPUTIME_ID, &t)
+        XCTAssertEqual(rc, 0, "clock_gettime(CLOCK_THREAD_CPUTIME_ID) failed: errno \(errno)", file: file, line: line)
+        return Double(t.tv_sec) + Double(t.tv_nsec) / 1_000_000_000
+    }
+    let start = now()
+    try body()
+    let spent = now() - start
+    XCTAssertGreaterThan(spent, 0, "the thread's CPU clock did not move", file: file, line: line)
+    return spent
+}
+
 final class CoachModelTests: XCTestCase {
     private func model(_ name: String) throws -> CoachModel {
         try CoachModel.decode(utf8: FixtureFiles.data("coach/\(name).json"))
@@ -99,37 +117,87 @@ final class CoachModelTests: XCTestCase {
         XCTAssertNil(m.message(id: ""))
     }
 
-    /// The models carry the page's THEMES: the compiled defaults must agree with them, colour for colour.
-    func testCompiledPaletteMatchesThePageThemes() throws {
-        for (file, defaults) in [("heavyweight-chat", Tokens.heavyweight), ("lime-chat", Tokens.lime)] {
-            let colors = try XCTUnwrap(FixtureFiles.json("coach/\(file).json")["tokens"]?["color"]?.object)
-            var checked = 0
-            for (key, value) in colors {
-                guard let token = ColorToken(rawValue: key) else { XCTFail("\(file): \(key) is not a token"); continue }
-                XCTAssertEqual(RGBA(css: value.string ?? ""), defaults.color(token), "\(file) \(key)")
-                checked += 1
-            }
-            XCTAssertGreaterThan(checked, 30, file)
-        }
+    /// The files Tools/coach-fixtures.js writes by hand; every other file in Fixtures/coach is the page's own
+    /// (tests/golden/dump-coach.js: both rooms' chat, setup, the empty chat, errors and stops, a reply in flight, sixty
+    /// messages), so a state the dump adds is read as these are.
+    private static let handMade: Set<String> = ["forward-compat", "lone-surrogates", "minimal"]
+
+    /// The page-built files by name: Fixtures/coach less the hand-made ones.
+    private static func pageBuilt() -> [String] {
+        FixtureFiles.files(in: "coach").map { $0.deletingPathExtension().lastPathComponent }.filter { !handMade.contains($0) }
     }
 
-    /// The page sends the whole scale (type, space, radii, fonts) with every model: the compiled
-    /// defaults must agree with it, so a model without tokens draws the same chat.
-    func testCompiledScaleMatchesThePage() throws {
-        for (file, defaults) in [("heavyweight-chat", Tokens.heavyweight), ("lime-chat", Tokens.lime)] {
-            let tokens = try FixtureFiles.json("coach/\(file).json")["tokens"]
-            let type = try XCTUnwrap(tokens?["type"]?.object), space = try XCTUnwrap(tokens?["space"]?.object)
-            let radius = try XCTUnwrap(tokens?["radius"]?.object), font = try XCTUnwrap(tokens?["font"]?.object)
-            // the chat's half only: the hub's home* sizes never enter CoachModel (contract 6.3)
-            XCTAssertEqual(Set(type.keys), Set(TypeToken.chat.map(\.rawValue)), file)
-            XCTAssertEqual(Set(space.keys), Set(SpaceToken.allCases.map(\.rawValue)), file)
-            XCTAssertEqual(Set(radius.keys), Set(RadiusToken.allCases.map(\.rawValue)), file)
-            XCTAssertEqual(Set(font.keys), Set(FontToken.allCases.map(\.rawValue)), file)
-            for t in TypeToken.chat { XCTAssertEqual(type[t.rawValue]?.double, defaults.size(t), "\(file) type.\(t.rawValue)") }
-            for t in SpaceToken.allCases { XCTAssertEqual(space[t.rawValue]?.double, defaults.space(t), "\(file) space.\(t.rawValue)") }
-            for t in RadiusToken.allCases { XCTAssertEqual(radius[t.rawValue]?.double, defaults.radius(t), "\(file) radius.\(t.rawValue)") }
-            for t in FontToken.allCases { XCTAssertEqual(font[t.rawValue]?.string, defaults.font(t), "\(file) font.\(t.rawValue)") }
+    /// Each room's page-built chat model: the page builds every model's colours from one `_coachTokens(room)` call.
+    private static let chatFixture: [Room: String] = [.heavyweight: "heavyweight-chat", .lime: "lime-chat"]
+
+    /// The models carry the page's THEMES, in every page-built file (N16, as CoachHomeModelTests holds the hub's since
+    /// 75972d7): the room's whole palette, every ColorToken (THEMES camel-cased and the chat's roles; satAccent may be
+    /// left out only where the accent stands in for it, as on the page's satellites, and that accent is FPCore's compiled
+    /// satAccent: Lime, whose THEMES has no sat-accent), the same colours as the room's page-built chat model, each its
+    /// room's compiled colour. A colour the page stopped sending would decode to the compiled one and pass every other
+    /// check, in the chat files as in the rest, so the palette is held to ColorToken itself, not to a count.
+    func testCompiledPaletteMatchesThePageThemes() throws {
+        var rooms: Set<Room> = []
+        for name in Self.pageBuilt() {
+            let data = try FixtureFiles.data("coach/\(name).json")
+            let m = try CoachModel.decode(utf8: data)
+            let compiled = Tokens.defaults(for: m.room)
+            rooms.insert(m.room)
+            let color = try XCTUnwrap(JSONText.parse(utf8: data)["tokens"]?["color"]?.object, name)
+            // the whole palette: every ColorToken but satAccent is sent; satAccent is left out only where the page's
+            // satellites read the accent in its place (T['sat-accent']||T.accent) and that is FPCore's compiled one
+            let sat = ColorToken.satAccent.rawValue
+            XCTAssertEqual(Set(ColorToken.allCases.map(\.rawValue)).subtracting(color.keys).subtracting([sat]).sorted(), [],
+                           "\(name): colours of the palette the page leaves out")
+            if color[sat] == nil {
+                let accent = color[ColorToken.accent.rawValue]?.string ?? "absent", want = compiled.color(.satAccent)
+                XCTAssertEqual(RGBA(css: accent), want,
+                               "\(name): no satAccent sent, so the accent standing in for it (\(accent)) must be FPCore's compiled satAccent (\(want.css))")
+            }
+            if let chatName = Self.chatFixture[m.room] {
+                let chat = try XCTUnwrap(FixtureFiles.json("coach/\(chatName).json")["tokens"]?["color"]?.object, chatName)
+                XCTAssertEqual(Set(chat.keys).subtracting(color.keys).sorted(), [], "\(name): colours \(chatName) sends that it leaves out")
+                XCTAssertEqual(Set(color.keys).subtracting(chat.keys).sorted(), [], "\(name): colours it sends that \(chatName) does not")
+            } else {
+                XCTFail("\(name): no page-built chat model in its room (\(m.room.id))")
+            }
+            for (key, value) in color.sorted(by: { $0.key < $1.key }) {
+                guard let token = ColorToken(rawValue: key) else { XCTFail("\(name): color.\(key) is not a token"); continue }
+                XCTAssertEqual(RGBA(css: value.string ?? ""), compiled.color(token), "\(name) color.\(key)")
+            }
         }
+        XCTAssertEqual(rooms, [.heavyweight, .lime], "both rooms are page-built")
+    }
+
+    /// The page sends the whole scale (type, space, radii, fonts) with every model, in every page-built file, as the
+    /// palette case reads them: the chat's sizes, every space, radius and font, each its room's compiled default, so a
+    /// model without tokens draws the same chat; and the decoded tokens are the room's compiled ones with nothing
+    /// rejected, as CoachHomeModelTests.testPageBuiltTokensAreTheRoomsCompiledOnes holds the hub's. N16's review: with
+    /// only the two chat files read, errors.json without type.body and loading.json with another gutter or body font
+    /// passed every case.
+    func testCompiledScaleMatchesThePage() throws {
+        var rooms: Set<Room> = []
+        for name in Self.pageBuilt() {
+            let data = try FixtureFiles.data("coach/\(name).json")
+            let m = try CoachModel.decode(utf8: data)
+            let compiled = Tokens.defaults(for: m.room)
+            rooms.insert(m.room)
+            let tokens = try JSONText.parse(utf8: data)["tokens"]
+            let type = try XCTUnwrap(tokens?["type"]?.object, name), space = try XCTUnwrap(tokens?["space"]?.object, name)
+            let radius = try XCTUnwrap(tokens?["radius"]?.object, name), font = try XCTUnwrap(tokens?["font"]?.object, name)
+            // the chat's half only: the hub's home* sizes never enter CoachModel (contract 6.3)
+            XCTAssertEqual(Set(type.keys), Set(TypeToken.chat.map(\.rawValue)), name)
+            XCTAssertEqual(Set(space.keys), Set(SpaceToken.allCases.map(\.rawValue)), name)
+            XCTAssertEqual(Set(radius.keys), Set(RadiusToken.allCases.map(\.rawValue)), name)
+            XCTAssertEqual(Set(font.keys), Set(FontToken.allCases.map(\.rawValue)), name)
+            for t in TypeToken.chat { XCTAssertEqual(type[t.rawValue]?.double, compiled.size(t), "\(name) type.\(t.rawValue)") }
+            for t in SpaceToken.allCases { XCTAssertEqual(space[t.rawValue]?.double, compiled.space(t), "\(name) space.\(t.rawValue)") }
+            for t in RadiusToken.allCases { XCTAssertEqual(radius[t.rawValue]?.double, compiled.radius(t), "\(name) radius.\(t.rawValue)") }
+            for t in FontToken.allCases { XCTAssertEqual(font[t.rawValue]?.string, compiled.font(t), "\(name) font.\(t.rawValue)") }
+            XCTAssertEqual(m.tokens.rejected, [], name)
+            XCTAssertEqual(m.tokens, compiled, "\(name): the decoded tokens are the room's compiled defaults")
+        }
+        XCTAssertEqual(rooms, [.heavyweight, .lime], "both rooms are page-built")
     }
 
     /// CoachModel stays byte-identical whichever host draws it (contract 6.3): no coach fixture, page-built or
@@ -230,17 +298,17 @@ final class CoachModelTests: XCTestCase {
         let data = try FixtureFiles.data("coach/sixty.json")
         let compact = try JSONSerialization.data(withJSONObject: JSONSerialization.jsonObject(with: data))
         XCTAssertLessThan(compact.count, 40_000, "about 22 KB for 60 messages in the plan; this one carries every block")
-        let start = Date()
         var m: CoachModel?
-        for _ in 0 ..< 10 { m = try CoachModel.decode(utf8: compact) }
-        let each = Date().timeIntervalSince(start) / 10
+        let spent = try threadCPUSeconds { for _ in 0 ..< 10 { m = try CoachModel.decode(utf8: compact) } }
+        let each = spent / 10
         XCTAssertEqual(m?.messages.count, 60)
         XCTAssertEqual(Set(m?.messages.map(\.id) ?? []).count, 60, "ids are unique")
         XCTAssertNotNil(m?.messages.last?.ledger)
-        // GitHub's shared Macs are several times slower and stall at random (GitHub Actions sets CI; xcodebuild hands
-        // TEST_RUNNER_CI to a simulator's test process as CI): there the bound only catches a collapse.
+        // The test thread's CPU time, so a loaded machine's waits for a core do not count (threadCPUSeconds). GitHub's
+        // shared Macs are still several times slower (GitHub Actions sets CI; xcodebuild hands TEST_RUNNER_CI to a
+        // simulator's test process as CI): there the bound only catches a collapse.
         let slack: Double = ProcessInfo.processInfo.environment["CI"] == nil ? 1 : 10
-        XCTAssertLessThan(each, 0.25 * slack, "a model decodes well inside a frame budget on the Mac (\(each) s)")
+        XCTAssertLessThan(each, 0.25 * slack, "a model decodes well inside a frame budget on the Mac (\(each) s of the thread's CPU time)")
     }
 
     /// What a newer page may add decodes, and anything unknown draws as text.

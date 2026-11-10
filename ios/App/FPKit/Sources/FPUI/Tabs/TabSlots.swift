@@ -3,10 +3,10 @@ import UIKit
 
 // The tab root's slots (build 61, 11-shell.md H4; contract 1.2-1.4, 6.3, 7.4, 8.2): three plain containers the web
 // view moves between (Log, Progress, Settings) and the Coach slot, which holds the web view's waiting place and the
-// Coach tab's own navigation stack above it. Every container gives the web view its whole bounds and pins nothing to
-// the safe area (contract 7.4: pinning resized the page on every hide and show of the bar), and no slot carries the
-// room's `overrideUserInterfaceStyle`: it would reach the web view's traits, its keyboards and `prefers-color-scheme`
-// (the bar and the Coach stack take it, TabBarLook).
+// Coach tab's own navigation stack above it, on the stack's ground (H9 fix-1). Every container gives the web view its
+// whole bounds and pins nothing to the safe area (contract 7.4: pinning resized the page on every hide and show of the
+// bar), and no slot carries the room's `overrideUserInterfaceStyle`: it would reach the web view's traits, its
+// keyboards and `prefers-color-scheme` (the bar and the Coach stack take it, TabBarLook).
 
 /// A web tab's slot (Log, Progress, Settings): a plain full-bleed container. While it holds the web controller, the
 /// status bar's style and visibility are that controller's (Capacitor's bridge controller, as on a classic root).
@@ -91,11 +91,15 @@ final class WaitingRootController: UIViewController {
 }
 
 /// The Coach tab's slot: `webArea` (at index 0: where the web view waits hidden behind the native stack, or shows while
-/// the tab is WEB) and above it the navigation controller's view. The mode is the root's to set (contract 1.4, per
-/// scene); the slot only shows or hides the stack for it.
+/// the tab is WEB), above it `ground` while the stack shows and above that the navigation controller's view. The mode
+/// is the root's to set (contract 1.4, per scene); the slot only shows or hides the stack for it, its ground in the
+/// view tree with it and out of it in WEB.
 final class CoachSlotController: UIViewController {
     /// Where the web view waits (hidden) or shows (WEB): below the stack, full-bleed.
     let webArea = UIView()
+    /// The stack's ground, in the room's background (the root colours it, RootTabController's `apply`): what iOS 26.x's
+    /// glass bar reads under every Coach screen (StackGround). In the slot's view only while the stack shows.
+    let ground = StackGround()
     let nav: CoachNavigationController
     let waiting: WaitingRootController
     /// What `RootTabController.setHome(_:)` installed as the stack's root (H10: N's hub in ScreenHost's host).
@@ -122,18 +126,38 @@ final class CoachSlotController: UIViewController {
         webArea.frame = view.bounds
         webArea.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         view.insertSubview(webArea, at: 0)
+        ground.backgroundColor = waiting.background
         addChild(nav)
         nav.view.frame = view.bounds
         nav.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         view.addSubview(nav.view)
         nav.didMove(toParent: self)
         nav.view.isHidden = !showsStack
+        placeGround()
     }
 
-    /// The stack shows (WAITING, NATIVE) or hides (WEB, where the web view in `webArea` is the tab).
+    /// The stack shows (WAITING, NATIVE) or hides (WEB, where the web view in `webArea` is the tab), its ground with it.
     func showStack(_ on: Bool) {
         showsStack = on
-        if isViewLoaded { nav.view.isHidden = !on }
+        if isViewLoaded {
+            nav.view.isHidden = !on
+            placeGround()
+        }
+    }
+
+    /// The ground between the web view's waiting place and the stack while the stack shows, and out of the view tree
+    /// while it hides (WEB): the page is the tab there, and left hidden in the tree iOS 26.x's glass read the ground in
+    /// the page's place (tests/tools/tab-glass.py on 26.5, Coach WEB: Lime on a light phone 4.73:1, the look of the
+    /// glass over the ground alone, for the page's 10.68:1 as on every web tab; Heavyweight on a dark phone 5.85:1 for
+    /// 6.37:1).
+    private func placeGround() {
+        if showsStack {
+            guard ground.superview !== view else { return }
+            ground.frame = view.bounds
+            view.insertSubview(ground, aboveSubview: webArea)
+        } else {
+            ground.removeFromSuperview()
+        }
     }
 
     /// Puts `home` at the bottom of the stack in place of the WAITING ground or an earlier home, keeping whatever is
@@ -152,5 +176,37 @@ final class CoachSlotController: UIViewController {
     /// WEB: the web controller's style, as on a web tab; otherwise the stack's top controller's (contract 6.3).
     override var childForStatusBarStyle: UIViewController? { showsStack ? nav : webChild }
     override var childForStatusBarHidden: UIViewController? { showsStack ? nav : webChild }
+}
+
+/// The Coach stack's ground under the glass bar (11-shell.md H9 fix-1; TabBarLook): a full-bleed scroll view in the
+/// room's background between the web view's waiting place and the stack. iOS 26.x draws the glass bar, its platter and
+/// its items, in the style it reads from what is drawn under the bar only where a scroll view lies under it, and in the
+/// phone's style everywhere else: over the pushed chat, whose conversation ends above its composer, and over the
+/// WAITING ground (a plain view in the same background), Lime on a light phone drew light glass with its near-white
+/// selected item all but unreadable (1.36:1 on its capsule) and Heavyweight on a dark phone grey glass under its blue
+/// one (1.04:1). Over this ground every Coach screen gives the glass the room's own ground (tests/tools/tab-glass.py
+/// reads it in the app). It is a scroll view for that alone: it holds nothing and has nothing to scroll (the glass
+/// reads it the same with no content size as with the doubled height the first runs gave it), it takes no touch,
+/// VoiceOver and a status bar tap never reach it, UIKit adjusts no inset and draws no edge effect on it, and it carries
+/// no style (the slot's traits stay the phone's). In WEB it is out of the view tree (CoachSlotController's
+/// `placeGround`).
+final class StackGround: UIScrollView {
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        isUserInteractionEnabled = false
+        scrollsToTop = false
+        contentInsetAdjustmentBehavior = .never
+        showsVerticalScrollIndicator = false
+        showsHorizontalScrollIndicator = false
+        accessibilityElementsHidden = true
+        if #available(iOS 26.0, *) {
+            topEdgeEffect.isHidden = true
+            bottomEdgeEffect.isHidden = true
+        }
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 }
 #endif

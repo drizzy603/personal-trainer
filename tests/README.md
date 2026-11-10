@@ -309,3 +309,44 @@ each first found in the same slice of the Debug build; and the two are tied toge
 `--archive` reads the symbols from the archive's `dSYMs/App.app.dSYM` (its UUID
 checked against the binary, slice by slice), since an archive's binary is stripped;
 a simulator Debug build of the same commit will do (slices match by architecture).
+
+## The glass bar, read from the app's pixels
+
+```sh
+DD=$(tests/tools/fp-build.sh glass)       # the Debug app, built as 61 at least
+python3 tests/tools/tab-glass.py --phone <an iPhone 17 Pro or Pro Max simulator, iOS 26 or 27> --app "$DD"/Build/Products/Debug-iphonesimulator/App.app
+```
+
+`tools/tab-glass.py` reads the selected Coach tab under the native glass bar from
+screenshots of the real app (plan task H9 fix-1, contract 6.1): the Coach tab's
+WAITING ground (held for a launch by a staged page that never says hello), the
+connect screen, the hub, the pushed chat with and without the page's toast, Coach
+WEB (a policy file turning `screens.coachHome` off), and a round trip inside one
+scene (the owner's Native Coach switch off and on again, as the page flips it):
+Coach WEB over the hidden stack that still holds the hub, the hub again and the
+chat pushed over it; all of it in each room and each phone appearance. The selected
+item must stand 3:1 at least (`--min`) against its capsule and against the platter,
+and a shot is read only when the probe's state just before it shows the screen it
+claims. iOS 26.x draws the glass from what a scroll view under the bar shows and in
+the phone's style where none lies there, iOS 27 in the bar container's style (FPUI
+`TabBarLook`). FPKit's test host draws no window, so `TabBarGroundTests` holds what
+26.x reads (the stack's ground under every Coach screen, out of the view tree in
+WEB) and this tool what it draws: with the ground taken away (H9's code) the run
+fails on iOS 26.5, Lime on a light phone at 1.36:1 and Heavyweight on a dark phone
+at 1.04:1 on WAITING, the chat and the chat under a toast (as the run stood before
+the round trip), and with the ground not put back after WEB (a scratch change) on
+the chat pushed after the round trip alone, at the same two numbers. The platter's
+numbers cover the iPhone 17 Pro's bar (402 x 83 pt, the runs here) and the Pro
+Max's (440 x 83 pt, read in frames of both paired phones); a bar of another size
+ends the run with exit 2: measure its platter and add it to `PLATTERS`. The run
+replaces the app and its data on the phone (never point it at a phone whose data is
+wanted; `--no-install` runs the app the phone holds, which must be `--app`), puts
+the phone's appearance back, holds the paired simulators itself (`sim.lock`) unless
+its caller does, and writes the frames, `sheet.png` and `results.json` to `--out`
+(default `screenshots/out/tab-glass/<runtime>`). Exit 1 names every failed check; 2
+is bad arguments, an OS below 26, a bar with no numbers, another app under
+`--no-install`, or no Pillow. Nothing runs it on its own yet (wiring it into the
+simulator tools waits for plan task T24, after build 61's TestFlight build). Until
+then it is a gate by hand: run it on an iOS 26.5 and an iOS 27.0 simulator after a
+change to the tab root, the Coach stack or the bar's look, and on the merged tree
+before an archive.

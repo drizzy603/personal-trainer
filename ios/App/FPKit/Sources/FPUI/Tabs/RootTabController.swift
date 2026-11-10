@@ -31,7 +31,8 @@ import FPCore
 ///   bottom inset. `tabBarMinimizeBehavior` is `.never` (the hub's scroll view would minimize the bar), and the web view's
 ///   bottom scroll-edge effect is hidden (it dimmed the page above the bar on iOS 26.5).
 /// - **The room** (contract 6.1, D16): TabBarLook paints the bar and the Coach stack, never the window, this controller or
-///   a slot.
+///   a slot; the stack stands on its ground in the room's background (CoachSlotController's `ground`), which iOS 26.x's
+///   glass bar reads under every Coach screen (H9 fix-1).
 /// - **The fallback** (contract 10.3): the bar hidden for good, the Coach tab WEB where it stands, and every later
 ///   selection answered with the current state.
 ///
@@ -680,7 +681,7 @@ public final class RootTabController: UITabBarController, UITabBarControllerDele
     // MARK: The room
 
     /// The page's TabsModel (contract 6.1): tint, idle, titles and labels on the bar, the style on the bar and the Coach
-    /// stack only, the room's ground under the Coach stack.
+    /// stack only, the room's ground under the Coach stack (the slot's view, the stack's ground, the WAITING root).
     public func apply(_ look: TabsModel) {
         self.look = look
         TabBarLook.paint(tabBar, look: look)
@@ -690,6 +691,7 @@ public final class RootTabController: UITabBarController, UITabBarControllerDele
         coachSlot.nav.overrideUserInterfaceStyle = TabBarLook.style(look)
         coachSlot.nav.view.backgroundColor = bg
         coachSlot.view.backgroundColor = bg
+        coachSlot.ground.backgroundColor = bg
         coachSlot.waiting.background = bg
         coachSlot.waiting.paper = look.paper
         setNeedsStatusBarAppearanceUpdate()

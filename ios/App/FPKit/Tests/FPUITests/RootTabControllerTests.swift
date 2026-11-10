@@ -807,11 +807,13 @@ final class RootTabControllerTests: XCTestCase {
 
     /// Every view UIKit draws the glass bar with wears the room's style whatever the phone's, on every tab: the platter's
     /// content takes it from the bar's container (iOS 27 and later; with the bar's override alone it took the window's).
-    /// iOS 26.x's glass reads its content's style from what is drawn under the bar, which a test window never draws.
+    /// iOS 26.x's glass gives its content the style it reads from a scroll view drawn under the bar, else the phone's, never
+    /// its ancestors' (TabBarLook), and this host draws no window (no window scene).
     func test07bTheGlassWearsTheRoomWhateverThePhone() throws {
-        try XCTSkipUnless(Self.glassContentInherits, "iOS 26.x: the glass gives its content the style it reads from what is drawn "
-                          + "under the bar, not its ancestors' (a test window draws nothing); test07a holds the bar and its container here, "
-                          + "and the H9 review's renders on 26.5 the glass over the room's page")
+        try XCTSkipUnless(Self.glassContentInherits, "iOS 26.x: the glass gives its content the style it reads from a scroll view "
+                          + "drawn under the bar, else the phone's, never its ancestors' (TabBarLook), and this host draws no window; "
+                          + "test07a holds the bar and its container here, TabBarGroundTests the ground under every Coach screen, "
+                          + "and tests/tools/tab-glass.py the drawn glass in the app")
         try roomCase(glass: true)
     }
 
