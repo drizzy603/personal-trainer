@@ -404,29 +404,42 @@ one-shot calls (Today's card, a debrief, the key check) with the JSON their call
 
 ### test-native.sh and the live chat
 
-After its routes, `test-native.sh` runs `tests/tools/native-chat.py` on the same phone and app container: `prepare` (every
+After its routes, `test-native.sh` runs `tests/tools/native-chat.py` on the same phone and app container, under the root
+its launches build: `-fpOffline` alone, so the tab root on an iOS 26+ simulator (the chat pushed on the native Coach
+tab's stack) and the classic root on iOS 17 and 18; `--root classic`, by hand, writes the policy offs into the container
+and runs build 60's look on this binary (the chat presented `.overFullScreen`). Its scenarios: `prepare` (every
 localStorage value kept to put back, as base64 of its UTF-16 code units since a value can hold half an emoji; a probe key
-only if the container has none; the composer emptied), `smoke` (`-fpSmoke` logs `fp: ping ok v1`), `keys` (with the
-simulator's software keyboard turned on: the native composer takes the keys and sits above them, typed words reach the
-store, Back with the keys up leaves none and nothing scrolled, the words kept across a present and a relaunch, a web
-field's keys gone when the chat covers it, the page's own dismiss with the native keys up, a six-message chat at its end
-keeping its newest message in view as the keys come up), `live` (a coach turn on
-`coach-stub.py`: the echo shot before the page has it (its `coach.send` held 1.4 s in the page world, under the link's
-2 s), Thinking with Stop, the reply with a tool pill and PLAN CHANGES, Undo through the forwarded confirm and Restore,
-a second turn's Keep changes, Send while scrolled to the top bringing the end into view with the owner's message and the
-reply (the probe moves the conversation as a finger's drag does, between the drag's own callbacks, and presses the
-chat's own Send: a press that fell back to the store's send skipped what the chat does on the owner's action), Stop
-while scrolled to the top bringing it into view with the question and the note that says it stopped, a reader who scrolls up while a reply is on its way keeping their place, a third card left for the next shots; every press through the control's own accessibility action), `combos` (`coach/chat` by launch argument in both rooms x `simctl ui appearance light|dark` x `content_size
-large|extra-extra-large`: native, over the page, drawn in the room's appearance whatever the phone says, at the phone's
-text size; the phone's settings put back), `textoff` (the app's Larger Text off and the phone at extra-extra-large: the empty
-composer as tall as at Large) and `restore` (only the values that changed put back, the page reloaded, the
-chat, programme, weights, key and room compared). Every launch takes `-fpIgnoreMarker`. Shots in
-`screenshots/out/native/` (`coach-chat-*`, `keys-*`, `live-*`).
+only if the container has none; the composer emptied; the root its launches build), `smoke` (`-fpSmoke` logs
+`fp: ping ok v1`, the root's pieces negotiated), `keys` (with the simulator's software keyboard turned on: the native
+composer takes the keys and sits above them, typed words reach the store, Back with the keys up leaves none and nothing
+scrolled, a pop to the hub on the tab root, the words kept across a present and a relaunch, a web field's keys gone when
+the chat covers it, on the tab root when the Coach tab is selected, the page's own dismiss with the native keys up, a
+six-message chat at its end keeping its newest message in view as the keys come up, the page's pending photo drawn at
+N5's caps), `live` (a coach turn on `coach-stub.py`: the echo shot before the page has it (its `coach.send` held 1.4 s in
+the page world, under the link's 2 s), Thinking with Stop, the reply with a tool pill and PLAN CHANGES, Undo through the
+forwarded confirm and Restore, a second turn's Keep changes, Send while scrolled to the top bringing the end into view
+with the owner's message and the reply (the probe moves the conversation as a finger's drag does, between the drag's own
+callbacks, and presses the chat's own Send: a press that fell back to the store's send skipped what the chat does on the
+owner's action), Stop while scrolled to the top bringing it into view with the question and the note that says it
+stopped, a reader who scrolls up while a reply is on its way keeping their place, a third card left for the next shots;
+every press through the control's own accessibility action), `connect` (the tab root's native connect screen in both
+rooms: an invalid key refused with the page's toast, the probe's key saved on the stand-in and verified, neither key in
+a probe log), `combos` (both rooms x `simctl ui appearance light|dark` x `content_size large|extra-extra-large`, three
+launches each by route, `coach/chat`, `coach` and `log/workout`: the chat native where the root puts it, drawn in the
+room's appearance whatever the phone says, at the phone's text size, the bar in the room's look; every launch proves the
+phone's appearance from the app, the page's `prefers-color-scheme`, since simctl reads its own setting back even on a
+phone whose apps never get it; the phone's settings put back), `textoff` (the app's Larger Text off and the phone at
+extra-extra-large: the empty composer as tall as at Large) and `restore` (only the values that changed put back and read
+back in the next launch, never a reload: a page reloaded under the tab root counts as hidden in use). The shell's
+folder and its UserDefaults copies are kept and put back around the run, the copies through the simulator's cfprefsd
+(`defaults` spawned with the app's container as its home). No tool stops that daemon: after a stop the phone's
+appearance no longer reaches apps until SpringBoard starts again. Every launch takes `-fpIgnoreMarker`. Shots in
+`screenshots/out/native/` (`coach-chat-*`, `coach-home-*`, `tabs-log-*`, `connect-*`, `keys-*`, `live-*`, `textoff-*`;
+`classic-` in front on the classic root). tests/README.md, "The live native chat in test-native.sh", has each scenario's
+checks.
 
-On this branch `native-chat.py` still expects build 60's overlay chat (`negotiated` `["coach"]`, the chat presented
-`.overFullScreen`), which a build of this tree does not show under the tab root it takes on an iOS 26+ simulator (see
-[tests/native-shell.sh](#testsnative-shellsh)): test-native.sh's routes, store check and watch still run, under the
-native bar, and the run exits 1 on the chat.
+test-native.sh's own route launches are still build 60's (a relaunch, `sleep 4` and a shot, no check of what they
+landed on) until plan task T24: under the tab root they shoot the native bar and, on `coach`, the native hub.
 
 ## The native Coach tab: CoachHomeView and CoachHomeStore
 

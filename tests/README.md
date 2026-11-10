@@ -319,8 +319,10 @@ localStorage value but the key's (only whether there is one and whether it is th
 probe's), adds the probe's key and a starter programme where there are none, and
 checks the root: a tab pass that finds the classic one (a decline, a verdict, a
 trip, the bar's switch off: plan delta 16.7) turns it back on through TrovoShell and
-launches again; the shell's folder and UserDefaults copies are kept before the
-first launch and put back after the last (`tools/probe-selftest.py`'s helpers).
+launches again; the shell's folder and UserDefaults copies (`fp.policy` among
+them: a launch with `-fpPolicyFile` rewrites it) are kept before the first launch
+and put back after the last (`tools/probe-selftest.py`'s helpers, through the
+simulator's cfprefsd).
 Then: `-fpSmoke`'s ping and the root's pieces negotiated; the keyboard sequences
 (the simulator's software keyboard turned on, the phone at Large: the native
 composer on the keys, typed words in the chat's store, Back with the keys up, a
@@ -340,23 +342,43 @@ it through the turn (on the tab root pushed, Coach selected, the bar visible);
 `connect` on the tab root (the key taken out inside the page, the native connect
 screen in both rooms with its ground drawn in the room, an invalid key refused with
 the page's toast, the probe's key saved on the stand-in and verified, the hub;
-neither key in a probe log); then, in both rooms x `simctl ui appearance
-light|dark` x `content_size large|extra-extra-large`, three launches by route:
-`coach/chat`, `coach` (the native hub, its ground drawn in the room) and
-`log/workout` (a web tab under the glass bar), the bar asking for the room's look
+neither key in a probe log; a phone holding a key that is not the probe's fails
+`connect`, which then takes nothing out and types nothing: the tool never reads a
+key's value, only whether there is one and whether it is the probe's, so it could
+not put one back after a crash; remove the key in Settings first, or run on a
+phone that holds the probe's key or none); then, in both rooms x `simctl ui
+appearance light|dark` x `content_size large|extra-extra-large`, three launches by
+route: `coach/chat`, `coach` (the native hub, its ground drawn in the room) and
+`log/workout` (a web tab under the glass bar), each proving the phone's appearance
+from the app (the page's `prefers-color-scheme` against the combo's: simctl reads
+its own setting back even on a phone whose apps never get it), the bar asking for
+the room's look
 and, over the chat and the hub, drawing it (the mean luminance of its frame in the
 shot, `native-shell.py`'s bounds; over a web tab the glass shows the page's own
 cards through it, so only the look asked is checked there); the app's Larger Text
 off keeping the empty composer at its Large height;
 `restore` in two launches, never a reload. It puts back what it changed in the
-container and the phone's settings, and ends only once the simulator's cfprefsd
-answers again: the put-back stops it around its edit, launchd holds back a daemon
-it started less than 10 s ago, and a launch meanwhile waits at its first
-preferences read (test-native.sh's boot shot, 4 s after its relaunch, came out
-black). Every mark holds the app until its shot is on
-disk (`native-shell.py`'s go files). Shots in `screenshots/out/native/`
-(`coach-chat-*`, `coach-home-*`, `tabs-log-*`, `connect-*`, `keys-*`, `live-*`;
-`classic-` in front on the classic root). `python3 tools/coach-stub.py --script
+container and the phone's settings, after Ctrl-C or a SIGTERM too (a SIGTERM exits
+143). No tool stops the simulator's cfprefsd: after a stop of
+`com.apple.cfprefsd.xpc.daemon` the phone's appearance no longer reaches apps until
+SpringBoard starts again or the phone reboots (`simctl ui appearance dark` reads
+back dark and every launch stays light), which is how the "phone dark" half of the
+combos ran on a light phone until T21's review. The shell's copies are read and
+written through the daemon instead, by `defaults` spawned with the app's data
+container as its home, and held to the container's plist; a phone left in that
+state by anything else fails each combo's appearance check, which names the
+remedy. Every mark holds the app until its shot is on disk (`native-shell.py`'s go
+files); a shot that left no file fails the run, and a scenario's older shots of the
+root are removed before it runs (by name: test-native.sh's route shots share the
+folder). Shots in `screenshots/out/native/` (`coach-chat-*`, `coach-home-*`,
+`tabs-log-*`, `connect-*`, `keys-*`, `live-*`, `textoff-*`; `classic-` in front on
+the classic root). A run names the app it ran (its build, its page's stamp and
+`fp-build.sh`'s fingerprint, the `app` of a build's `build-id.txt`).
+`python3 tools/native-chat.py --self-test` holds the run's own judging without a
+simulator: a missing, late or misnamed shot, a state that reports no
+visibilitychange list, the bar's container unreported, a launch on another phone
+appearance than its combo's, which shots a scenario clears, the copies' keep and
+put-back, how a run ends. `python3 tools/coach-stub.py --script
 FILE` serves the stand-in on its own (one JSON line per request).
 
 ## The probe's self-test and the Release strings check
@@ -390,8 +412,10 @@ The page's coach calls go to a closed loopback port (`-fpApiBase`), so the canar
 never leaves the Mac. A phone holding a key that is not the probe's fails the
 `typeKey` launch, which then types nothing: remove the key first. The run keeps what
 the container holds (never the key's value), the shell's folder and its UserDefaults
-copies (`fp.shell.switches`, `fp.shell.breakers`, `fp.shell.counters`, read through
-the simulator's cfprefsd stopped first), turns a remembered decline of the tab bar
+copies (`fp.shell.switches`, `fp.shell.breakers`, `fp.shell.counters`, `fp.policy`:
+read and written through the simulator's cfprefsd, by `defaults` spawned with the
+app's container as its home; the daemon is never stopped, see the section above),
+turns a remembered decline of the tab bar
 back on through About's Try again (the paired phones hold one for page build
 20261012-2), and puts all of it back at the end, proven by one more launch that
 reads it. It holds the paired simulators itself (`sim.lock`) unless its caller
