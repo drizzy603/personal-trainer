@@ -32,9 +32,12 @@ import FPCore
 ///   view tree (hidden in it, 26.x read it in the page's place): the room's page gives the room's own glass (10.68:1
 ///   and 6.37:1), while content unlike it flips the bar (black under Heavyweight draws dark glass with white items;
 ///   white under Lime light glass, on which Lime's near-white selected item is all but unreadable: delta 16.3, the
-///   owner's open call), so the page keeps its own ground under the bar. A test window is never drawn (no window
-///   scene), so there the platter's content keeps the phone's style on 26.x: RootTabControllerTests walks the platter
-///   on iOS 27 only, TabBarGroundTests checks the ground under every Coach screen and tab-glass.py the drawn glass.
+///   owner's open call), so the page keeps its own ground under the bar. The hub's and the connect screen's own content
+///   is read the same way: their text and cards under the bar at the largest text size keep the room's glass (8.04:1 or
+///   more in Lime, 6.22:1 or more in Heavyweight on 26.5), and what else they could scroll under it (the call to action
+///   in the room's accent) has no frame yet: 16.3 covers it. A test window is never drawn (no window scene), so there
+///   the platter's content keeps the phone's style on 26.x: RootTabControllerTests walks the platter on iOS 27 only,
+///   TabBarGroundTests checks the ground under every Coach screen and tab-glass.py the drawn glass.
 /// - The glass bar draws its unselected items in its own colour: on iOS 27.0 neither `unselectedItemTintColor` nor a
 ///   UITabBarAppearance's normal item colours change them (H9's by-hand run). `idle` is set all the same.
 /// - The room's `bg` is the ground the Coach tab shows while WAITING and while held (contract 1.4, 8.1).
