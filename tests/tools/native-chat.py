@@ -8,6 +8,7 @@ launch arguments (FPUI's ShellProbe, Debug builds only: `-fpShellProbe <steps>`,
 `-fpApiBase`); the app acts and reports, this decides, and every screen worth a look is shot by name into --out.
 
   native-chat.py --phone UDID --out DIR [--shell 61] [--root tabs|classic] [--only keys,live,connect,combos,...]
+  native-chat.py --self-test
 
 Two roots (plan T21, as native-shell.py's T16). `--root tabs` (the default) launches as test-native.sh's routes do,
 `-fpOffline` alone (the compiled policy: every piece on), so an iOS 26+ phone builds the tab root: the native tab bar,
@@ -19,11 +20,13 @@ style is asserted. An iOS 17 or 18 phone builds the classic root either way. The
 installed over: prepare checks the root its launches build, and a tab pass that finds the classic one (a decline, a
 crash verdict, a breaker's trip, the bar's switch off: plan delta 16.7) turns it back on through TrovoShell (About's Try
 again: reset tabs, coachHome and coach, the bar's switch on) and launches again. The shell's folder (Application
-Support/FPShell) and its UserDefaults copies are kept before the first launch and put back after the last, as
-probe-selftest.py does (its helpers), with the offs file a classic pass wrote. The put-back stops the simulator's
-cfprefsd around its edit, and launchd holds back a daemon it started less than 10 s ago: the run ends only once the
-daemon answers again (prefs_back), so the launch that follows the run (test-native.sh's clean relaunch and its boot
-shot) does not wait at its first preferences read.
+Support/FPShell) and its UserDefaults copies (the policy fetch's too: a launch with -fpPolicyFile rewrites fp.policy)
+are kept before the first launch and put back after the last, as probe-selftest.py does (its helpers), with the offs
+file a classic pass wrote. The copies are read and written through the simulator's cfprefsd (`defaults` spawned with
+the app's container as its home), which is never stopped: after a stop the phone's appearance no longer reaches apps
+until SpringBoard starts again, so `combos` would run its "phone dark" half on a light phone (it did, until T21's
+review). Ctrl-C or a SIGTERM ends the scenarios where they are: restore and the put-back still run (exit 143 after a
+SIGTERM).
 
 Scenarios, in this order (prepare and restore always run; --only picks among the others):
   prepare  what the container holds, kept to put back at the end (every localStorage value but the key's, which is never
@@ -67,8 +70,10 @@ Scenarios, in this order (prepare and restore always run; --only picks among the
            the chat and the hub, where the room's own ground lies under the glass, it draws it (the mean luminance of
            its frame in the shot: Lime dark, Heavyweight light; over a web tab the glass shows the page's own cards
            through it, so the look asked is what is checked there). On the classic root:
-           coach/chat presented .overFullScreen, coach and log/workout the page's own under its own tab bar. Shots
-           coach-chat-*, coach-home-*, tabs-log-*; the phone's settings go back
+           coach/chat presented .overFullScreen, coach and log/workout the page's own under its own tab bar. Every
+           launch proves the phone's appearance from the app (the page's prefers-color-scheme against the combo's:
+           simctl reads its own setting back even on a phone whose apps never get it). Shots coach-chat-*,
+           coach-home-*, tabs-log-*; the phone's settings go back
   textoff  the phone at extra-extra-large and the app's Larger Text turned off with the chat up: the empty composer is as
            tall as at Large (the chat is pinned to Large, its field too), and the phone's setting goes back
   restore  what prepare kept goes back (only the values that changed), the key as it was, the composer empty, read back
@@ -76,26 +81,40 @@ Scenarios, in this order (prepare and restore always run; --only picks among the
 
 Aggregates, over every state of every launch: the web view never left its window (leftWindow and leftWindowAny 0) and
 the page saw no visibilitychange; on the tab root no fallback (no fellBack event, none in any state); every launch ran
-to its end; every shot was taken while the app held still at its mark.
+to its end; every shot is on disk, one of its scenario's, and was taken while the app held still at its mark.
 
 Shots: a mark holds the app still until its shot is on disk (native-shell.py's go files: the page waits for the go file
 the runner writes once `simctl io screenshot` has returned), so a loaded machine cannot shoot the next step; a shot the
-app did not hold still for fails the shots check, but for a transient mark (a toast), which is reported. Each shot is
-<label>.png in --out on the tab root, classic-<label>.png on the classic root.
+app did not hold still for fails the shots check, but for a transient mark (a toast), which is reported; a shot that
+left no file fails it too. Each shot is <label>.png in --out on the tab root, classic-<label>.png on the classic root. A
+scenario's older shots of the root are removed before it runs (SHOTS, by name: test-native.sh's route shots share the
+folder), so a mark the run never reached leaves no earlier run's PNG to be read as its own.
 
-Exit 1 when any check fails, 2 on bad arguments or when the paired simulators' lock is not this run's.
+--self-test (no simulator): the run's own judging on made-up records (a missing, late or misnamed shot, a state that
+reports no visibilitychange list, the bar's container unreported, a launch on another phone appearance than its
+combo's), which shots a scenario clears, the copies' keep and put-back on a stand-in for the daemon, how a run ends
+(a scenario that breaks, a SIGTERM), and the app's hash against fp-build.sh's own pipeline.
+
+Exit 1 when any check fails, 2 on bad arguments, when the paired simulators' lock is not this run's or when the app's
+container or preferences cannot be read (nothing run), 143 after a SIGTERM (restore and the put-back ran first).
 """
 import argparse
+import fnmatch
 import glob
+import hashlib
 import importlib.util
 import json
 import os
+import plistlib
+import re
 import shutil
+import signal
 import struct
 import subprocess
 import sys
 import tempfile
 import time
+import traceback
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -126,6 +145,24 @@ KEY_SAVED, KEY_VERIFIED = 'API key saved', 'Key verified ✓'
 SIZES = {'large': 'UICTContentSizeCategoryL', 'extra-extra-large': 'UICTContentSizeCategoryXXL'}
 ROOMS = {'heavyweight': LIGHT, 'dark': DARK}
 LOOK = {'heavyweight': 'light', 'dark': 'dark'}   # the bar's and the Coach tab's look per room
+
+
+def combo_names():
+    """Every combo of `combos`: (room, the room's style, the phone's appearance, its text size, the size's category, the
+    tail of its three shots' names)."""
+    for room, style in ROOMS.items():
+        for appearance in ('light', 'dark'):
+            for size, category in SIZES.items():
+                yield room, style, appearance, size, category, '%s-%s-%s' % (
+                    'lime' if room == 'dark' else room, appearance, 'xxl' if size != 'large' else 'l')
+
+
+# Each scenario's shots by name (fnmatch patterns; the root's prefix goes in front): its older ones are removed before it
+# runs, and every shot it takes must be one of them. test-native.sh's route shots share the folder (coach-chat.png,
+# coach-chat-2-dark.png), so the combos' are named whole.
+COMBO_SHOTS = ('coach-chat-', 'coach-home-', 'tabs-log-')
+SHOTS = {'keys': ('keys-*',), 'live': ('live-*',), 'connect': ('connect-*',), 'textoff': ('textoff-*',),
+         'combos': tuple(head + tail for *_x, tail in combo_names() for head in COMBO_SHOTS)}
 # N5: the pending photo's tallest, in points at the Large text size (CoachComposer's imageCap: the web's 140 px, 96 under
 # kb-open); a square photo is drawn at the cap exactly.
 PHOTO_CAP_DOWN, PHOTO_CAP_UP = 140, 96
@@ -181,6 +218,23 @@ def shoot(c, e, tag, pdir, meta):
     nsh.PASS.shots.append(rec)
     print('  shot: %s' % path, flush=True)
     return rec
+
+
+def shot_named(c, rec):
+    """Whether a shot is one of its scenario's (SHOTS), under this root's prefix."""
+    return any(fnmatch.fnmatchcase(rec.get('file') or '', c.prefix + pat + '.png') for pat in SHOTS.get(rec.get('scenario'), ()))
+
+
+def clear_shots(c, scen):
+    """The scenario's older shots of this root in --out, removed before it runs (as native-shell.py's clear_shots): a mark
+    the run never reaches then leaves no earlier run's PNG to be read as this run's. Another root's shots, another
+    scenario's and test-native.sh's route shots stay. Returns how many went."""
+    gone = 0
+    for pat in SHOTS.get(scen, ()):
+        for p in glob.glob(os.path.join(glob.escape(c.opts.out), c.prefix + pat + '.png')):
+            os.remove(p)
+            gone += 1
+    return gone
 
 
 def probe(c, name, phases, args=(), timeout=90, until='done'):
@@ -403,11 +457,11 @@ def bar_look(c, s, combo, e, tag, label, room, drawn=True):
     want = LOOK[room]
     rb = rbar(e)
     c.check(s, '%s: the bar asks for the room\'s look (%s), whatever the phone says' % (combo, want),
-            rb.get('style') == want and rb.get('containerStyle') in (want, None), short(rb, ('style', 'containerStyle', 'hidden')))
+            rb.get('style') == want and rb.get('containerStyle') == want, short(rb, ('style', 'containerStyle', 'hidden')))
     if drawn:
         luma, seen = nsh.drawn_bar(e, tag, label)
-        c.check(s, '%s: the bar draws %s in the shot (the mean luminance of its frame %s of 255; on iOS 26.5 the glass the other '
-                   'way is H9f1)' % (combo, want, bound(want)), looks(luma, want), seen)
+        c.check(s, '%s: the bar draws %s in the shot (the mean luminance of its frame %s of 255)' % (combo, want, bound(want)),
+                looks(luma, want), seen)
 
 
 # ── the page's side ──────────────────────────────────────────────────────────────────────────────────────────────────
@@ -960,26 +1014,38 @@ def scen_combos(c):
     was_app = nsh.appearance(sim)
     was_size = sim.sh('xcrun', 'simctl', 'ui', sim.udid, 'content_size', check=False).strip()
     try:
-        for room, style in ROOMS.items():
-            for appearance in ('light', 'dark'):
-                for size, category in SIZES.items():
-                    nsh.appearance(sim, appearance)
-                    sim.sh('xcrun', 'simctl', 'ui', sim.udid, 'content_size', size)
-                    tail = '%s-%s-%s' % ('lime' if room == 'dark' else room, appearance, 'xxl' if size != 'large' else 'l')
-                    combo = '%s, phone %s, %s' % (room_name(room), appearance, size)
-                    combo_chat(c, s, room, style, category, 'coach-chat-' + tail, combo)
-                    combo_hub(c, s, room, 'coach-home-' + tail, combo)
-                    combo_log(c, s, room, 'tabs-log-' + tail, combo)
+        for room, style, appearance, size, category, tail in combo_names():
+            nsh.appearance(sim, appearance)
+            sim.sh('xcrun', 'simctl', 'ui', sim.udid, 'content_size', size)
+            combo = '%s, phone %s, %s' % (room_name(room), appearance, size)
+            combo_chat(c, s, room, style, category, appearance, 'coach-chat-' + tail, combo + ', coach/chat')
+            combo_hub(c, s, room, appearance, 'coach-home-' + tail, combo + ', coach')
+            combo_log(c, s, room, appearance, 'tabs-log-' + tail, combo + ', log/workout')
     finally:
-        nsh.appearance(sim, was_app if was_app in ('light', 'dark') else 'light')
-        if was_size and was_size not in ('unknown', 'unsupported'):
-            sim.sh('xcrun', 'simctl', 'ui', sim.udid, 'content_size', was_size, check=False)
+        try:
+            nsh.appearance(sim, was_app if was_app in ('light', 'dark') else 'light')
+        finally:
+            if was_size and was_size not in ('unknown', 'unsupported'):
+                sim.sh('xcrun', 'simctl', 'ui', sim.udid, 'content_size', was_size, check=False)
     c.rep.fact(s, 'the phone is back to %s, %s' % (was_app, was_size))
 
 
-def combo_chat(c, s, room, style, category, name, combo):
-    ev = probe(c, name, [[wait_coach('up'), wait(900), state('chat'), mark(name)]], args=['-devNav', 'coach/chat', '-devTheme', room])
+def sees_phone(c, s, combo, ev, appearance):
+    """The launch ran on the phone its combo names: the appearance the app saw (the page's prefers-color-scheme,
+    nsh.SCHEME_JS), which simctl's read-back of its own setting does not show."""
+    got, stored = nsh.sees(ev), nsh.appearance(c.sim)
+    detail = {'page': got, 'simctl': stored}
+    if got in ('light', 'dark') and got != appearance and stored == appearance:
+        detail['why'] = ('simctl stored the setting and the app did not get it, as on a phone whose cfprefsd was stopped since '
+                         'its boot: restart SpringBoard (simctl spawn <udid> launchctl stop com.apple.SpringBoard) or reboot it')
+    c.check(s, '%s: the app sees the phone %s (the page\'s prefers-color-scheme)' % (combo, appearance), got == appearance, detail)
+
+
+def combo_chat(c, s, room, style, category, appearance, name, combo):
+    ev = probe(c, name, [[wait_coach('up'), wait(900), state('chat'), js('scheme', nsh.SCHEME_JS), mark(name)]],
+               args=['-devNav', 'coach/chat', '-devTheme', room])
     e = ev.state('chat')
+    sees_phone(c, s, combo, ev, appearance)
     cu, p = coach(e), page(e)
     model = cu.get('room') == room and cu.get('messages', 0) > 0 and p.get('ph') and not p.get('webChat') and fp(e).get('covered')
     seen = short(cu, ('presented', 'host', 'modal', 'style', 'room', 'messages')) | {'ph': p.get('ph'), 'webChat': p.get('webChat')}
@@ -999,11 +1065,12 @@ def combo_chat(c, s, room, style, category, name, combo):
         bar_look(c, s, combo, e, ev.tag, name, room)
 
 
-def combo_hub(c, s, room, name, combo):
+def combo_hub(c, s, room, appearance, name, combo):
     how = {'home': True} if c.tabs else {'web': True}
-    ev = probe(c, name, [[js('hub', WAIT_JS, tab='coach', ms=10000, **how), wait(900), state('hub'), js('room', ROOM_JS), mark(name)]],
-               args=['-devNav', 'coach', '-devTheme', room])
+    ev = probe(c, name, [[js('hub', WAIT_JS, tab='coach', ms=10000, **how), wait(900), state('hub'), js('room', ROOM_JS),
+                          js('scheme', nsh.SCHEME_JS), mark(name)]], args=['-devNav', 'coach', '-devTheme', room])
     e, w, rm = ev.state('hub'), result(ev, 'hub'), result(ev, 'room')
+    sees_phone(c, s, combo, ev, appearance)
     p = page(e)
     if c.tabs:
         rc, rw, rb, hub = rcoach(e), rweb(e), rbar(e), home(e)
@@ -1027,10 +1094,11 @@ def combo_hub(c, s, room, name, combo):
     c.check(s, '%s: the page paints its room (data-room %s)' % (combo, room), rm.get('room') == room, rm)
 
 
-def combo_log(c, s, room, name, combo):
-    ev = probe(c, name, [[js('log', WAIT_JS, tab='log', ms=10000), wait(900), state('log'), js('room', ROOM_JS), mark(name)]],
-               args=['-devNav', 'log/workout', '-devTheme', room])
+def combo_log(c, s, room, appearance, name, combo):
+    ev = probe(c, name, [[js('log', WAIT_JS, tab='log', ms=10000), wait(900), state('log'), js('room', ROOM_JS),
+                          js('scheme', nsh.SCHEME_JS), mark(name)]], args=['-devNav', 'log/workout', '-devTheme', room])
     e, w, rm = ev.state('log'), result(ev, 'log'), result(ev, 'room')
+    sees_phone(c, s, combo, ev, appearance)
     p = page(e)
     if c.tabs:
         rw, rb = rweb(e), rbar(e)
@@ -1096,21 +1164,26 @@ def scen_restore(c):
                                                          ', '.join(sorted((r.get('changed') or []) + (r.get('removed') or [])))[:300]))
     c.check(s, 'every localStorage value as the run found it (read in the next launch), the key as it was (%s)' % c.key_kind,
             same.get('diff') == [] and same.get('key') == c.key_kind, same)
-    c.check(s, 'the native composer is empty', store(ev.state('restored')).get('draft') in ('', None), store(ev.state('restored')).get('draft'))
+    c.check(s, 'the native composer is empty', store(ev.state('restored')).get('draft') == '', store(ev.state('restored')).get('draft'))
 
 
 # ── the shell's own state, kept and put back ────────────────────────────────────────────────────────────────────────
 
 def keep_shell(c):
-    """Before the first launch: the shell's folder and its UserDefaults copies (probe-selftest.py's helpers), and the offs
-    file's place in the container (a classic pass writes it)."""
+    """Before the first launch: the shell's folder and its UserDefaults copies (probe-selftest.py's helpers: read through
+    the simulator's cfprefsd and held to the container's plist, RuntimeError when the two differ), and the offs file's
+    place in the container (a classic pass writes it)."""
     sim = c.sim
     sim.terminate()
     kept = {'tmp': tempfile.mkdtemp(prefix='native-chat-'), 'folder': None, 'offs': None}
-    if os.path.isdir(ps.shell_folder(sim)):
-        kept['folder'] = os.path.join(kept['tmp'], 'FPShell')
-        shutil.copytree(ps.shell_folder(sim), kept['folder'])
-    kept['prefs'] = ps.read_shell_prefs(sim)
+    try:
+        if os.path.isdir(ps.shell_folder(sim)):
+            kept['folder'] = os.path.join(kept['tmp'], 'FPShell')
+            shutil.copytree(ps.shell_folder(sim), kept['folder'])
+        kept['prefs'] = ps.read_shell_prefs(sim)
+    except BaseException:
+        shutil.rmtree(kept['tmp'], ignore_errors=True)
+        raise
     offs = sim.path(nsh.OFFS_FILE)
     if os.path.exists(offs):
         with open(offs, 'rb') as f:
@@ -1118,7 +1191,8 @@ def keep_shell(c):
     if c.root_args:
         with open(offs, 'w') as f:
             json.dump(nsh.OFFS, f)
-    c.rep.fact('setup', 'the shell\'s folder (%s) and UserDefaults copies (%s) kept to put back%s' % (
+    c.rep.fact('setup', 'the shell\'s folder (%s) and UserDefaults copies (%s; through the simulator\'s cfprefsd, the container\'s plist '
+                        'saying the same) kept to put back%s' % (
         ', '.join(sorted(os.listdir(kept['folder']))) if kept['folder'] else 'none yet',
         ', '.join('%s %s' % (k, 'absent' if v is None else '%d bytes' % len(v)) for k, v in kept['prefs'].items()),
         '; the policy offs written as %s' % nsh.OFFS_FILE if c.root_args else ''))
@@ -1138,34 +1212,18 @@ def tree_bytes(folder):
     return out
 
 
-PREFS_BACK_MOST = 40
-
-
-def prefs_back(sim, most=PREFS_BACK_MOST):
-    """The simulator's preferences daemon answering again, after the put-back's stops: the seconds it took, None when it
-    did not answer within `most`. The put-back stops cfprefsd three times within seconds (probe-selftest.py's
-    prefs_settle: before its edit, after it, and for the read back); any process's read starts the daemon again in
-    between, and launchd starts a daemon that ran under 10 s only once the 10 s are over (its throttle). Until then
-    every process in the simulator waits at its first preferences read: a launch draws nothing of its own, on a black
-    screen or its launch screen. test-native.sh's boot shot, 4 s after its clean relaunch, came out black (iOS 26.5,
-    2026-11-09): the app's first log line came 8.5 s after its launch, and a read after a young daemon's stop
-    measured 7.7 to 10.4 s. A read of the global domain from outside the app's container (nothing of the app's is
-    read or written) waits for the daemon as the app would, and returns once it is back."""
-    t0 = time.time()
-    try:
-        sim.sh('xcrun', 'simctl', 'spawn', sim.udid, 'defaults', 'read', '-g', 'AppleLocale', check=False, timeout=most)
-    except subprocess.TimeoutExpired:
-        return None
-    return time.time() - t0
-
-
 def put_back_shell(c, kept):
     """After the last launch: the shell's folder and copies as found (a decline, a verdict, a switch, the counters, the
-    markers the run's own terminations left), the offs file as found; all read back."""
+    policy fetch's state, the markers the run's own terminations left), the offs file as found; all read back, the
+    copies as the app's next launch reads them (through the daemon, the container's plist saying the same)."""
     sim = c.sim
     try:
         ps.put_back_shell(sim, kept['folder'])
-        ps.put_back_shell_prefs(sim, kept['prefs'])
+        try:
+            ps.put_back_shell_prefs(sim, kept['prefs'])
+            now, err = ps.read_shell_prefs(sim), None
+        except RuntimeError as e:
+            now, err = {}, str(e)[:300]
         offs = sim.path(nsh.OFFS_FILE)
         if kept['offs'] is None:
             if os.path.exists(offs):
@@ -1173,8 +1231,8 @@ def put_back_shell(c, kept):
         else:
             with open(offs, 'wb') as f:
                 f.write(kept['offs'])
-        now, was, live = ps.read_shell_prefs(sim), tree_bytes(kept['folder']), tree_bytes(ps.shell_folder(sim))
-        diff = sorted(k for k in ps.SHELL_PREFS if now.get(k) != kept['prefs'].get(k))
+        was, live = tree_bytes(kept['folder']), tree_bytes(ps.shell_folder(sim))
+        diff = ([err] if err else []) + sorted(k for k in ps.SHELL_PREFS if now.get(k) != kept['prefs'].get(k))
         diff += ['FPShell/%s' % f for f in sorted(set(was or {}) | set(live or {})) if (was or {}).get(f) != (live or {}).get(f)]
         if (was is None) != (live is None):
             diff.append('FPShell (%s)' % ('there' if live is not None else 'gone'))
@@ -1182,10 +1240,6 @@ def put_back_shell(c, kept):
                 not diff and (os.path.exists(offs) == (kept['offs'] is not None)), diff)
     finally:
         shutil.rmtree(kept['tmp'], ignore_errors=True)
-        took = prefs_back(sim)
-        c.check('restore', 'the phone\'s preferences daemon answers again before the run hands the phone back (launchd holds back a '
-                           'cfprefsd stopped young; a launch meanwhile waits at its first preferences read)', took is not None,
-                'no answer in %d s' % PREFS_BACK_MOST if took is None else 'after %.1f s' % took)
 
 
 # ── the run's own checks ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -1193,18 +1247,22 @@ def put_back_shell(c, kept):
 def aggregates(c):
     rows = [(sc, e.get('label'), shellst(e).get('leftWindow'), shellst(e).get('leftWindowAny'), page(e).get('visEvents')) for sc, _t, e in c.states]
     c.check('window', 'the web view never left its window (leftWindow and leftWindowAny 0 in every state, %d states)' % len(rows),
-            bool(rows) and all(a == 0 and b == 0 for _, _l, a, b, _v in rows), sorted({sc for sc, _l, a, b, _v in rows if a or b}))
-    c.check('window', 'the page saw no visibilitychange in any state', all(v in ([], None) for *_x, v in rows),
-            sorted({sc for sc, _l, _a, _b, v in rows if v}))
+            bool(rows) and all(a == 0 and b == 0 for _, _l, a, b, _v in rows), sorted({sc for sc, _l, a, b, _v in rows if a != 0 or b != 0}))
+    c.check('window', 'the page saw no visibilitychange in any state (every state reports its list, empty)',
+            bool(rows) and all(v == [] for *_x, v in rows), sorted({'%s: %s' % (sc, l) for sc, l, _a, _b, v in rows if v != []})[:8])
     if c.tabs:
         fell = c.fellbacks + [(sc, t, (root(e).get('fellBack') or {}).get('why')) for sc, t, e in c.states if root(e).get('fellBack')]
         c.check('root', 'the tab root never fell back (no fellBack event and none in any state; no-hello above all)', not fell, fell[:5])
     out = [(sc, t) for sc, t, x in c.launches if x]
     c.check('launches', 'every launch ran to its end (no probe timed out; %d launches)' % len(c.launches), not out, out)
-    late = [r for r in c.shots if r.get('late') and not r.get('transient')]
-    c.check('shots', 'every shot taken while the app held still at its mark (%d shots)' % len(c.shots), not late,
-            [(r.get('file'), r.get('why')) for r in late][:6])
-    gone = [r for r in c.shots if r.get('late') and r.get('transient')]
+    missing = [r for r in c.shots if not r.get('ok')]
+    late = [r for r in c.shots if r.get('ok') and r.get('late') and not r.get('transient')]
+    stray = [r for r in c.shots if not shot_named(c, r)]
+    bad = ([(r.get('file'), 'no file written') for r in missing] + [(r.get('file'), r.get('why')) for r in late]
+           + [(r.get('file'), 'not one of the shots SHOTS names for %s' % r.get('scenario')) for r in stray])
+    c.check('shots', 'every shot is on disk, one of its scenario\'s, and was taken while the app held still at its mark (%d shots, none '
+                     'missing, late or misnamed)' % len(c.shots), not bad, bad[:6])
+    gone = [r for r in c.shots if r.get('ok') and r.get('late') and r.get('transient')]
     if gone:
         c.rep.fact('shots', 'transient marks shot after their cap (their subject may be gone): %s' % ', '.join(r.get('file') for r in gone))
     ms = sorted(r.get('ms') or 0 for r in c.shots)
@@ -1215,14 +1273,388 @@ def aggregates(c):
 ALL = ['prepare', 'smoke', 'keys', 'live', 'connect', 'combos', 'textoff', 'restore']
 
 
+def app_hash(app):
+    """tests/tools/fp-build.sh's fingerprint of an app bundle (app_print: build-id.txt's `app`): the first 16 hex digits of
+    the SHA-256 of `shasum -a 256`'s lines for every file of the bundle, by path in byte order (find . -type f: a link
+    is no file and none is followed)."""
+    rows = []
+    for dp, _dn, fn in os.walk(app):
+        for f in fn:
+            p = os.path.join(dp, f)
+            if os.path.islink(p) or not os.path.isfile(p):
+                continue
+            with open(p, 'rb') as fh:
+                rows.append((('./' + os.path.relpath(p, app)).encode('utf-8', 'surrogateescape'), hashlib.sha256(fh.read()).hexdigest()))
+    rows.sort()
+    return hashlib.sha256(b''.join(h.encode() + b'  ' + rel + b'\n' for rel, h in rows)).hexdigest()[:16]
+
+
+def app_identity(sim):
+    """The app on the phone, so that a run by hand says what it ran: its build number, its bundled page's stamp, and its
+    fingerprint as fp-build.sh stamps a build (the build-id.txt beside a build names this as `app`, with the tree the
+    build came from)."""
+    app = sim.sh('xcrun', 'simctl', 'get_app_container', sim.udid, ps.BID, 'app').strip()
+    build = stamp = None
+    try:
+        with open(os.path.join(app, 'Info.plist'), 'rb') as f:
+            build = plistlib.load(f).get('CFBundleVersion')
+        with open(os.path.join(app, 'public', 'index.html'), 'rb') as f:
+            m = re.search(rb'<meta name="build" content="([^"]+)"', f.read(8192))
+        stamp = m.group(1).decode('ascii', 'replace') if m else None
+    except (OSError, ValueError):
+        pass
+    return {'build': build, 'page': stamp, 'app': app_hash(app)}
+
+
+def _term(_sig, _frame):
+    """A SIGTERM as Ctrl-C: the scenarios end where they are, run()'s finally does restore and the put-back, exit 143."""
+    print('native-chat: SIGTERM: restore and the shell\'s state put back, then exit 143', flush=True)
+    raise SystemExit(143)
+
+
+def run(c, kept, only):
+    """prepare, then the scenarios --only names (all of them without it); and whatever ends them (the last one's end, a
+    scenario that breaks, Ctrl-C, a SIGTERM), restore and then the shell's state put back."""
+    rep = c.rep
+    try:
+        c.scen = 'prepare'
+        print('-- prepare', flush=True)
+        try:
+            ready = scen_prepare(c)
+        except Exception as e:  # a launch that breaks is a failure; restore still runs
+            traceback.print_exc()
+            ready = rep.check('prepare', 'ran to the end', False, repr(e)[:300])
+        if not ready:
+            rep.check('prepare', 'the scenarios run only on the root they are written for: none ran', False, c.root)
+        for scen in ALL[1:-1]:
+            if not ready or (only and scen not in only):
+                continue
+            c.scen = scen
+            print('-- %s' % scen, flush=True)
+            try:
+                clear_shots(c, scen)
+                globals()['scen_' + scen](c)
+            except Exception as e:  # a scenario that breaks is a failure; the next still runs
+                traceback.print_exc()
+                rep.check(scen, 'ran to the end', False, repr(e)[:300])
+    finally:
+        try:
+            c.scen = 'restore'
+            print('-- restore', flush=True)
+            try:
+                scen_restore(c)
+            except Exception as e:
+                traceback.print_exc()
+                rep.check('restore', 'ran to the end', False, repr(e)[:300])
+        finally:
+            c.scen = 'end'
+            put_back_shell(c, kept)
+
+
+def self_test():
+    """No simulator: how the run judges itself, on made-up records (a shot that left no file, a late one, a transient late
+    one, a misnamed one; a state without its visibilitychange list or its window counts; the bar's container
+    unreported; a launch on another phone appearance than its combo's), which shots a scenario clears, the copies' keep
+    and put-back on a stand-in for the daemon's `defaults`, how a run ends (a scenario that breaks, a SIGTERM), and the
+    app's fingerprint against fp-build.sh's own pipeline."""
+    bad, n = [], [0]
+
+    def case(what, ok, detail=''):
+        n[0] += 1
+        print('%s  %s%s' % ('ok  ' if ok else 'FAIL', what, (' -- %s' % (detail,)) if not ok and detail != '' else ''))
+        if not ok:
+            bad.append(what)
+
+    class Rep:
+        def __init__(self):
+            self.rows, self.facts = [], []
+
+        def check(self, scen, name, ok, detail=''):
+            self.rows.append((scen, name, bool(ok), detail))
+            return ok
+
+        def fact(self, scen, text):
+            self.facts.append((scen, text))
+
+    class FakeSim:
+        udid = 'self-test'
+
+        def __init__(self, stored='dark', home=None):
+            self.stored, self.home = stored, home
+
+        def sh(self, *_a, **_k):      # simctl ui <udid> appearance
+            return self.stored + '\n'
+
+        def container(self):
+            return self.home
+
+        def path(self, *p):
+            return os.path.join(self.home, *p)
+
+    nowhere = os.path.join(tempfile.gettempdir(), 'native-chat-self-test', 'no-such-folder')   # a made-up run's --out: nothing is there
+
+    def ctx(kind='tabs', out=None, sim=None):
+        return Ctx(sim or FakeSim(), Rep(), argparse.Namespace(root=kind, out=out or nowhere), kind, '27.0')
+
+    def verdict(c, part):
+        got = [ok for _s, nm, ok, _d in c.rep.rows if part in nm]
+        return got[-1] if got else None
+
+    def st(vis=(), left=0, anyl=0, style='dark', cstyle='dark'):
+        return {'ev': 'state', 'label': 's', 'page': {'visEvents': None if vis is None else list(vis)},
+                'shell': {'leftWindow': left, 'leftWindowAny': anyl,
+                          'root': {'kind': 'tabs', 'fellBack': None, 'bar': {'style': style, 'containerStyle': cstyle, 'hidden': False}}}}
+
+    def shot(scen, file, ok=True, late=False, transient=False):
+        return {'scenario': scen, 'tag': 't', 'file': file, 'label': file[:-4], 'ok': ok, 'late': late, 'transient': transient,
+                'ms': 100, 'why': 'the cap' if late else None}
+
+    def judged(states=None, shots=None, kind='tabs'):
+        c = ctx(kind)
+        c.states = [('keys', 't', e) for e in ([st()] if states is None else states)]
+        c.launches = [('keys', 't', False)]
+        c.shots = [shot('keys', c.prefix + 'keys-1-native-up.png')] if shots is None else shots
+        aggregates(c)
+        return c
+
+    # the aggregates
+    c = judged()
+    case('a clean run passes its five aggregates', len(c.rep.rows) == 5 and all(ok for _s, _n, ok, _d in c.rep.rows), c.rep.rows)
+    c = judged(shots=[shot('keys', 'keys-1-native-up.png', ok=False)])
+    case('a shot that left no file fails the shots check, by name', verdict(c, 'every shot') is False
+         and ('keys-1-native-up.png', 'no file written') in c.rep.rows[-1][3], c.rep.rows[-1])
+    c = judged(shots=[shot('keys', 'keys-1-native-up.png', late=True)])
+    case('a shot the app did not hold still for fails it', verdict(c, 'every shot') is False, c.rep.rows[-1])
+    c = judged(shots=[shot('connect', 'connect-2-invalid-key-toast.png', late=True, transient=True)])
+    case('a transient mark shot late is reported, not failed', verdict(c, 'every shot') is True and any('transient' in t for _s, t in c.rep.facts),
+         (c.rep.rows[-1], c.rep.facts))
+    c = judged(shots=[shot('connect', 'connect-2-invalid-key-toast.png', ok=False, late=True, transient=True)])
+    case('a transient mark that left no file fails all the same', verdict(c, 'every shot') is False, c.rep.rows[-1])
+    c = judged(shots=[shot('combos', 'coach-chat.png')])
+    case('a shot that is not one of its scenario\'s fails (coach-chat.png is test-native.sh\'s route shot, not a combo\'s)',
+         verdict(c, 'every shot') is False, c.rep.rows[-1])
+    c = judged(shots=[shot('combos', 'classic-coach-chat-lime-dark-l.png')], kind='classic')
+    case('the classic root\'s shots carry its prefix (four aggregates there: no fallback check)', verdict(c, 'every shot') is True
+         and len(c.rep.rows) == 4, c.rep.rows)
+    c = judged(shots=[shot('combos', 'coach-chat-lime-dark-l.png')], kind='classic')
+    case('a classic pass\'s shot without the prefix fails', verdict(c, 'every shot') is False, c.rep.rows[-1])
+    c = judged(states=[st(), st(vis=None)])
+    case('a state that reports no visibilitychange list fails (unreported is not "none seen")', verdict(c, 'visibilitychange') is False
+         and verdict(c, 'never left its window') is True, c.rep.rows[:2])
+    c = judged(states=[st(vis=['hidden'])])
+    case('a visibilitychange seen fails', verdict(c, 'visibilitychange') is False, c.rep.rows[1])
+    c = judged(states=[st(left=None), st()])
+    case('a state that reports no leftWindow count fails, its scenario named', verdict(c, 'never left its window') is False
+         and c.rep.rows[0][3] == ['keys'], c.rep.rows[0])
+    c = judged(states=[])
+    case('a run with no state fails both window checks', verdict(c, 'never left its window') is False and verdict(c, 'visibilitychange') is False,
+         c.rep.rows[:2])
+
+    # the bar's look as asked
+    def look(style, cstyle, room='dark'):
+        c = ctx()
+        bar_look(c, 'combos', 'x', st(style=style, cstyle=cstyle), 't', 'l', room, drawn=False)
+        return verdict(c, 'asks for the room')
+    case('the bar and its container in the room\'s look pass', look('dark', 'dark') is True and look('light', 'light', 'heavyweight') is True)
+    case('the bar\'s container unreported fails (unreported is not the room\'s look)', look('dark', None) is False)
+    case('the bar\'s container in another look fails', look('dark', 'light') is False and look('dark', 'unspecified') is False)
+
+    # the phone's appearance as the app saw it
+    def seen(dark, want, stored):
+        ev = Events([{'ev': 'js', 'label': 'scheme', 'result': None if dark is None else {'dark': dark}}])
+        c = ctx(sim=FakeSim(stored))
+        sees_phone(c, 'combos', 'x', ev, want)
+        return verdict(c, 'the app sees the phone'), c.rep.rows[-1][3]
+    case('a launch whose page sees the phone as its combo names it passes', seen(True, 'dark', 'dark')[0] is True and seen(False, 'light', 'light')[0] is True)
+    v, d = seen(False, 'dark', 'dark')
+    case('a launch whose page sees light while simctl reads dark fails, and says how to get the phone back', v is False
+         and 'SpringBoard' in str(d.get('why')), d)
+    case('a launch whose page sees dark on a combo that names light fails', seen(True, 'light', 'light')[0] is False)
+    v, d = seen(None, 'dark', 'dark')
+    case('a launch whose page did not answer fails, with no guess at why', v is False and 'why' not in d, d)
+
+    # the shots a scenario clears
+    with tempfile.TemporaryDirectory() as d:
+        names = ['keys-1-native-up.png', 'classic-keys-1-native-up.png', 'live-4-reply-pill-plan-changes.png', 'coach-chat-lime-dark-l.png',
+                 'coach-home-heavyweight-light-xxl.png', 'tabs-log-lime-light-l.png', 'classic-tabs-log-lime-light-l.png',
+                 'coach-chat.png', 'coach-chat-2-dark.png', 'coach.png', 'boot.png', 'textoff-xxl-off.png', 'connect-3-lime.png']
+        for f in names:
+            open(os.path.join(d, f), 'w').close()
+        ct, cc = ctx('tabs', d), ctx('classic', d)
+        k = clear_shots(ct, 'combos')
+        left = sorted(os.listdir(d))
+        case('combos clears its own shots of the tab root and nothing else (test-native.sh\'s coach-chat.png and coach-chat-2-dark.png stay)',
+             k == 3 and left == sorted(set(names) - {'coach-chat-lime-dark-l.png', 'coach-home-heavyweight-light-xxl.png', 'tabs-log-lime-light-l.png'}),
+             (k, left))
+        k = clear_shots(cc, 'combos') + clear_shots(cc, 'keys')
+        left = sorted(os.listdir(d))
+        case('the classic root clears only classic- shots', k == 2 and 'keys-1-native-up.png' in left and not [f for f in left if f.startswith('classic-')],
+             (k, left))
+        k = sum(clear_shots(ct, sc) for sc in ('keys', 'live', 'connect', 'textoff', 'prepare', 'smoke', 'restore'))
+        left = sorted(os.listdir(d))
+        case('keys, live, connect and textoff clear theirs; a scenario with no shots clears nothing',
+             k == 4 and left == ['boot.png', 'coach-chat-2-dark.png', 'coach-chat.png', 'coach.png'], (k, left))
+    case('SHOTS names the 24 combos shots whole, no pattern', len(SHOTS['combos']) == 24 and 'coach-chat-heavyweight-light-l' in SHOTS['combos']
+         and 'tabs-log-lime-dark-xxl' in SHOTS['combos'] and not any('*' in p for p in SHOTS['combos']), SHOTS['combos'])
+
+    # the shell's copies, kept and put back through a stand-in for the daemon's defaults
+    with tempfile.TemporaryDirectory() as d:
+        sim = FakeSim(home=d)
+        os.makedirs(os.path.join(d, 'Library', 'Preferences'))
+        plist = os.path.join(d, 'Library', 'Preferences', ps.BID + '.plist')
+        held = {'fp.shell.counters': b'{"a":1}', 'fp.policy': b'{"p":2}', 'other': 'kept'}
+        calls = []
+
+        def flush():
+            with open(plist, 'wb') as f:
+                plistlib.dump(held, f)
+
+        def fake_defaults(_sim, *args):
+            calls.append(args)
+            if args[0] == 'export':
+                return plistlib.dumps(held)
+            if args[0] == 'write':
+                held[args[2]] = bytes.fromhex(args[4])
+            elif args[0] == 'delete':
+                held.pop(args[2], None)
+            flush()
+            return b''
+        real = ps.prefs_defaults
+        ps.prefs_defaults = fake_defaults
+        try:
+            flush()
+            found = ps.read_shell_prefs(sim, most=0)
+            case('the copies are read through the daemon: an absent one None, the policy fetch\'s among them',
+                 found == {'fp.shell.switches': None, 'fp.shell.breakers': None, 'fp.shell.counters': b'{"a":1}', 'fp.policy': b'{"p":2}'}, found)
+            held.update({'fp.shell.switches': b'{"tabs":false}', 'fp.policy': b'{"p":3}'})
+            del held['fp.shell.counters']
+            flush()
+            del calls[:]
+            ps.put_back_shell_prefs(sim, found)
+            writes = sorted(a[:3] for a in calls if a[0] != 'export')
+            case('the put-back writes only what differs: a copy the run added is deleted, a changed and a removed one written as Data',
+                 writes == [('delete', ps.BID, 'fp.shell.switches'), ('write', ps.BID, 'fp.policy'), ('write', ps.BID, 'fp.shell.counters')]
+                 and ps.read_shell_prefs(sim, most=0) == found and held.get('other') == 'kept', writes)
+            del calls[:]
+            ps.put_back_shell_prefs(sim, found)
+            case('a put-back with nothing to change writes nothing', [a for a in calls if a[0] != 'export'] == [], calls)
+            with open(plist, 'wb') as f:
+                plistlib.dump({'fp.policy': b'another file'}, f)
+            try:
+                ps.read_shell_prefs(sim, most=0)
+                case('a daemon whose answer is not the container\'s plist is refused', False, 'accepted')
+            except RuntimeError as e:
+                case('a daemon whose answer is not the container\'s plist is refused, the copies that differ named',
+                     'fp.policy' in str(e) and 'fp.shell.counters' in str(e), str(e))
+            flush()
+            try:
+                ps.put_back_shell_prefs(sim, dict(found, **{'fp.policy': 'a string'}))
+                case('a copy found as something other than Data is refused', False, 'written')
+            except RuntimeError as e:
+                case('a copy found as something other than Data is refused, never written as text', 'fp.policy' in str(e), str(e))
+        finally:
+            ps.prefs_defaults = real
+
+    # how a run ends
+    g = globals()
+    saved = {k: g[k] for k in ('scen_prepare', 'scen_smoke', 'scen_keys', 'scen_live', 'scen_connect', 'scen_combos', 'scen_textoff',
+                               'scen_restore', 'put_back_shell')}
+    order = []
+
+    def fake(name, then=None):
+        def f(c, *_a):
+            order.append(name)
+            if then:
+                raise then
+            return True
+        return f
+    try:
+        for k in saved:
+            g[k] = fake(k.replace('scen_', ''))
+        g['put_back_shell'] = fake('put back')
+        with open(os.devnull, 'w') as null:
+            out, sys.stdout = sys.stdout, null
+            try:
+                c = ctx()
+                run(c, {}, ['smoke', 'live'])
+                a = list(order)
+                del order[:]
+                g['scen_live'] = fake('live', ValueError('broke'))
+                c2 = ctx()
+                err, sys.stderr = sys.stderr, null
+                try:
+                    run(c2, {}, [])
+                finally:
+                    sys.stderr = err
+                b = list(order)
+                del order[:]
+                g['scen_live'] = fake('live', SystemExit(143))
+                code = None
+                try:
+                    run(ctx(), {}, [])
+                except SystemExit as e:
+                    code = e.code
+                t = list(order)
+                del order[:]
+                g['scen_prepare'] = lambda c: order.append('prepare') or False
+                c4 = ctx()
+                run(c4, {}, [])
+                np = list(order)
+            finally:
+                sys.stdout = out
+        case('--only runs prepare, the scenarios it names in ALL\'s order, restore, then the put-back', a == ['prepare', 'smoke', 'live', 'restore', 'put back'], a)
+        case('a scenario that breaks is a failed check; the next ones, restore and the put-back still run',
+             b == ['prepare', 'smoke', 'keys', 'live', 'connect', 'combos', 'textoff', 'restore', 'put back']
+             and [(s_, nm) for s_, nm, ok, _d in c2.rep.rows if not ok] == [('live', 'ran to the end')], (b, c2.rep.rows))
+        case('a SIGTERM inside a scenario ends the scenarios there; restore and the put-back run, then the exit (143)',
+             t == ['prepare', 'smoke', 'keys', 'live', 'restore', 'put back'] and code == 143, (t, code))
+        case('a root that is not the one asked for runs no scenario, and still restores and puts back',
+             np == ['prepare', 'restore', 'put back'] and any('none ran' in nm for _s, nm, ok, _d in c4.rep.rows if not ok), (np, c4.rep.rows))
+    finally:
+        g.update(saved)
+    try:
+        with open(os.devnull, 'w') as null:
+            out, sys.stdout = sys.stdout, null
+            try:
+                _term(signal.SIGTERM, None)
+            finally:
+                sys.stdout = out
+        case('the SIGTERM handler raises SystemExit 143', False, 'returned')
+    except SystemExit as e:
+        case('the SIGTERM handler raises SystemExit 143 (run()\'s finally blocks then do restore and the put-back)', e.code == 143, e.code)
+
+    # the app's fingerprint
+    with tempfile.TemporaryDirectory() as d:
+        os.makedirs(os.path.join(d, 'public'))
+        for rel, text in (('App', 'binary'), ('public/index.html', '<meta name="build" content="20260101-1"/>'), ('Z', 'z'), ('a b', 'space'), ('_x', '')):
+            with open(os.path.join(d, rel), 'w') as f:
+                f.write(text)
+        os.symlink('App', os.path.join(d, 'link'))
+        with open(os.path.join(HERE, 'fp-build.sh')) as f:
+            pipes = [l.strip() for l in f if 'sort -z' in l and 'shasum' in l]
+        want = subprocess.run(['bash', '-c', pipes[0], 'bash', d], capture_output=True, text=True).stdout.strip() if len(pipes) == 1 else ''
+        case('the app\'s fingerprint is fp-build.sh\'s (its app_print line run on a scratch bundle: every file by path in byte order, no link)',
+             len(want) == 16 and app_hash(d) == want, (app_hash(d), want, pipes))
+    if bad:
+        print('native-chat self-test: %d of %d cases wrong' % (len(bad), n[0]))
+        return 1
+    print('native-chat self-test: %d cases, every verdict as expected' % n[0])
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser(description='The live native Coach on one simulator and one root (test-native.sh\'s coach half).')
-    ap.add_argument('--phone', required=True)
+    ap.add_argument('--phone')
     ap.add_argument('--shell', default='61')
     ap.add_argument('--root', choices=('tabs', 'classic'), default='tabs')
     ap.add_argument('--only', default='', help='a comma list of %s (prepare and restore always run)' % ', '.join(ALL[1:-1]))
     ap.add_argument('--out', default=tempfile.gettempdir())
+    ap.add_argument('--self-test', action='store_true', help='the run\'s own judging on made-up records (no simulator)')
     opts = ap.parse_args()
+    if opts.self_test:
+        sys.exit(self_test())
+    if not opts.phone:
+        ap.error('--phone is needed (or --self-test)')
     only = [x for x in opts.only.split(',') if x]
     bad = [x for x in only if x not in ALL]
     if bad:
@@ -1248,36 +1680,17 @@ def main():
         name, rt, opts.phone, kind, ' by the policy offs file' if opts.root == 'classic' else '', opts.shell), flush=True)
     c = Ctx(sim, rep, opts, kind, osv)
     t0 = time.time()
+    signal.signal(signal.SIGTERM, _term)
     try:
+        ident = app_identity(sim)
+        rep.fact('setup', 'the app on the phone: build %s, page %s, fingerprint %s (fp-build.sh\'s: a build\'s build-id.txt names it as '
+                          '`app`, with the tree the build came from)' % (ident['build'], ident['page'], ident['app']))
         kept = keep_shell(c)
-    except RuntimeError as e:   # simctl's get_app_container: the app is not installed
-        print('native-chat: the app\'s container on %s is not readable (%s): install the app first' % (opts.phone, e))
+    except RuntimeError as e:   # simctl's get_app_container (no app installed), or the preferences not the container's
+        print('native-chat: nothing run on %s: %s (the app must be installed, and its preferences reachable through the simulator\'s '
+              'cfprefsd)' % (opts.phone, e))
         sys.exit(2)
-    try:
-        c.scen = 'prepare'
-        print('-- prepare', flush=True)
-        try:
-            ready = scen_prepare(c)
-        except Exception as e:  # a launch that breaks is a failure; restore still runs
-            import traceback
-            traceback.print_exc()
-            ready = rep.check('prepare', 'ran to the end', False, repr(e)[:300])
-        if not ready:
-            rep.check('prepare', 'the scenarios run only on the root they are written for: none ran', False, c.root)
-        for scen in ALL[1:]:
-            if scen != 'restore' and (not ready or (only and scen not in only)):
-                continue
-            c.scen = scen
-            print('-- %s' % scen, flush=True)
-            try:
-                globals()['scen_' + scen](c)
-            except Exception as e:  # a scenario that breaks is a failure; the next still runs (restore above all)
-                import traceback
-                traceback.print_exc()
-                rep.check(scen, 'ran to the end', False, repr(e)[:300])
-    finally:
-        c.scen = 'end'
-        put_back_shell(c, kept)
+    run(c, kept, only)
     aggregates(c)
     print('== %s: %d checks, %d failed, %.0f s' % (rep.label, len(rep.rows), len(rep.failed), time.time() - t0), flush=True)
     for scen, nm, ok, detail in rep.failed:
