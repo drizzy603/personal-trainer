@@ -10,18 +10,21 @@ import FPCore
 ///
 /// iOS 26.x draws the glass bar, its platter and its items, in the style it reads from what is drawn under the bar only
 /// where a scroll view lies under it, and in the phone's style everywhere else, whatever the bar and its container wear
-/// (TabBarLook). Measured in the app on iOS 26.5 (the selected Coach item against the capsule around it, from the
-/// screenshot's pixels): the hub, whose ScrollView reaches under the bar, gave Lime on a light phone dark glass at 4.73:1
-/// and Heavyweight on a dark phone light glass at 5.84:1; the pushed chat, whose conversation ends above its composer,
-/// gave Lime light glass with its near-white item at 1.36:1 and Heavyweight grey glass under its blue item at 1.04:1.
-/// Over the stack's ground (a scroll view in the room's background under the stack) the chat read 4.73:1 and 5.85:1 and
-/// every Coach screen 4.73:1 or more in both rooms and both phone appearances. iOS 27 draws the glass in its container's
-/// style whatever lies under it.
+/// (TabBarLook). Read in the app on iOS 26.5 by tests/tools/tab-glass.py (the selected Coach item against the capsule
+/// around it, from a screenshot's pixels): without the ground the hub and the connect screen, whose ScrollView reaches
+/// under the bar, gave Lime on a light phone dark glass at 4.73:1 and Heavyweight on a dark phone light glass at
+/// 5.84:1, while the pushed chat, whose conversation ends above its composer, and the WAITING ground gave Lime light
+/// glass with its near-white item at 1.36:1 and Heavyweight grey glass under its blue item at 1.04:1. Over the stack's
+/// ground (a scroll view in the room's background under the stack) the chat and WAITING read 4.73:1 and 5.85:1 and
+/// every Coach screen 4.73:1 or more in both rooms and both phone appearances. iOS 27 draws the glass in its
+/// container's style whatever lies under it.
 ///
 /// This host composites nothing (it has no window scene: `drawHierarchy` answers false and the glass is never drawn, so
-/// the platter's content keeps the phone's style on 26.x whatever lies under it), so the drawn contrast is read in the
-/// app; here each Coach screen stands in a real tab root as the app shows it, the real hub, connect screen and chat in
-/// both rooms, and what 26.x reads is checked: a scroll view in the room's ground under the whole bar, and none in WEB.
+/// the platter's content keeps the phone's style on 26.x whatever lies under it), so the drawn contrast is
+/// tab-glass.py's to read, in the app; here each Coach screen stands in a real tab root as the app shows it, the real
+/// hub, connect screen and chat in both rooms, and what 26.x reads is checked: a scroll view in the room's ground under
+/// the whole bar, and in WEB none but the page's, the ground out of the view tree (hidden in it, 26.x read it in the
+/// page's place).
 @available(iOS 26.0, *)
 @MainActor
 final class TabBarGroundTests: XCTestCase {
@@ -161,8 +164,8 @@ final class TabBarGroundTests: XCTestCase {
     }
 
     /// Where the page is the tab (Coach WEB, a web tab), the Coach stack's ground is never under the bar: only the web
-    /// view's own scroll view is (no other scroll view in the whole window covers the bar), so iOS 26.x reads the page
-    /// there as on every web tab.
+    /// view's own scroll view is (no other scroll view in the whole window covers the bar, and the ground is out of the
+    /// view tree, not hidden in it), so iOS 26.x reads the page there as on every web tab.
     func testWhereThePageIsTheTabNoGroundOfTheStackLiesUnderTheBar() throws {
         for look in [Self.lime, Self.heavy] {
             let r = rig(look)
@@ -175,6 +178,7 @@ final class TabBarGroundTests: XCTestCase {
             XCTAssertTrue(Self.shown(r.webView), "the page shows")
             XCTAssertEqual(grounds(r, look), [], "\(look.room.id) Coach WEB: no ground of the stack over the page")
             XCTAssertEqual(underBar(r), [], "\(look.room.id) Coach WEB: no scroll view but the page's under the bar")
+            XCTAssertNil(r.root.coachSlot.ground.superview, "\(look.room.id) Coach WEB: the ground out of the view tree, not hidden in it")
             r.root.setHome(r.home)
             settle(r)
             r.root.select("log", source: .page(intent: nil))
@@ -188,11 +192,15 @@ final class TabBarGroundTests: XCTestCase {
             r.root.select("coach", source: .page(intent: nil))
             settle(r)
             XCTAssertFalse(grounds(r, look).isEmpty, "\(look.room.id) NATIVE again: the ground is back under the bar")
+            let slot = r.root.coachSlot, order = slot.view.subviews
+            XCTAssertEqual(order.firstIndex(of: slot.ground), order.firstIndex(of: slot.webArea).map { $0 + 1 },
+                           "\(look.room.id) NATIVE again: put back right above the web view's waiting place")
+            XCTAssertEqual(order.last, r.nav.view, "\(look.room.id) NATIVE again: the stack above it")
         }
     }
 
     /// The fallback (contract 10.3) turns the Coach tab WEB where it stands and hides the bar for good: the ground goes
-    /// with the stack, and nothing of the Coach slot shows over the page.
+    /// out of the view tree as the stack hides, and nothing of the Coach slot shows over the page.
     func testTheFallbackTakesTheGroundAwayWithTheStack() throws {
         for look in [Self.lime, Self.heavy] {
             let r = rig(look)
@@ -206,7 +214,7 @@ final class TabBarGroundTests: XCTestCase {
             let slot = r.root.coachSlot
             XCTAssertTrue(r.webView.superview === slot.webArea, "the page in the Coach slot, where Coach stands")
             XCTAssertTrue(Self.shown(r.webView), "the page shows")
-            XCTAssertTrue(slot.ground.isHidden, "\(look.room.id): the ground hidden with the stack")
+            XCTAssertNil(slot.ground.superview, "\(look.room.id): the ground out of the view tree with the stack")
             let page = r.webView.convert(r.webView.bounds, to: nil)
             let over = slot.view.subviews.filter {
                 $0 !== slot.webArea && Self.shown($0) && $0.convert($0.bounds, to: nil).intersects(page)
@@ -236,6 +244,8 @@ final class TabBarGroundTests: XCTestCase {
         XCTAssertEqual(g.contentInsetAdjustmentBehavior, .never)
         XCTAssertTrue(g.topEdgeEffect.isHidden, "UIKit draws no edge effect at its top")
         XCTAssertTrue(g.bottomEdgeEffect.isHidden, "nor at its bottom, over the bar")
+        XCTAssertEqual(g.contentSize, .zero, "it has nothing to scroll (as the app's runs measured it)")
+        XCTAssertFalse(g.isHidden, "in the view tree it shows: it is taken out, never hidden")
         XCTAssertFalse(r.webView.isDescendant(of: g), "it never holds the web view")
         XCTAssertFalse(r.nav.view.isDescendant(of: g), "nor the stack")
         XCTAssertEqual(g.overrideUserInterfaceStyle, .unspecified, "it carries no style")
