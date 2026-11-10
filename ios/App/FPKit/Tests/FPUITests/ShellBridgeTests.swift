@@ -54,10 +54,14 @@ final class ShellBridgeTests: XCTestCase {
         ShellBridge(defaults: defaults, folder: folder, shellBuild: "61")
     }
 
+    /// How long a stand-in page gets to load. The wait ends when the page is up, so the length costs a passing run
+    /// nothing; 10 s ran out on this Mac under a load of 20 to 58 ("the stand-in page did not load").
+    private static let loadWait: TimeInterval = 60
+
     /// Loads PageLinkTests' stand-in page (window.FPScreens answering) after the bridge's document-start script is in.
     private func loadPage() async throws {
         webView.loadHTMLString(PageLinkTests.page, baseURL: URL(string: "https://fp.test/"))
-        let deadline = Date().addingTimeInterval(10)
+        let deadline = Date().addingTimeInterval(Self.loadWait)
         while Date() < deadline {
             try await Task.sleep(nanoseconds: 50_000_000)
             if !webView.isLoading, (try? await webView.evaluateJavaScript("typeof window.FPScreens")) as? String == "object" { return }
@@ -172,7 +176,7 @@ final class ShellBridgeTests: XCTestCase {
     private func loadReloadPage(marking old: Bool) async throws {
         if old { _ = try? await webView.evaluateJavaScript("window.__fpOld = true; 0") }
         webView.loadHTMLString(Self.reloadPage, baseURL: URL(string: "https://fp.test/"))
-        let deadline = Date().addingTimeInterval(10)
+        let deadline = Date().addingTimeInterval(Self.loadWait)
         while Date() < deadline {
             try await Task.sleep(nanoseconds: 50_000_000)
             let ready = "typeof window.FPScreens === 'object' && typeof window.__fpOld === 'undefined'"
@@ -430,27 +434,59 @@ final class ShellBridgeTests: XCTestCase {
         </script>
         """
 
+    /// For a case that makes its timeouts by hand (`timeOut`): the link's own clock out of the way (2 s -> 2 min), so
+    /// nothing times out but what the case times out. A clock scaled down instead is as short for the ping the case
+    /// waits for, and a loaded machine lets that run out too (0.2 s: the answered ping counted with its holds, the chat
+    /// tripped; 1 s: the ping's navigation not yet under way at its timeout, so it ended `failed timeout`, not `gone`).
+    private static let noClock: Double = 60
+
     /// A build 61 bridge under a classic root (no tab root before H7), linked to the stall page with the chat live: the
-    /// piece a shell intent counts for. Timeouts scaled by `scale`.
+    /// piece a shell intent counts for. Timeouts scaled by `scale` (0.1: the case where every intent runs out, on the
+    /// clock; `noClock`: the cases that make their timeouts by hand).
     private func stalledBridge(_ setup: String = "0", scale: Double = 0.1) async throws -> (ShellBridge, ShellBridge.Binding) {
         let b = bridge61()
         b.install(webView: webView, presenter: root, pageBuild: "P1")
         let binding = try XCTUnwrap(b.binding)
         binding.pageLink.timeoutScale = scale
         webView.loadHTMLString(Self.stallPage, baseURL: URL(string: "https://fp.test/"))
-        let deadline = Date().addingTimeInterval(10)
+        let deadline = Date().addingTimeInterval(Self.loadWait)
         var ready = false
         while !ready, Date() < deadline {
             try await Task.sleep(nanoseconds: 50_000_000)
             if !webView.isLoading, (try? await webView.evaluateJavaScript("typeof window.FPScreens")) as? String == "object" { ready = true }
         }
-        // stop here, not at a 10 s expectation timeout further on that blames the ping
+        // stop here, not at an expectation timeout further on that blames the ping
         guard ready else { throw StallPageDidNotLoad() }
         _ = try await webView.evaluateJavaScript(setup + "; 0")
         _ = try await message(b, "hello", ["v": 1, "page": "P1", "screens": ["coach"], "boot": "b1"]).get()
         XCTAssertEqual(binding.link.liveScreens, ["coach"], "a classic root: 60's overlay chat")
         XCTAssertEqual(binding.pageLink.pending, 0, "nothing in the link before the test's own intents")
         return (b, binding)
+    }
+
+    /// The stall page lets the `name` now in the link time out. Once the page has it (sent, the newest of its kind in
+    /// `window.__got`, unanswered) and `ready` holds, its timeout comes at once (`PageLink.timeOutInFlight`): no clock
+    /// to wait for and none to race. Fails the case when no intent of that name reaches the page in time.
+    private func timeOut(_ binding: ShellBridge.Binding, _ name: String, when ready: () -> Bool = { true },
+                         file: StaticString = #filePath, line: UInt = #line) async throws {
+        let link = binding.pageLink
+        let count = "window.__got.filter(function (n) { return n === '\(name)'; }).length"
+        var sent = 0, inPage = 0
+        let deadline = Date().addingTimeInterval(60)
+        while Date() < deadline {
+            inPage = ((try? await webView.evaluateJavaScript(count)) as? Int) ?? -1
+            // read after the page's answer, in the turn the timeout is made in: the link as it is now
+            if link.inFlightName == name, let boot = link.boot {
+                sent = link.records.filter { $0.name == name && $0.boot == boot && $0.sent }.count
+                if inPage == sent, ready() {
+                    XCTAssertTrue(link.timeOutInFlight(name), "\(name) was in the page", file: file, line: line)
+                    return
+                }
+            }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        XCTFail("never: \(name) in the page, unanswered (in the link: \(link.inFlightName ?? "none"), sent \(sent), in the page \(inPage))",
+                file: file, line: line)
     }
 
     /// Fulfils `exp` when a ping record ends with `outcome` (PageLink's word), after the probe's own record hook.
@@ -463,9 +499,10 @@ final class ShellBridgeTests: XCTestCase {
     }
 
     /// Contract 4.4 (D41) through the bridge: two timed-out `shell.covered` are held, the link asks for one ping, the
-    /// bridge sends it after them, and its answer drops both uncounted (a busy page, not a broken one).
+    /// bridge sends it after them, and its answer drops both uncounted (a busy page, not a broken one). The case makes
+    /// both timeouts itself, each once the page has its intent, so the ping is answered on no clock of the case's.
     func testHeldTimeoutsSendOnePingWhoseAnswerDropsThem() async throws {
-        let (b, binding) = try await stalledBridge()
+        let (b, binding) = try await stalledBridge(scale: Self.noClock)
         let pinged = expectation(description: "one ping, answered")
         onPing(binding, ends: "done", pinged)
         let first = expectation(description: "the first shell.covered times out")
@@ -478,7 +515,9 @@ final class ShellBridgeTests: XCTestCase {
             XCTAssertEqual(outcome, .answered(.failed(.timeout)))
             second.fulfill()
         }
-        await fulfillment(of: [first, second, pinged], timeout: 10, enforceOrder: true)
+        try await timeOut(binding, "shell.covered")   // the first; the second waits behind it
+        try await timeOut(binding, "shell.covered")
+        await fulfillment(of: [first, second, pinged], timeout: 60, enforceOrder: true)
         let names = binding.pageLink.records.map(\.name)
         XCTAssertEqual(names, ["shell.covered", "shell.covered", "ping"], "two holds, then one ping at the end of the queue")
         XCTAssertEqual(binding.link.heldTimeouts, 0, "the ping's answer dropped them")
@@ -507,14 +546,16 @@ final class ShellBridgeTests: XCTestCase {
 
     /// A ping cut short with no answer: a navigation under way at its timeout ends it `documentGone`, though one that
     /// never commits leaves the document in place. The bridge tells the link (`pingLost`), so the next held timeout
-    /// asks for a new ping instead of being held for good.
+    /// asks for a new ping instead of being held for good. The case makes each timeout itself: `shell.covered`'s once
+    /// the page has it, and the ping's once the navigation its handler starts is under way, however long the page takes
+    /// to start it (on a 1 s clock a loaded machine was not there yet, and the ping ended `failed timeout`).
     func testALostPingLetsTheNextHoldAskAgain() async throws {
         // a web view whose fpwait:// loads never answer: a navigation there stays provisional until it is stopped
         let config = WKWebViewConfiguration()
         config.setURLSchemeHandler(NeverAnswers(), forURLScheme: "fpwait")
         webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 390, height: 844), configuration: config)
         root.view = webView
-        let (b, binding) = try await stalledBridge("window.__pingNavigates = 'fpwait://hold'", scale: 0.5)
+        let (b, binding) = try await stalledBridge("window.__pingNavigates = 'fpwait://hold'", scale: Self.noClock)
         let lost = expectation(description: "the first ping ends unanswered")
         onPing(binding, ends: "gone", lost)
         let covered = expectation(description: "shell.covered times out")
@@ -522,18 +563,21 @@ final class ShellBridgeTests: XCTestCase {
             XCTAssertEqual(outcome, .answered(.failed(.timeout)))
             covered.fulfill()
         }
+        try await timeOut(binding, "shell.covered")
+        try await timeOut(binding, "ping") { self.webView.isLoading }
         await fulfillment(of: [covered, lost], timeout: 10, enforceOrder: true)
         XCTAssertTrue(webView.isLoading, "the navigation is still under way")
         let stopped = keyValueObservingExpectation(for: webView as Any, keyPath: "loading", expectedValue: false)
         webView.stopLoading()
-        await fulfillment(of: [stopped], timeout: 5)
+        await fulfillment(of: [stopped], timeout: 60)
         _ = try await webView.evaluateJavaScript("window.__pingNavigates = null; 0")
         XCTAssertEqual(binding.link.link?.boot, "b1", "the same document, still linked")
         XCTAssertEqual(binding.link.heldTimeouts, 1, "the hold waits")
         let answered = expectation(description: "a second ping, answered")
         onPing(binding, ends: "done", answered)
         b.sendCounted(.shellCovered(on: false)) { _ in }
-        await fulfillment(of: [answered], timeout: 10)
+        try await timeOut(binding, "shell.covered")
+        await fulfillment(of: [answered], timeout: 60)
         XCTAssertEqual(binding.pageLink.records.filter { $0.name == "ping" }.map(\.outcome), ["gone", "done"])
         XCTAssertEqual(binding.link.heldTimeouts, 0, "the second ping's answer dropped both holds")
         XCTAssertEqual(binding.link.book.screens["coach"]?.failures ?? 0, 0)
@@ -908,7 +952,7 @@ final class ShellBridgeTests: XCTestCase {
 
 /// The stall page never came up (ShellBridgeTests.stalledBridge): the test fails there, saying so.
 private struct StallPageDidNotLoad: Error, CustomStringConvertible {
-    var description: String { "the stall page did not load within 10 s" }
+    var description: String { "the stall page did not load within a minute" }
 }
 
 /// A URL scheme handler that never answers: a load through it stays provisional until it is stopped.
