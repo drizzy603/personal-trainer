@@ -1,0 +1,4245 @@
+{
+ "v": 1,
+ "about": [
+  "The Coach hub's meta row as the page lays it out (tests/golden/dump-meta-row.js; tests/golden/check.sh fails on drift).",
+  "Each case: renderCoach's hub in Chromium in one room (heavyweight, or dark: Lime), at a phone width in points and a text size",
+  "(the root zoom applyDynamicType sets: large 1, xLarge 1.12, xxLarge 1.24), with the label written into .kt-meta-label and",
+  "the initial K into .kt-meta-ava. lines: the label's lines as drawn. tile: the avatar tile's drawn width in points",
+  "(38 px x zoom unless the label is wider than its room: both flex-shrink 1, in proportion to their inner flex base sizes).",
+  "CoachHomeViewTests.testTheMetaLabelBreaksWhereTheWebsDoes holds HomeMetaRow.layout to every case.",
+  "styles (per room and size: the computed styles that lay the row out) and boxes (per room, width and size: the row's",
+  "left and width, the label's left, the tile's width and height, in px, and the row's flex items: each element by",
+  "its class, left and width, text of its own, the content of its ::before and ::after), read with the label empty,",
+  "are what no text rasterizer decides: off darwin the check holds those and the cases' order, not the lines and tiles."
+ ],
+ "avatar": "K",
+ "styles": [
+  {
+   "room": "heavyweight",
+   "size": "large",
+   "row": {
+    "display": "flex",
+    "flex-direction": "row",
+    "flex-wrap": "nowrap",
+    "justify-content": "space-between",
+    "align-items": "center",
+    "column-gap": "normal",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "border-left-width": "0px",
+    "border-right-width": "0px"
+   },
+   "label": {
+    "display": "flex",
+    "align-items": "center",
+    "column-gap": "9px",
+    "flex-grow": "0",
+    "flex-shrink": "1",
+    "flex-basis": "auto",
+    "min-width": "auto",
+    "max-width": "none",
+    "margin-left": "0px",
+    "margin-right": "0px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "font-family": "Archivo, sans-serif",
+    "font-size": "10px",
+    "font-weight": "700",
+    "font-style": "normal",
+    "font-stretch": "100%",
+    "font-size-adjust": "none",
+    "font-synthesis": "weight style small-caps",
+    "font-variant-numeric": "tabular-nums",
+    "font-variant-ligatures": "normal",
+    "font-variant-caps": "normal",
+    "font-feature-settings": "normal",
+    "font-variation-settings": "normal",
+    "font-kerning": "auto",
+    "text-rendering": "auto",
+    "letter-spacing": "1px",
+    "word-spacing": "0px",
+    "text-indent": "0px",
+    "text-transform": "uppercase",
+    "white-space-collapse": "collapse",
+    "text-wrap-mode": "wrap",
+    "text-wrap-style": "auto",
+    "word-break": "normal",
+    "overflow-wrap": "normal",
+    "line-break": "auto",
+    "hyphens": "manual"
+   },
+   "before": {
+    "content": "\"\"",
+    "display": "block",
+    "width": "7px",
+    "height": "7px",
+    "flex-grow": "0",
+    "flex-shrink": "0",
+    "margin-left": "0px",
+    "margin-right": "0px"
+   },
+   "ava": {
+    "display": "flex",
+    "box-sizing": "border-box",
+    "width": "38px",
+    "height": "38px",
+    "min-width": "auto",
+    "max-width": "none",
+    "flex-grow": "0",
+    "flex-shrink": "1",
+    "flex-basis": "auto",
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "margin-left": "0px",
+    "margin-right": "0px",
+    "font-family": "Archivo, Inter, -apple-system, system-ui, sans-serif",
+    "font-size": "13px",
+    "font-weight": "700"
+   }
+  },
+  {
+   "room": "heavyweight",
+   "size": "xLarge",
+   "row": {
+    "display": "flex",
+    "flex-direction": "row",
+    "flex-wrap": "nowrap",
+    "justify-content": "space-between",
+    "align-items": "center",
+    "column-gap": "normal",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "border-left-width": "0px",
+    "border-right-width": "0px"
+   },
+   "label": {
+    "display": "flex",
+    "align-items": "center",
+    "column-gap": "9px",
+    "flex-grow": "0",
+    "flex-shrink": "1",
+    "flex-basis": "auto",
+    "min-width": "auto",
+    "max-width": "none",
+    "margin-left": "0px",
+    "margin-right": "0px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "font-family": "Archivo, sans-serif",
+    "font-size": "10px",
+    "font-weight": "700",
+    "font-style": "normal",
+    "font-stretch": "100%",
+    "font-size-adjust": "none",
+    "font-synthesis": "weight style small-caps",
+    "font-variant-numeric": "tabular-nums",
+    "font-variant-ligatures": "normal",
+    "font-variant-caps": "normal",
+    "font-feature-settings": "normal",
+    "font-variation-settings": "normal",
+    "font-kerning": "auto",
+    "text-rendering": "auto",
+    "letter-spacing": "1px",
+    "word-spacing": "0px",
+    "text-indent": "0px",
+    "text-transform": "uppercase",
+    "white-space-collapse": "collapse",
+    "text-wrap-mode": "wrap",
+    "text-wrap-style": "auto",
+    "word-break": "normal",
+    "overflow-wrap": "normal",
+    "line-break": "auto",
+    "hyphens": "manual"
+   },
+   "before": {
+    "content": "\"\"",
+    "display": "block",
+    "width": "6.99px",
+    "height": "6.99px",
+    "flex-grow": "0",
+    "flex-shrink": "0",
+    "margin-left": "0px",
+    "margin-right": "0px"
+   },
+   "ava": {
+    "display": "flex",
+    "box-sizing": "border-box",
+    "width": "37.99px",
+    "height": "37.99px",
+    "min-width": "auto",
+    "max-width": "none",
+    "flex-grow": "0",
+    "flex-shrink": "1",
+    "flex-basis": "auto",
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "margin-left": "0px",
+    "margin-right": "0px",
+    "font-family": "Archivo, Inter, -apple-system, system-ui, sans-serif",
+    "font-size": "13px",
+    "font-weight": "700"
+   }
+  },
+  {
+   "room": "heavyweight",
+   "size": "xxLarge",
+   "row": {
+    "display": "flex",
+    "flex-direction": "row",
+    "flex-wrap": "nowrap",
+    "justify-content": "space-between",
+    "align-items": "center",
+    "column-gap": "normal",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "border-left-width": "0px",
+    "border-right-width": "0px"
+   },
+   "label": {
+    "display": "flex",
+    "align-items": "center",
+    "column-gap": "9px",
+    "flex-grow": "0",
+    "flex-shrink": "1",
+    "flex-basis": "auto",
+    "min-width": "auto",
+    "max-width": "none",
+    "margin-left": "0px",
+    "margin-right": "0px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "font-family": "Archivo, sans-serif",
+    "font-size": "10px",
+    "font-weight": "700",
+    "font-style": "normal",
+    "font-stretch": "100%",
+    "font-size-adjust": "none",
+    "font-synthesis": "weight style small-caps",
+    "font-variant-numeric": "tabular-nums",
+    "font-variant-ligatures": "normal",
+    "font-variant-caps": "normal",
+    "font-feature-settings": "normal",
+    "font-variation-settings": "normal",
+    "font-kerning": "auto",
+    "text-rendering": "auto",
+    "letter-spacing": "1px",
+    "word-spacing": "0px",
+    "text-indent": "0px",
+    "text-transform": "uppercase",
+    "white-space-collapse": "collapse",
+    "text-wrap-mode": "wrap",
+    "text-wrap-style": "auto",
+    "word-break": "normal",
+    "overflow-wrap": "normal",
+    "line-break": "auto",
+    "hyphens": "manual"
+   },
+   "before": {
+    "content": "\"\"",
+    "display": "block",
+    "width": "6.99px",
+    "height": "6.99px",
+    "flex-grow": "0",
+    "flex-shrink": "0",
+    "margin-left": "0px",
+    "margin-right": "0px"
+   },
+   "ava": {
+    "display": "flex",
+    "box-sizing": "border-box",
+    "width": "37.99px",
+    "height": "37.99px",
+    "min-width": "auto",
+    "max-width": "none",
+    "flex-grow": "0",
+    "flex-shrink": "1",
+    "flex-basis": "auto",
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "margin-left": "0px",
+    "margin-right": "0px",
+    "font-family": "Archivo, Inter, -apple-system, system-ui, sans-serif",
+    "font-size": "13px",
+    "font-weight": "700"
+   }
+  },
+  {
+   "room": "dark",
+   "size": "large",
+   "row": {
+    "display": "flex",
+    "flex-direction": "row",
+    "flex-wrap": "nowrap",
+    "justify-content": "space-between",
+    "align-items": "center",
+    "column-gap": "normal",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "border-left-width": "0px",
+    "border-right-width": "0px"
+   },
+   "label": {
+    "display": "flex",
+    "align-items": "center",
+    "column-gap": "9px",
+    "flex-grow": "0",
+    "flex-shrink": "1",
+    "flex-basis": "auto",
+    "min-width": "auto",
+    "max-width": "none",
+    "margin-left": "0px",
+    "margin-right": "0px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "font-family": "\"JetBrains Mono\", ui-monospace, monospace",
+    "font-size": "10px",
+    "font-weight": "700",
+    "font-style": "normal",
+    "font-stretch": "100%",
+    "font-size-adjust": "none",
+    "font-synthesis": "weight style small-caps",
+    "font-variant-numeric": "normal",
+    "font-variant-ligatures": "normal",
+    "font-variant-caps": "normal",
+    "font-feature-settings": "\"cv02\", \"cv03\", \"cv04\"",
+    "font-variation-settings": "normal",
+    "font-kerning": "auto",
+    "text-rendering": "auto",
+    "letter-spacing": "1.4px",
+    "word-spacing": "0px",
+    "text-indent": "0px",
+    "text-transform": "none",
+    "white-space-collapse": "collapse",
+    "text-wrap-mode": "wrap",
+    "text-wrap-style": "auto",
+    "word-break": "normal",
+    "overflow-wrap": "normal",
+    "line-break": "auto",
+    "hyphens": "manual"
+   },
+   "before": {
+    "content": "\"\"",
+    "display": "block",
+    "width": "7px",
+    "height": "7px",
+    "flex-grow": "0",
+    "flex-shrink": "0",
+    "margin-left": "0px",
+    "margin-right": "0px"
+   },
+   "ava": {
+    "display": "flex",
+    "box-sizing": "border-box",
+    "width": "38px",
+    "height": "38px",
+    "min-width": "auto",
+    "max-width": "none",
+    "flex-grow": "0",
+    "flex-shrink": "1",
+    "flex-basis": "auto",
+    "border-left-width": "1px",
+    "border-right-width": "1px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "margin-left": "0px",
+    "margin-right": "0px",
+    "font-family": "Inter, -apple-system, system-ui, sans-serif",
+    "font-size": "13px",
+    "font-weight": "700"
+   }
+  },
+  {
+   "room": "dark",
+   "size": "xLarge",
+   "row": {
+    "display": "flex",
+    "flex-direction": "row",
+    "flex-wrap": "nowrap",
+    "justify-content": "space-between",
+    "align-items": "center",
+    "column-gap": "normal",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "border-left-width": "0px",
+    "border-right-width": "0px"
+   },
+   "label": {
+    "display": "flex",
+    "align-items": "center",
+    "column-gap": "9px",
+    "flex-grow": "0",
+    "flex-shrink": "1",
+    "flex-basis": "auto",
+    "min-width": "auto",
+    "max-width": "none",
+    "margin-left": "0px",
+    "margin-right": "0px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "font-family": "\"JetBrains Mono\", ui-monospace, monospace",
+    "font-size": "10px",
+    "font-weight": "700",
+    "font-style": "normal",
+    "font-stretch": "100%",
+    "font-size-adjust": "none",
+    "font-synthesis": "weight style small-caps",
+    "font-variant-numeric": "normal",
+    "font-variant-ligatures": "normal",
+    "font-variant-caps": "normal",
+    "font-feature-settings": "\"cv02\", \"cv03\", \"cv04\"",
+    "font-variation-settings": "normal",
+    "font-kerning": "auto",
+    "text-rendering": "auto",
+    "letter-spacing": "1.4px",
+    "word-spacing": "0px",
+    "text-indent": "0px",
+    "text-transform": "none",
+    "white-space-collapse": "collapse",
+    "text-wrap-mode": "wrap",
+    "text-wrap-style": "auto",
+    "word-break": "normal",
+    "overflow-wrap": "normal",
+    "line-break": "auto",
+    "hyphens": "manual"
+   },
+   "before": {
+    "content": "\"\"",
+    "display": "block",
+    "width": "6.99px",
+    "height": "6.99px",
+    "flex-grow": "0",
+    "flex-shrink": "0",
+    "margin-left": "0px",
+    "margin-right": "0px"
+   },
+   "ava": {
+    "display": "flex",
+    "box-sizing": "border-box",
+    "width": "37.99px",
+    "height": "37.99px",
+    "min-width": "auto",
+    "max-width": "none",
+    "flex-grow": "0",
+    "flex-shrink": "1",
+    "flex-basis": "auto",
+    "border-left-width": "0.89px",
+    "border-right-width": "0.89px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "margin-left": "0px",
+    "margin-right": "0px",
+    "font-family": "Inter, -apple-system, system-ui, sans-serif",
+    "font-size": "13px",
+    "font-weight": "700"
+   }
+  },
+  {
+   "room": "dark",
+   "size": "xxLarge",
+   "row": {
+    "display": "flex",
+    "flex-direction": "row",
+    "flex-wrap": "nowrap",
+    "justify-content": "space-between",
+    "align-items": "center",
+    "column-gap": "normal",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "border-left-width": "0px",
+    "border-right-width": "0px"
+   },
+   "label": {
+    "display": "flex",
+    "align-items": "center",
+    "column-gap": "9px",
+    "flex-grow": "0",
+    "flex-shrink": "1",
+    "flex-basis": "auto",
+    "min-width": "auto",
+    "max-width": "none",
+    "margin-left": "0px",
+    "margin-right": "0px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "font-family": "\"JetBrains Mono\", ui-monospace, monospace",
+    "font-size": "10px",
+    "font-weight": "700",
+    "font-style": "normal",
+    "font-stretch": "100%",
+    "font-size-adjust": "none",
+    "font-synthesis": "weight style small-caps",
+    "font-variant-numeric": "normal",
+    "font-variant-ligatures": "normal",
+    "font-variant-caps": "normal",
+    "font-feature-settings": "\"cv02\", \"cv03\", \"cv04\"",
+    "font-variation-settings": "normal",
+    "font-kerning": "auto",
+    "text-rendering": "auto",
+    "letter-spacing": "1.4px",
+    "word-spacing": "0px",
+    "text-indent": "0px",
+    "text-transform": "none",
+    "white-space-collapse": "collapse",
+    "text-wrap-mode": "wrap",
+    "text-wrap-style": "auto",
+    "word-break": "normal",
+    "overflow-wrap": "normal",
+    "line-break": "auto",
+    "hyphens": "manual"
+   },
+   "before": {
+    "content": "\"\"",
+    "display": "block",
+    "width": "6.99px",
+    "height": "6.99px",
+    "flex-grow": "0",
+    "flex-shrink": "0",
+    "margin-left": "0px",
+    "margin-right": "0px"
+   },
+   "ava": {
+    "display": "flex",
+    "box-sizing": "border-box",
+    "width": "37.99px",
+    "height": "37.99px",
+    "min-width": "auto",
+    "max-width": "none",
+    "flex-grow": "0",
+    "flex-shrink": "1",
+    "flex-basis": "auto",
+    "border-left-width": "0.81px",
+    "border-right-width": "0.81px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "margin-left": "0px",
+    "margin-right": "0px",
+    "font-family": "Inter, -apple-system, system-ui, sans-serif",
+    "font-size": "13px",
+    "font-weight": "700"
+   }
+  }
+ ],
+ "boxes": [
+  {
+   "room": "heavyweight",
+   "width": 320,
+   "size": "large",
+   "row": [
+    16,
+    288
+   ],
+   "label": 16,
+   "tile": [
+    38,
+    38
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     16,
+     7
+    ],
+    [
+     "kt-meta-ava",
+     266,
+     38
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
+   ]
+  },
+  {
+   "room": "heavyweight",
+   "width": 320,
+   "size": "xLarge",
+   "row": [
+    17.91,
+    284.19
+   ],
+   "label": 17.91,
+   "tile": [
+    42.55,
+    42.55
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     17.91,
+     7.83
+    ],
+    [
+     "kt-meta-ava",
+     259.55,
+     42.55
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
+   ]
+  },
+  {
+   "room": "heavyweight",
+   "width": 320,
+   "size": "xxLarge",
+   "row": [
+    19.83,
+    280.34
+   ],
+   "label": 19.83,
+   "tile": [
+    47.11,
+    47.11
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     19.83,
+     8.67
+    ],
+    [
+     "kt-meta-ava",
+     253.06,
+     47.11
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
+   ]
+  },
+  {
+   "room": "heavyweight",
+   "width": 375,
+   "size": "large",
+   "row": [
+    20,
+    335
+   ],
+   "label": 20,
+   "tile": [
+    38,
+    38
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     20,
+     7
+    ],
+    [
+     "kt-meta-ava",
+     317,
+     38
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
+   ]
+  },
+  {
+   "room": "heavyweight",
+   "width": 375,
+   "size": "xLarge",
+   "row": [
+    22.39,
+    330.22
+   ],
+   "label": 22.39,
+   "tile": [
+    42.55,
+    42.55
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     22.39,
+     7.83
+    ],
+    [
+     "kt-meta-ava",
+     310.06,
+     42.55
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
+   ]
+  },
+  {
+   "room": "heavyweight",
+   "width": 375,
+   "size": "xxLarge",
+   "row": [
+    24.8,
+    325.41
+   ],
+   "label": 24.8,
+   "tile": [
+    47.11,
+    47.11
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     24.8,
+     8.67
+    ],
+    [
+     "kt-meta-ava",
+     303.09,
+     47.11
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
+   ]
+  },
+  {
+   "room": "heavyweight",
+   "width": 390,
+   "size": "large",
+   "row": [
+    20,
+    350
+   ],
+   "label": 20,
+   "tile": [
+    38,
+    38
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     20,
+     7
+    ],
+    [
+     "kt-meta-ava",
+     332,
+     38
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
+   ]
+  },
+  {
+   "room": "heavyweight",
+   "width": 390,
+   "size": "xLarge",
+   "row": [
+    22.39,
+    345.22
+   ],
+   "label": 22.39,
+   "tile": [
+    42.55,
+    42.55
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     22.39,
+     7.83
+    ],
+    [
+     "kt-meta-ava",
+     325.06,
+     42.55
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
+   ]
+  },
+  {
+   "room": "heavyweight",
+   "width": 390,
+   "size": "xxLarge",
+   "row": [
+    24.8,
+    340.41
+   ],
+   "label": 24.8,
+   "tile": [
+    47.11,
+    47.11
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     24.8,
+     8.67
+    ],
+    [
+     "kt-meta-ava",
+     318.09,
+     47.11
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
+   ]
+  },
+  {
+   "room": "heavyweight",
+   "width": 402,
+   "size": "large",
+   "row": [
+    20,
+    362
+   ],
+   "label": 20,
+   "tile": [
+    38,
+    38
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     20,
+     7
+    ],
+    [
+     "kt-meta-ava",
+     344,
+     38
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
+   ]
+  },
+  {
+   "room": "heavyweight",
+   "width": 402,
+   "size": "xLarge",
+   "row": [
+    22.39,
+    357.22
+   ],
+   "label": 22.39,
+   "tile": [
+    42.55,
+    42.55
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     22.39,
+     7.83
+    ],
+    [
+     "kt-meta-ava",
+     337.06,
+     42.55
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
+   ]
+  },
+  {
+   "room": "heavyweight",
+   "width": 402,
+   "size": "xxLarge",
+   "row": [
+    24.8,
+    352.41
+   ],
+   "label": 24.8,
+   "tile": [
+    47.11,
+    47.11
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     24.8,
+     8.67
+    ],
+    [
+     "kt-meta-ava",
+     330.09,
+     47.11
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
+   ]
+  },
+  {
+   "room": "heavyweight",
+   "width": 440,
+   "size": "large",
+   "row": [
+    20,
+    400
+   ],
+   "label": 20,
+   "tile": [
+    38,
+    38
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     20,
+     7
+    ],
+    [
+     "kt-meta-ava",
+     382,
+     38
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
+   ]
+  },
+  {
+   "room": "heavyweight",
+   "width": 440,
+   "size": "xLarge",
+   "row": [
+    22.39,
+    395.22
+   ],
+   "label": 22.39,
+   "tile": [
+    42.55,
+    42.55
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     22.39,
+     7.83
+    ],
+    [
+     "kt-meta-ava",
+     375.06,
+     42.55
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
+   ]
+  },
+  {
+   "room": "heavyweight",
+   "width": 440,
+   "size": "xxLarge",
+   "row": [
+    24.8,
+    390.41
+   ],
+   "label": 24.8,
+   "tile": [
+    47.11,
+    47.11
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     24.8,
+     8.67
+    ],
+    [
+     "kt-meta-ava",
+     368.09,
+     47.11
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
+   ]
+  },
+  {
+   "room": "dark",
+   "width": 320,
+   "size": "large",
+   "row": [
+    16,
+    288
+   ],
+   "label": 16,
+   "tile": [
+    38,
+    38
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     16,
+     7
+    ],
+    [
+     "kt-meta-ava",
+     266,
+     38
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
+   ]
+  },
+  {
+   "room": "dark",
+   "width": 320,
+   "size": "xLarge",
+   "row": [
+    17.91,
+    284.19
+   ],
+   "label": 17.91,
+   "tile": [
+    42.55,
+    42.55
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     17.91,
+     7.83
+    ],
+    [
+     "kt-meta-ava",
+     259.55,
+     42.55
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
+   ]
+  },
+  {
+   "room": "dark",
+   "width": 320,
+   "size": "xxLarge",
+   "row": [
+    19.83,
+    280.34
+   ],
+   "label": 19.83,
+   "tile": [
+    47.11,
+    47.11
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     19.83,
+     8.67
+    ],
+    [
+     "kt-meta-ava",
+     253.06,
+     47.11
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
+   ]
+  },
+  {
+   "room": "dark",
+   "width": 375,
+   "size": "large",
+   "row": [
+    20,
+    335
+   ],
+   "label": 20,
+   "tile": [
+    38,
+    38
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     20,
+     7
+    ],
+    [
+     "kt-meta-ava",
+     317,
+     38
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
+   ]
+  },
+  {
+   "room": "dark",
+   "width": 375,
+   "size": "xLarge",
+   "row": [
+    22.39,
+    330.22
+   ],
+   "label": 22.39,
+   "tile": [
+    42.55,
+    42.55
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     22.39,
+     7.83
+    ],
+    [
+     "kt-meta-ava",
+     310.06,
+     42.55
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
+   ]
+  },
+  {
+   "room": "dark",
+   "width": 375,
+   "size": "xxLarge",
+   "row": [
+    24.8,
+    325.41
+   ],
+   "label": 24.8,
+   "tile": [
+    47.11,
+    47.11
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     24.8,
+     8.67
+    ],
+    [
+     "kt-meta-ava",
+     303.09,
+     47.11
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
+   ]
+  },
+  {
+   "room": "dark",
+   "width": 390,
+   "size": "large",
+   "row": [
+    20,
+    350
+   ],
+   "label": 20,
+   "tile": [
+    38,
+    38
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     20,
+     7
+    ],
+    [
+     "kt-meta-ava",
+     332,
+     38
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
+   ]
+  },
+  {
+   "room": "dark",
+   "width": 390,
+   "size": "xLarge",
+   "row": [
+    22.39,
+    345.22
+   ],
+   "label": 22.39,
+   "tile": [
+    42.55,
+    42.55
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     22.39,
+     7.83
+    ],
+    [
+     "kt-meta-ava",
+     325.06,
+     42.55
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
+   ]
+  },
+  {
+   "room": "dark",
+   "width": 390,
+   "size": "xxLarge",
+   "row": [
+    24.8,
+    340.41
+   ],
+   "label": 24.8,
+   "tile": [
+    47.11,
+    47.11
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     24.8,
+     8.67
+    ],
+    [
+     "kt-meta-ava",
+     318.09,
+     47.11
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
+   ]
+  },
+  {
+   "room": "dark",
+   "width": 402,
+   "size": "large",
+   "row": [
+    20,
+    362
+   ],
+   "label": 20,
+   "tile": [
+    38,
+    38
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     20,
+     7
+    ],
+    [
+     "kt-meta-ava",
+     344,
+     38
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
+   ]
+  },
+  {
+   "room": "dark",
+   "width": 402,
+   "size": "xLarge",
+   "row": [
+    22.39,
+    357.22
+   ],
+   "label": 22.39,
+   "tile": [
+    42.55,
+    42.55
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     22.39,
+     7.83
+    ],
+    [
+     "kt-meta-ava",
+     337.06,
+     42.55
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
+   ]
+  },
+  {
+   "room": "dark",
+   "width": 402,
+   "size": "xxLarge",
+   "row": [
+    24.8,
+    352.41
+   ],
+   "label": 24.8,
+   "tile": [
+    47.11,
+    47.11
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     24.8,
+     8.67
+    ],
+    [
+     "kt-meta-ava",
+     330.09,
+     47.11
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
+   ]
+  },
+  {
+   "room": "dark",
+   "width": 440,
+   "size": "large",
+   "row": [
+    20,
+    400
+   ],
+   "label": 20,
+   "tile": [
+    38,
+    38
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     20,
+     7
+    ],
+    [
+     "kt-meta-ava",
+     382,
+     38
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
+   ]
+  },
+  {
+   "room": "dark",
+   "width": 440,
+   "size": "xLarge",
+   "row": [
+    22.39,
+    395.22
+   ],
+   "label": 22.39,
+   "tile": [
+    42.55,
+    42.55
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     22.39,
+     7.83
+    ],
+    [
+     "kt-meta-ava",
+     375.06,
+     42.55
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
+   ]
+  },
+  {
+   "room": "dark",
+   "width": 440,
+   "size": "xxLarge",
+   "row": [
+    24.8,
+    390.41
+   ],
+   "label": 24.8,
+   "tile": [
+    47.11,
+    47.11
+   ],
+   "items": [
+    [
+     "kt-meta-label",
+     24.8,
+     8.67
+    ],
+    [
+     "kt-meta-ava",
+     368.09,
+     47.11
+    ]
+   ],
+   "pseudo": [
+    "none",
+    "none"
+   ]
+  }
+ ],
+ "cases": [
+  {
+   "room": "heavyweight",
+   "width": 320,
+   "size": "large",
+   "label": "COACH · WK 06 / 12",
+   "lines": [
+    "COACH · WK 06 / 12"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "heavyweight",
+   "width": 320,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · BUILD",
+   "lines": [
+    "COACH · WK 06 / 12 · BUILD"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "heavyweight",
+   "width": 320,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "heavyweight",
+   "width": 320,
+   "size": "large",
+   "label": "COACH · WK 03 / 12 · FOUNDATION PHASE",
+   "lines": [
+    "COACH · WK 03 / 12 · FOUNDATION",
+    "PHASE"
+   ],
+   "tile": 36.89
+  },
+  {
+   "room": "heavyweight",
+   "width": 320,
+   "size": "large",
+   "label": "COACH · WK 10 / 16 · PEAK & TAPER",
+   "lines": [
+    "COACH · WK 10 / 16 · PEAK & TAPER"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "heavyweight",
+   "width": 320,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY ACCUMULATION",
+   "lines": [
+    "COACH · WK 06 / 12 · HYPERTROPHY",
+    "ACCUMULATION"
+   ],
+   "tile": 30.22
+  },
+  {
+   "room": "heavyweight",
+   "width": 320,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY/STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 ·",
+    "HYPERTROPHY/STRENGTH"
+   ],
+   "tile": 32.81
+  },
+  {
+   "room": "heavyweight",
+   "width": 320,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · STRENGTH-ENDURANCE",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH-",
+    "ENDURANCE"
+   ],
+   "tile": 34.27
+  },
+  {
+   "room": "heavyweight",
+   "width": 320,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · UPPER / LOWER",
+   "lines": [
+    "COACH · WK 06 / 12 · UPPER / LOWER"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "heavyweight",
+   "width": 320,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12",
+   "lines": [
+    "COACH · WK 06 / 12"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "heavyweight",
+   "width": 320,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · BUILD",
+   "lines": [
+    "COACH · WK 06 / 12 · BUILD"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "heavyweight",
+   "width": 320,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "heavyweight",
+   "width": 320,
+   "size": "xLarge",
+   "label": "COACH · WK 03 / 12 · FOUNDATION PHASE",
+   "lines": [
+    "COACH · WK 03 / 12 · FOUNDATION",
+    "PHASE"
+   ],
+   "tile": 36.4
+  },
+  {
+   "room": "heavyweight",
+   "width": 320,
+   "size": "xLarge",
+   "label": "COACH · WK 10 / 16 · PEAK & TAPER",
+   "lines": [
+    "COACH · WK 10 / 16 · PEAK &",
+    "TAPER"
+   ],
+   "tile": 41.42
+  },
+  {
+   "room": "heavyweight",
+   "width": 320,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY ACCUMULATION",
+   "lines": [
+    "COACH · WK 06 / 12 · HYPERTROPHY",
+    "ACCUMULATION"
+   ],
+   "tile": 29.82
+  },
+  {
+   "room": "heavyweight",
+   "width": 320,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY/STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 ·",
+    "HYPERTROPHY/STRENGTH"
+   ],
+   "tile": 32.38
+  },
+  {
+   "room": "heavyweight",
+   "width": 320,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · STRENGTH-ENDURANCE",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH-",
+    "ENDURANCE"
+   ],
+   "tile": 33.81
+  },
+  {
+   "room": "heavyweight",
+   "width": 320,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · UPPER / LOWER",
+   "lines": [
+    "COACH · WK 06 / 12 · UPPER /",
+    "LOWER"
+   ],
+   "tile": 40.29
+  },
+  {
+   "room": "heavyweight",
+   "width": 320,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12",
+   "lines": [
+    "COACH · WK 06 / 12"
+   ],
+   "tile": 47.12
+  },
+  {
+   "room": "heavyweight",
+   "width": 320,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · BUILD",
+   "lines": [
+    "COACH · WK 06 / 12 · BUILD"
+   ],
+   "tile": 47.12
+  },
+  {
+   "room": "heavyweight",
+   "width": 320,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 ·",
+    "STRENGTH"
+   ],
+   "tile": 44.28
+  },
+  {
+   "room": "heavyweight",
+   "width": 320,
+   "size": "xxLarge",
+   "label": "COACH · WK 03 / 12 · FOUNDATION PHASE",
+   "lines": [
+    "COACH · WK 03 / 12 ·",
+    "FOUNDATION PHASE"
+   ],
+   "tile": 35.91
+  },
+  {
+   "room": "heavyweight",
+   "width": 320,
+   "size": "xxLarge",
+   "label": "COACH · WK 10 / 16 · PEAK & TAPER",
+   "lines": [
+    "COACH · WK 10 / 16 · PEAK &",
+    "TAPER"
+   ],
+   "tile": 40.85
+  },
+  {
+   "room": "heavyweight",
+   "width": 320,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY ACCUMULATION",
+   "lines": [
+    "COACH · WK 06 / 12 ·",
+    "HYPERTROPHY ACCUMULATION"
+   ],
+   "tile": 29.43
+  },
+  {
+   "room": "heavyweight",
+   "width": 320,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY/STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 ·",
+    "HYPERTROPHY/STRENGTH"
+   ],
+   "tile": 31.94
+  },
+  {
+   "room": "heavyweight",
+   "width": 320,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · STRENGTH-ENDURANCE",
+   "lines": [
+    "COACH · WK 06 / 12 ·",
+    "STRENGTH-ENDURANCE"
+   ],
+   "tile": 33.35
+  },
+  {
+   "room": "heavyweight",
+   "width": 320,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · UPPER / LOWER",
+   "lines": [
+    "COACH · WK 06 / 12 · UPPER /",
+    "LOWER"
+   ],
+   "tile": 39.74
+  },
+  {
+   "room": "heavyweight",
+   "width": 375,
+   "size": "large",
+   "label": "COACH · WK 06 / 12",
+   "lines": [
+    "COACH · WK 06 / 12"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "heavyweight",
+   "width": 375,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · BUILD",
+   "lines": [
+    "COACH · WK 06 / 12 · BUILD"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "heavyweight",
+   "width": 375,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "heavyweight",
+   "width": 375,
+   "size": "large",
+   "label": "COACH · WK 03 / 12 · FOUNDATION PHASE",
+   "lines": [
+    "COACH · WK 03 / 12 · FOUNDATION PHASE"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "heavyweight",
+   "width": 375,
+   "size": "large",
+   "label": "COACH · WK 10 / 16 · PEAK & TAPER",
+   "lines": [
+    "COACH · WK 10 / 16 · PEAK & TAPER"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "heavyweight",
+   "width": 375,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY ACCUMULATION",
+   "lines": [
+    "COACH · WK 06 / 12 · HYPERTROPHY",
+    "ACCUMULATION"
+   ],
+   "tile": 35.16
+  },
+  {
+   "room": "heavyweight",
+   "width": 375,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY/STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 · HYPERTROPHY/STRENGTH"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "heavyweight",
+   "width": 375,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · STRENGTH-ENDURANCE",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH-ENDURANCE"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "heavyweight",
+   "width": 375,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · UPPER / LOWER",
+   "lines": [
+    "COACH · WK 06 / 12 · UPPER / LOWER"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "heavyweight",
+   "width": 375,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12",
+   "lines": [
+    "COACH · WK 06 / 12"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "heavyweight",
+   "width": 375,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · BUILD",
+   "lines": [
+    "COACH · WK 06 / 12 · BUILD"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "heavyweight",
+   "width": 375,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "heavyweight",
+   "width": 375,
+   "size": "xLarge",
+   "label": "COACH · WK 03 / 12 · FOUNDATION PHASE",
+   "lines": [
+    "COACH · WK 03 / 12 · FOUNDATION",
+    "PHASE"
+   ],
+   "tile": 42.31
+  },
+  {
+   "room": "heavyweight",
+   "width": 375,
+   "size": "xLarge",
+   "label": "COACH · WK 10 / 16 · PEAK & TAPER",
+   "lines": [
+    "COACH · WK 10 / 16 · PEAK & TAPER"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "heavyweight",
+   "width": 375,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY ACCUMULATION",
+   "lines": [
+    "COACH · WK 06 / 12 · HYPERTROPHY",
+    "ACCUMULATION"
+   ],
+   "tile": 34.65
+  },
+  {
+   "room": "heavyweight",
+   "width": 375,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY/STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 ·",
+    "HYPERTROPHY/STRENGTH"
+   ],
+   "tile": 37.64
+  },
+  {
+   "room": "heavyweight",
+   "width": 375,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · STRENGTH-ENDURANCE",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH-",
+    "ENDURANCE"
+   ],
+   "tile": 39.29
+  },
+  {
+   "room": "heavyweight",
+   "width": 375,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · UPPER / LOWER",
+   "lines": [
+    "COACH · WK 06 / 12 · UPPER / LOWER"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "heavyweight",
+   "width": 375,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12",
+   "lines": [
+    "COACH · WK 06 / 12"
+   ],
+   "tile": 47.12
+  },
+  {
+   "room": "heavyweight",
+   "width": 375,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · BUILD",
+   "lines": [
+    "COACH · WK 06 / 12 · BUILD"
+   ],
+   "tile": 47.12
+  },
+  {
+   "room": "heavyweight",
+   "width": 375,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH"
+   ],
+   "tile": 47.12
+  },
+  {
+   "room": "heavyweight",
+   "width": 375,
+   "size": "xxLarge",
+   "label": "COACH · WK 03 / 12 · FOUNDATION PHASE",
+   "lines": [
+    "COACH · WK 03 / 12 · FOUNDATION",
+    "PHASE"
+   ],
+   "tile": 41.7
+  },
+  {
+   "room": "heavyweight",
+   "width": 375,
+   "size": "xxLarge",
+   "label": "COACH · WK 10 / 16 · PEAK & TAPER",
+   "lines": [
+    "COACH · WK 10 / 16 · PEAK & TAPER"
+   ],
+   "tile": 47.12
+  },
+  {
+   "room": "heavyweight",
+   "width": 375,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY ACCUMULATION",
+   "lines": [
+    "COACH · WK 06 / 12 · HYPERTROPHY",
+    "ACCUMULATION"
+   ],
+   "tile": 34.15
+  },
+  {
+   "room": "heavyweight",
+   "width": 375,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY/STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 ·",
+    "HYPERTROPHY/STRENGTH"
+   ],
+   "tile": 37.09
+  },
+  {
+   "room": "heavyweight",
+   "width": 375,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · STRENGTH-ENDURANCE",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH-",
+    "ENDURANCE"
+   ],
+   "tile": 38.71
+  },
+  {
+   "room": "heavyweight",
+   "width": 375,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · UPPER / LOWER",
+   "lines": [
+    "COACH · WK 06 / 12 · UPPER /",
+    "LOWER"
+   ],
+   "tile": 46.14
+  },
+  {
+   "room": "heavyweight",
+   "width": 390,
+   "size": "large",
+   "label": "COACH · WK 06 / 12",
+   "lines": [
+    "COACH · WK 06 / 12"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "heavyweight",
+   "width": 390,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · BUILD",
+   "lines": [
+    "COACH · WK 06 / 12 · BUILD"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "heavyweight",
+   "width": 390,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "heavyweight",
+   "width": 390,
+   "size": "large",
+   "label": "COACH · WK 03 / 12 · FOUNDATION PHASE",
+   "lines": [
+    "COACH · WK 03 / 12 · FOUNDATION PHASE"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "heavyweight",
+   "width": 390,
+   "size": "large",
+   "label": "COACH · WK 10 / 16 · PEAK & TAPER",
+   "lines": [
+    "COACH · WK 10 / 16 · PEAK & TAPER"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "heavyweight",
+   "width": 390,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY ACCUMULATION",
+   "lines": [
+    "COACH · WK 06 / 12 · HYPERTROPHY",
+    "ACCUMULATION"
+   ],
+   "tile": 36.73
+  },
+  {
+   "room": "heavyweight",
+   "width": 390,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY/STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 · HYPERTROPHY/STRENGTH"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "heavyweight",
+   "width": 390,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · STRENGTH-ENDURANCE",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH-ENDURANCE"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "heavyweight",
+   "width": 390,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · UPPER / LOWER",
+   "lines": [
+    "COACH · WK 06 / 12 · UPPER / LOWER"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "heavyweight",
+   "width": 390,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12",
+   "lines": [
+    "COACH · WK 06 / 12"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "heavyweight",
+   "width": 390,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · BUILD",
+   "lines": [
+    "COACH · WK 06 / 12 · BUILD"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "heavyweight",
+   "width": 390,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "heavyweight",
+   "width": 390,
+   "size": "xLarge",
+   "label": "COACH · WK 03 / 12 · FOUNDATION PHASE",
+   "lines": [
+    "COACH · WK 03 / 12 · FOUNDATION PHASE"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "heavyweight",
+   "width": 390,
+   "size": "xLarge",
+   "label": "COACH · WK 10 / 16 · PEAK & TAPER",
+   "lines": [
+    "COACH · WK 10 / 16 · PEAK & TAPER"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "heavyweight",
+   "width": 390,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY ACCUMULATION",
+   "lines": [
+    "COACH · WK 06 / 12 · HYPERTROPHY",
+    "ACCUMULATION"
+   ],
+   "tile": 36.23
+  },
+  {
+   "room": "heavyweight",
+   "width": 390,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY/STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 ·",
+    "HYPERTROPHY/STRENGTH"
+   ],
+   "tile": 39.34
+  },
+  {
+   "room": "heavyweight",
+   "width": 390,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · STRENGTH-ENDURANCE",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH-",
+    "ENDURANCE"
+   ],
+   "tile": 41.08
+  },
+  {
+   "room": "heavyweight",
+   "width": 390,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · UPPER / LOWER",
+   "lines": [
+    "COACH · WK 06 / 12 · UPPER / LOWER"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "heavyweight",
+   "width": 390,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12",
+   "lines": [
+    "COACH · WK 06 / 12"
+   ],
+   "tile": 47.12
+  },
+  {
+   "room": "heavyweight",
+   "width": 390,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · BUILD",
+   "lines": [
+    "COACH · WK 06 / 12 · BUILD"
+   ],
+   "tile": 47.12
+  },
+  {
+   "room": "heavyweight",
+   "width": 390,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH"
+   ],
+   "tile": 47.12
+  },
+  {
+   "room": "heavyweight",
+   "width": 390,
+   "size": "xxLarge",
+   "label": "COACH · WK 03 / 12 · FOUNDATION PHASE",
+   "lines": [
+    "COACH · WK 03 / 12 · FOUNDATION",
+    "PHASE"
+   ],
+   "tile": 43.6
+  },
+  {
+   "room": "heavyweight",
+   "width": 390,
+   "size": "xxLarge",
+   "label": "COACH · WK 10 / 16 · PEAK & TAPER",
+   "lines": [
+    "COACH · WK 10 / 16 · PEAK & TAPER"
+   ],
+   "tile": 47.12
+  },
+  {
+   "room": "heavyweight",
+   "width": 390,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY ACCUMULATION",
+   "lines": [
+    "COACH · WK 06 / 12 · HYPERTROPHY",
+    "ACCUMULATION"
+   ],
+   "tile": 35.73
+  },
+  {
+   "room": "heavyweight",
+   "width": 390,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY/STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 ·",
+    "HYPERTROPHY/STRENGTH"
+   ],
+   "tile": 38.79
+  },
+  {
+   "room": "heavyweight",
+   "width": 390,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · STRENGTH-ENDURANCE",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH-",
+    "ENDURANCE"
+   ],
+   "tile": 40.49
+  },
+  {
+   "room": "heavyweight",
+   "width": 390,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · UPPER / LOWER",
+   "lines": [
+    "COACH · WK 06 / 12 · UPPER / LOWER"
+   ],
+   "tile": 47.12
+  },
+  {
+   "room": "heavyweight",
+   "width": 402,
+   "size": "large",
+   "label": "COACH · WK 06 / 12",
+   "lines": [
+    "COACH · WK 06 / 12"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "heavyweight",
+   "width": 402,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · BUILD",
+   "lines": [
+    "COACH · WK 06 / 12 · BUILD"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "heavyweight",
+   "width": 402,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "heavyweight",
+   "width": 402,
+   "size": "large",
+   "label": "COACH · WK 03 / 12 · FOUNDATION PHASE",
+   "lines": [
+    "COACH · WK 03 / 12 · FOUNDATION PHASE"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "heavyweight",
+   "width": 402,
+   "size": "large",
+   "label": "COACH · WK 10 / 16 · PEAK & TAPER",
+   "lines": [
+    "COACH · WK 10 / 16 · PEAK & TAPER"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "heavyweight",
+   "width": 402,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY ACCUMULATION",
+   "lines": [
+    "COACH · WK 06 / 12 · HYPERTROPHY",
+    "ACCUMULATION"
+   ],
+   "tile": 37.98
+  },
+  {
+   "room": "heavyweight",
+   "width": 402,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY/STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 · HYPERTROPHY/STRENGTH"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "heavyweight",
+   "width": 402,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · STRENGTH-ENDURANCE",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH-ENDURANCE"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "heavyweight",
+   "width": 402,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · UPPER / LOWER",
+   "lines": [
+    "COACH · WK 06 / 12 · UPPER / LOWER"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "heavyweight",
+   "width": 402,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12",
+   "lines": [
+    "COACH · WK 06 / 12"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "heavyweight",
+   "width": 402,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · BUILD",
+   "lines": [
+    "COACH · WK 06 / 12 · BUILD"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "heavyweight",
+   "width": 402,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "heavyweight",
+   "width": 402,
+   "size": "xLarge",
+   "label": "COACH · WK 03 / 12 · FOUNDATION PHASE",
+   "lines": [
+    "COACH · WK 03 / 12 · FOUNDATION PHASE"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "heavyweight",
+   "width": 402,
+   "size": "xLarge",
+   "label": "COACH · WK 10 / 16 · PEAK & TAPER",
+   "lines": [
+    "COACH · WK 10 / 16 · PEAK & TAPER"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "heavyweight",
+   "width": 402,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY ACCUMULATION",
+   "lines": [
+    "COACH · WK 06 / 12 · HYPERTROPHY",
+    "ACCUMULATION"
+   ],
+   "tile": 37.5
+  },
+  {
+   "room": "heavyweight",
+   "width": 402,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY/STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 ·",
+    "HYPERTROPHY/STRENGTH"
+   ],
+   "tile": 40.72
+  },
+  {
+   "room": "heavyweight",
+   "width": 402,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · STRENGTH-ENDURANCE",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH-",
+    "ENDURANCE"
+   ],
+   "tile": 42.5
+  },
+  {
+   "room": "heavyweight",
+   "width": 402,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · UPPER / LOWER",
+   "lines": [
+    "COACH · WK 06 / 12 · UPPER / LOWER"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "heavyweight",
+   "width": 402,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12",
+   "lines": [
+    "COACH · WK 06 / 12"
+   ],
+   "tile": 47.12
+  },
+  {
+   "room": "heavyweight",
+   "width": 402,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · BUILD",
+   "lines": [
+    "COACH · WK 06 / 12 · BUILD"
+   ],
+   "tile": 47.12
+  },
+  {
+   "room": "heavyweight",
+   "width": 402,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH"
+   ],
+   "tile": 47.12
+  },
+  {
+   "room": "heavyweight",
+   "width": 402,
+   "size": "xxLarge",
+   "label": "COACH · WK 03 / 12 · FOUNDATION PHASE",
+   "lines": [
+    "COACH · WK 03 / 12 · FOUNDATION",
+    "PHASE"
+   ],
+   "tile": 45.15
+  },
+  {
+   "room": "heavyweight",
+   "width": 402,
+   "size": "xxLarge",
+   "label": "COACH · WK 10 / 16 · PEAK & TAPER",
+   "lines": [
+    "COACH · WK 10 / 16 · PEAK & TAPER"
+   ],
+   "tile": 47.12
+  },
+  {
+   "room": "heavyweight",
+   "width": 402,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY ACCUMULATION",
+   "lines": [
+    "COACH · WK 06 / 12 · HYPERTROPHY",
+    "ACCUMULATION"
+   ],
+   "tile": 36.98
+  },
+  {
+   "room": "heavyweight",
+   "width": 402,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY/STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 ·",
+    "HYPERTROPHY/STRENGTH"
+   ],
+   "tile": 40.17
+  },
+  {
+   "room": "heavyweight",
+   "width": 402,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · STRENGTH-ENDURANCE",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH-",
+    "ENDURANCE"
+   ],
+   "tile": 41.93
+  },
+  {
+   "room": "heavyweight",
+   "width": 402,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · UPPER / LOWER",
+   "lines": [
+    "COACH · WK 06 / 12 · UPPER / LOWER"
+   ],
+   "tile": 47.12
+  },
+  {
+   "room": "heavyweight",
+   "width": 440,
+   "size": "large",
+   "label": "COACH · WK 06 / 12",
+   "lines": [
+    "COACH · WK 06 / 12"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "heavyweight",
+   "width": 440,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · BUILD",
+   "lines": [
+    "COACH · WK 06 / 12 · BUILD"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "heavyweight",
+   "width": 440,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "heavyweight",
+   "width": 440,
+   "size": "large",
+   "label": "COACH · WK 03 / 12 · FOUNDATION PHASE",
+   "lines": [
+    "COACH · WK 03 / 12 · FOUNDATION PHASE"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "heavyweight",
+   "width": 440,
+   "size": "large",
+   "label": "COACH · WK 10 / 16 · PEAK & TAPER",
+   "lines": [
+    "COACH · WK 10 / 16 · PEAK & TAPER"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "heavyweight",
+   "width": 440,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY ACCUMULATION",
+   "lines": [
+    "COACH · WK 06 / 12 · HYPERTROPHY ACCUMULATION"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "heavyweight",
+   "width": 440,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY/STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 · HYPERTROPHY/STRENGTH"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "heavyweight",
+   "width": 440,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · STRENGTH-ENDURANCE",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH-ENDURANCE"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "heavyweight",
+   "width": 440,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · UPPER / LOWER",
+   "lines": [
+    "COACH · WK 06 / 12 · UPPER / LOWER"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "heavyweight",
+   "width": 440,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12",
+   "lines": [
+    "COACH · WK 06 / 12"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "heavyweight",
+   "width": 440,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · BUILD",
+   "lines": [
+    "COACH · WK 06 / 12 · BUILD"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "heavyweight",
+   "width": 440,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "heavyweight",
+   "width": 440,
+   "size": "xLarge",
+   "label": "COACH · WK 03 / 12 · FOUNDATION PHASE",
+   "lines": [
+    "COACH · WK 03 / 12 · FOUNDATION PHASE"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "heavyweight",
+   "width": 440,
+   "size": "xLarge",
+   "label": "COACH · WK 10 / 16 · PEAK & TAPER",
+   "lines": [
+    "COACH · WK 10 / 16 · PEAK & TAPER"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "heavyweight",
+   "width": 440,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY ACCUMULATION",
+   "lines": [
+    "COACH · WK 06 / 12 · HYPERTROPHY",
+    "ACCUMULATION"
+   ],
+   "tile": 41.48
+  },
+  {
+   "room": "heavyweight",
+   "width": 440,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY/STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 · HYPERTROPHY/STRENGTH"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "heavyweight",
+   "width": 440,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · STRENGTH-ENDURANCE",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH-ENDURANCE"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "heavyweight",
+   "width": 440,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · UPPER / LOWER",
+   "lines": [
+    "COACH · WK 06 / 12 · UPPER / LOWER"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "heavyweight",
+   "width": 440,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12",
+   "lines": [
+    "COACH · WK 06 / 12"
+   ],
+   "tile": 47.12
+  },
+  {
+   "room": "heavyweight",
+   "width": 440,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · BUILD",
+   "lines": [
+    "COACH · WK 06 / 12 · BUILD"
+   ],
+   "tile": 47.12
+  },
+  {
+   "room": "heavyweight",
+   "width": 440,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH"
+   ],
+   "tile": 47.12
+  },
+  {
+   "room": "heavyweight",
+   "width": 440,
+   "size": "xxLarge",
+   "label": "COACH · WK 03 / 12 · FOUNDATION PHASE",
+   "lines": [
+    "COACH · WK 03 / 12 · FOUNDATION PHASE"
+   ],
+   "tile": 47.12
+  },
+  {
+   "room": "heavyweight",
+   "width": 440,
+   "size": "xxLarge",
+   "label": "COACH · WK 10 / 16 · PEAK & TAPER",
+   "lines": [
+    "COACH · WK 10 / 16 · PEAK & TAPER"
+   ],
+   "tile": 47.12
+  },
+  {
+   "room": "heavyweight",
+   "width": 440,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY ACCUMULATION",
+   "lines": [
+    "COACH · WK 06 / 12 · HYPERTROPHY",
+    "ACCUMULATION"
+   ],
+   "tile": 40.98
+  },
+  {
+   "room": "heavyweight",
+   "width": 440,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY/STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 ·",
+    "HYPERTROPHY/STRENGTH"
+   ],
+   "tile": 44.49
+  },
+  {
+   "room": "heavyweight",
+   "width": 440,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · STRENGTH-ENDURANCE",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH-",
+    "ENDURANCE"
+   ],
+   "tile": 46.45
+  },
+  {
+   "room": "heavyweight",
+   "width": 440,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · UPPER / LOWER",
+   "lines": [
+    "COACH · WK 06 / 12 · UPPER / LOWER"
+   ],
+   "tile": 47.12
+  },
+  {
+   "room": "dark",
+   "width": 320,
+   "size": "large",
+   "label": "COACH · WK 06 / 12",
+   "lines": [
+    "COACH · WK 06 / 12"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "dark",
+   "width": 320,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · BUILD",
+   "lines": [
+    "COACH · WK 06 / 12 · BUILD"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "dark",
+   "width": 320,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "dark",
+   "width": 320,
+   "size": "large",
+   "label": "COACH · WK 03 / 12 · FOUNDATION PHASE",
+   "lines": [
+    "COACH · WK 03 / 12 · FOUNDATION",
+    "PHASE"
+   ],
+   "tile": 33.61
+  },
+  {
+   "room": "dark",
+   "width": 320,
+   "size": "large",
+   "label": "COACH · WK 10 / 16 · PEAK & TAPER",
+   "lines": [
+    "COACH · WK 10 / 16 · PEAK &",
+    "TAPER"
+   ],
+   "tile": 36.77
+  },
+  {
+   "room": "dark",
+   "width": 320,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY ACCUMULATION",
+   "lines": [
+    "COACH · WK 06 / 12 · HYPERTROPHY",
+    "ACCUMULATION"
+   ],
+   "tile": 28.75
+  },
+  {
+   "room": "dark",
+   "width": 320,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY/STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 ·",
+    "HYPERTROPHY/STRENGTH"
+   ],
+   "tile": 30.97
+  },
+  {
+   "room": "dark",
+   "width": 320,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · STRENGTH-ENDURANCE",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH-",
+    "ENDURANCE"
+   ],
+   "tile": 32.23
+  },
+  {
+   "room": "dark",
+   "width": 320,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · UPPER / LOWER",
+   "lines": [
+    "COACH · WK 06 / 12 · UPPER /",
+    "LOWER"
+   ],
+   "tile": 35.91
+  },
+  {
+   "room": "dark",
+   "width": 320,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12",
+   "lines": [
+    "COACH · WK 06 / 12"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "dark",
+   "width": 320,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · BUILD",
+   "lines": [
+    "COACH · WK 06 / 12 · BUILD"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "dark",
+   "width": 320,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 ·",
+    "STRENGTH"
+   ],
+   "tile": 40.31
+  },
+  {
+   "room": "dark",
+   "width": 320,
+   "size": "xLarge",
+   "label": "COACH · WK 03 / 12 · FOUNDATION PHASE",
+   "lines": [
+    "COACH · WK 03 / 12 ·",
+    "FOUNDATION PHASE"
+   ],
+   "tile": 33.35
+  },
+  {
+   "room": "dark",
+   "width": 320,
+   "size": "xLarge",
+   "label": "COACH · WK 10 / 16 · PEAK & TAPER",
+   "lines": [
+    "COACH · WK 10 / 16 · PEAK &",
+    "TAPER"
+   ],
+   "tile": 36.48
+  },
+  {
+   "room": "dark",
+   "width": 320,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY ACCUMULATION",
+   "lines": [
+    "COACH · WK 06 / 12 ·",
+    "HYPERTROPHY ACCUMULATION"
+   ],
+   "tile": 28.52
+  },
+  {
+   "room": "dark",
+   "width": 320,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY/STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 ·",
+    "HYPERTROPHY/STRENGTH"
+   ],
+   "tile": 30.74
+  },
+  {
+   "room": "dark",
+   "width": 320,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · STRENGTH-ENDURANCE",
+   "lines": [
+    "COACH · WK 06 / 12 ·",
+    "STRENGTH-ENDURANCE"
+   ],
+   "tile": 31.99
+  },
+  {
+   "room": "dark",
+   "width": 320,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · UPPER / LOWER",
+   "lines": [
+    "COACH · WK 06 / 12 · UPPER",
+    "/ LOWER"
+   ],
+   "tile": 35.64
+  },
+  {
+   "room": "dark",
+   "width": 320,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12",
+   "lines": [
+    "COACH · WK 06 / 12"
+   ],
+   "tile": 47.12
+  },
+  {
+   "room": "dark",
+   "width": 320,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · BUILD",
+   "lines": [
+    "COACH · WK 06 / 12 ·",
+    "BUILD"
+   ],
+   "tile": 43.38
+  },
+  {
+   "room": "dark",
+   "width": 320,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 ·",
+    "STRENGTH"
+   ],
+   "tile": 39.93
+  },
+  {
+   "room": "dark",
+   "width": 320,
+   "size": "xxLarge",
+   "label": "COACH · WK 03 / 12 · FOUNDATION PHASE",
+   "lines": [
+    "COACH · WK 03 / 12 ·",
+    "FOUNDATION PHASE"
+   ],
+   "tile": 33.05
+  },
+  {
+   "room": "dark",
+   "width": 320,
+   "size": "xxLarge",
+   "label": "COACH · WK 10 / 16 · PEAK & TAPER",
+   "lines": [
+    "COACH · WK 10 / 16 ·",
+    "PEAK & TAPER"
+   ],
+   "tile": 36.15
+  },
+  {
+   "room": "dark",
+   "width": 320,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY ACCUMULATION",
+   "lines": [
+    "COACH · WK 06 / 12 ·",
+    "HYPERTROPHY ACCUMULATION"
+   ],
+   "tile": 28.29
+  },
+  {
+   "room": "dark",
+   "width": 320,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY/STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 ·",
+    "HYPERTROPHY/STRENGTH"
+   ],
+   "tile": 30.48
+  },
+  {
+   "room": "dark",
+   "width": 320,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · STRENGTH-ENDURANCE",
+   "lines": [
+    "COACH · WK 06 / 12 ·",
+    "STRENGTH-ENDURANCE"
+   ],
+   "tile": 31.71
+  },
+  {
+   "room": "dark",
+   "width": 320,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · UPPER / LOWER",
+   "lines": [
+    "COACH · WK 06 / 12 ·",
+    "UPPER / LOWER"
+   ],
+   "tile": 35.32
+  },
+  {
+   "room": "dark",
+   "width": 375,
+   "size": "large",
+   "label": "COACH · WK 06 / 12",
+   "lines": [
+    "COACH · WK 06 / 12"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "dark",
+   "width": 375,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · BUILD",
+   "lines": [
+    "COACH · WK 06 / 12 · BUILD"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "dark",
+   "width": 375,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "dark",
+   "width": 375,
+   "size": "large",
+   "label": "COACH · WK 03 / 12 · FOUNDATION PHASE",
+   "lines": [
+    "COACH · WK 03 / 12 · FOUNDATION PHASE"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "dark",
+   "width": 375,
+   "size": "large",
+   "label": "COACH · WK 10 / 16 · PEAK & TAPER",
+   "lines": [
+    "COACH · WK 10 / 16 · PEAK & TAPER"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "dark",
+   "width": 375,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY ACCUMULATION",
+   "lines": [
+    "COACH · WK 06 / 12 · HYPERTROPHY",
+    "ACCUMULATION"
+   ],
+   "tile": 33.14
+  },
+  {
+   "room": "dark",
+   "width": 375,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY/STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 ·",
+    "HYPERTROPHY/STRENGTH"
+   ],
+   "tile": 35.73
+  },
+  {
+   "room": "dark",
+   "width": 375,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · STRENGTH-ENDURANCE",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH-",
+    "ENDURANCE"
+   ],
+   "tile": 37.2
+  },
+  {
+   "room": "dark",
+   "width": 375,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · UPPER / LOWER",
+   "lines": [
+    "COACH · WK 06 / 12 · UPPER / LOWER"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "dark",
+   "width": 375,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12",
+   "lines": [
+    "COACH · WK 06 / 12"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "dark",
+   "width": 375,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · BUILD",
+   "lines": [
+    "COACH · WK 06 / 12 · BUILD"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "dark",
+   "width": 375,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "dark",
+   "width": 375,
+   "size": "xLarge",
+   "label": "COACH · WK 03 / 12 · FOUNDATION PHASE",
+   "lines": [
+    "COACH · WK 03 / 12 · FOUNDATION",
+    "PHASE"
+   ],
+   "tile": 38.46
+  },
+  {
+   "room": "dark",
+   "width": 375,
+   "size": "xLarge",
+   "label": "COACH · WK 10 / 16 · PEAK & TAPER",
+   "lines": [
+    "COACH · WK 10 / 16 · PEAK &",
+    "TAPER"
+   ],
+   "tile": 42.11
+  },
+  {
+   "room": "dark",
+   "width": 375,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY ACCUMULATION",
+   "lines": [
+    "COACH · WK 06 / 12 · HYPERTROPHY",
+    "ACCUMULATION"
+   ],
+   "tile": 32.85
+  },
+  {
+   "room": "dark",
+   "width": 375,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY/STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 ·",
+    "HYPERTROPHY/STRENGTH"
+   ],
+   "tile": 35.43
+  },
+  {
+   "room": "dark",
+   "width": 375,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · STRENGTH-ENDURANCE",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH-",
+    "ENDURANCE"
+   ],
+   "tile": 36.87
+  },
+  {
+   "room": "dark",
+   "width": 375,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · UPPER / LOWER",
+   "lines": [
+    "COACH · WK 06 / 12 · UPPER /",
+    "LOWER"
+   ],
+   "tile": 41.12
+  },
+  {
+   "room": "dark",
+   "width": 375,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12",
+   "lines": [
+    "COACH · WK 06 / 12"
+   ],
+   "tile": 47.12
+  },
+  {
+   "room": "dark",
+   "width": 375,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · BUILD",
+   "lines": [
+    "COACH · WK 06 / 12 · BUILD"
+   ],
+   "tile": 47.12
+  },
+  {
+   "room": "dark",
+   "width": 375,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 ·",
+    "STRENGTH"
+   ],
+   "tile": 46.07
+  },
+  {
+   "room": "dark",
+   "width": 375,
+   "size": "xxLarge",
+   "label": "COACH · WK 03 / 12 · FOUNDATION PHASE",
+   "lines": [
+    "COACH · WK 03 / 12 ·",
+    "FOUNDATION PHASE"
+   ],
+   "tile": 38.07
+  },
+  {
+   "room": "dark",
+   "width": 375,
+   "size": "xxLarge",
+   "label": "COACH · WK 10 / 16 · PEAK & TAPER",
+   "lines": [
+    "COACH · WK 10 / 16 · PEAK &",
+    "TAPER"
+   ],
+   "tile": 41.68
+  },
+  {
+   "room": "dark",
+   "width": 375,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY ACCUMULATION",
+   "lines": [
+    "COACH · WK 06 / 12 ·",
+    "HYPERTROPHY ACCUMULATION"
+   ],
+   "tile": 32.54
+  },
+  {
+   "room": "dark",
+   "width": 375,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY/STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 ·",
+    "HYPERTROPHY/STRENGTH"
+   ],
+   "tile": 35.07
+  },
+  {
+   "room": "dark",
+   "width": 375,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · STRENGTH-ENDURANCE",
+   "lines": [
+    "COACH · WK 06 / 12 ·",
+    "STRENGTH-ENDURANCE"
+   ],
+   "tile": 36.51
+  },
+  {
+   "room": "dark",
+   "width": 375,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · UPPER / LOWER",
+   "lines": [
+    "COACH · WK 06 / 12 · UPPER /",
+    "LOWER"
+   ],
+   "tile": 40.71
+  },
+  {
+   "room": "dark",
+   "width": 390,
+   "size": "large",
+   "label": "COACH · WK 06 / 12",
+   "lines": [
+    "COACH · WK 06 / 12"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "dark",
+   "width": 390,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · BUILD",
+   "lines": [
+    "COACH · WK 06 / 12 · BUILD"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "dark",
+   "width": 390,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "dark",
+   "width": 390,
+   "size": "large",
+   "label": "COACH · WK 03 / 12 · FOUNDATION PHASE",
+   "lines": [
+    "COACH · WK 03 / 12 · FOUNDATION PHASE"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "dark",
+   "width": 390,
+   "size": "large",
+   "label": "COACH · WK 10 / 16 · PEAK & TAPER",
+   "lines": [
+    "COACH · WK 10 / 16 · PEAK & TAPER"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "dark",
+   "width": 390,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY ACCUMULATION",
+   "lines": [
+    "COACH · WK 06 / 12 · HYPERTROPHY",
+    "ACCUMULATION"
+   ],
+   "tile": 34.55
+  },
+  {
+   "room": "dark",
+   "width": 390,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY/STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 ·",
+    "HYPERTROPHY/STRENGTH"
+   ],
+   "tile": 37.25
+  },
+  {
+   "room": "dark",
+   "width": 390,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · STRENGTH-ENDURANCE",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH-ENDURANCE"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "dark",
+   "width": 390,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · UPPER / LOWER",
+   "lines": [
+    "COACH · WK 06 / 12 · UPPER / LOWER"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "dark",
+   "width": 390,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12",
+   "lines": [
+    "COACH · WK 06 / 12"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "dark",
+   "width": 390,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · BUILD",
+   "lines": [
+    "COACH · WK 06 / 12 · BUILD"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "dark",
+   "width": 390,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "dark",
+   "width": 390,
+   "size": "xLarge",
+   "label": "COACH · WK 03 / 12 · FOUNDATION PHASE",
+   "lines": [
+    "COACH · WK 03 / 12 · FOUNDATION",
+    "PHASE"
+   ],
+   "tile": 40.12
+  },
+  {
+   "room": "dark",
+   "width": 390,
+   "size": "xLarge",
+   "label": "COACH · WK 10 / 16 · PEAK & TAPER",
+   "lines": [
+    "COACH · WK 10 / 16 · PEAK & TAPER"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "dark",
+   "width": 390,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY ACCUMULATION",
+   "lines": [
+    "COACH · WK 06 / 12 · HYPERTROPHY",
+    "ACCUMULATION"
+   ],
+   "tile": 34.26
+  },
+  {
+   "room": "dark",
+   "width": 390,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY/STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 ·",
+    "HYPERTROPHY/STRENGTH"
+   ],
+   "tile": 36.95
+  },
+  {
+   "room": "dark",
+   "width": 390,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · STRENGTH-ENDURANCE",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH-",
+    "ENDURANCE"
+   ],
+   "tile": 38.46
+  },
+  {
+   "room": "dark",
+   "width": 390,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · UPPER / LOWER",
+   "lines": [
+    "COACH · WK 06 / 12 · UPPER / LOWER"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "dark",
+   "width": 390,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12",
+   "lines": [
+    "COACH · WK 06 / 12"
+   ],
+   "tile": 47.12
+  },
+  {
+   "room": "dark",
+   "width": 390,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · BUILD",
+   "lines": [
+    "COACH · WK 06 / 12 · BUILD"
+   ],
+   "tile": 47.12
+  },
+  {
+   "room": "dark",
+   "width": 390,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH"
+   ],
+   "tile": 47.12
+  },
+  {
+   "room": "dark",
+   "width": 390,
+   "size": "xxLarge",
+   "label": "COACH · WK 03 / 12 · FOUNDATION PHASE",
+   "lines": [
+    "COACH · WK 03 / 12 ·",
+    "FOUNDATION PHASE"
+   ],
+   "tile": 39.76
+  },
+  {
+   "room": "dark",
+   "width": 390,
+   "size": "xxLarge",
+   "label": "COACH · WK 10 / 16 · PEAK & TAPER",
+   "lines": [
+    "COACH · WK 10 / 16 · PEAK &",
+    "TAPER"
+   ],
+   "tile": 43.53
+  },
+  {
+   "room": "dark",
+   "width": 390,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY ACCUMULATION",
+   "lines": [
+    "COACH · WK 06 / 12 ·",
+    "HYPERTROPHY ACCUMULATION"
+   ],
+   "tile": 33.95
+  },
+  {
+   "room": "dark",
+   "width": 390,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY/STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 ·",
+    "HYPERTROPHY/STRENGTH"
+   ],
+   "tile": 36.62
+  },
+  {
+   "room": "dark",
+   "width": 390,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · STRENGTH-ENDURANCE",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH-",
+    "ENDURANCE"
+   ],
+   "tile": 38.12
+  },
+  {
+   "room": "dark",
+   "width": 390,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · UPPER / LOWER",
+   "lines": [
+    "COACH · WK 06 / 12 · UPPER /",
+    "LOWER"
+   ],
+   "tile": 42.51
+  },
+  {
+   "room": "dark",
+   "width": 402,
+   "size": "large",
+   "label": "COACH · WK 06 / 12",
+   "lines": [
+    "COACH · WK 06 / 12"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "dark",
+   "width": 402,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · BUILD",
+   "lines": [
+    "COACH · WK 06 / 12 · BUILD"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "dark",
+   "width": 402,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "dark",
+   "width": 402,
+   "size": "large",
+   "label": "COACH · WK 03 / 12 · FOUNDATION PHASE",
+   "lines": [
+    "COACH · WK 03 / 12 · FOUNDATION PHASE"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "dark",
+   "width": 402,
+   "size": "large",
+   "label": "COACH · WK 10 / 16 · PEAK & TAPER",
+   "lines": [
+    "COACH · WK 10 / 16 · PEAK & TAPER"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "dark",
+   "width": 402,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY ACCUMULATION",
+   "lines": [
+    "COACH · WK 06 / 12 · HYPERTROPHY",
+    "ACCUMULATION"
+   ],
+   "tile": 35.66
+  },
+  {
+   "room": "dark",
+   "width": 402,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY/STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 · HYPERTROPHY/STRENGTH"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "dark",
+   "width": 402,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · STRENGTH-ENDURANCE",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH-ENDURANCE"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "dark",
+   "width": 402,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · UPPER / LOWER",
+   "lines": [
+    "COACH · WK 06 / 12 · UPPER / LOWER"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "dark",
+   "width": 402,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12",
+   "lines": [
+    "COACH · WK 06 / 12"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "dark",
+   "width": 402,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · BUILD",
+   "lines": [
+    "COACH · WK 06 / 12 · BUILD"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "dark",
+   "width": 402,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "dark",
+   "width": 402,
+   "size": "xLarge",
+   "label": "COACH · WK 03 / 12 · FOUNDATION PHASE",
+   "lines": [
+    "COACH · WK 03 / 12 · FOUNDATION",
+    "PHASE"
+   ],
+   "tile": 41.47
+  },
+  {
+   "room": "dark",
+   "width": 402,
+   "size": "xLarge",
+   "label": "COACH · WK 10 / 16 · PEAK & TAPER",
+   "lines": [
+    "COACH · WK 10 / 16 · PEAK & TAPER"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "dark",
+   "width": 402,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY ACCUMULATION",
+   "lines": [
+    "COACH · WK 06 / 12 · HYPERTROPHY",
+    "ACCUMULATION"
+   ],
+   "tile": 35.4
+  },
+  {
+   "room": "dark",
+   "width": 402,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY/STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 ·",
+    "HYPERTROPHY/STRENGTH"
+   ],
+   "tile": 38.18
+  },
+  {
+   "room": "dark",
+   "width": 402,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · STRENGTH-ENDURANCE",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH-",
+    "ENDURANCE"
+   ],
+   "tile": 39.75
+  },
+  {
+   "room": "dark",
+   "width": 402,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · UPPER / LOWER",
+   "lines": [
+    "COACH · WK 06 / 12 · UPPER / LOWER"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "dark",
+   "width": 402,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12",
+   "lines": [
+    "COACH · WK 06 / 12"
+   ],
+   "tile": 47.12
+  },
+  {
+   "room": "dark",
+   "width": 402,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · BUILD",
+   "lines": [
+    "COACH · WK 06 / 12 · BUILD"
+   ],
+   "tile": 47.12
+  },
+  {
+   "room": "dark",
+   "width": 402,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH"
+   ],
+   "tile": 47.12
+  },
+  {
+   "room": "dark",
+   "width": 402,
+   "size": "xxLarge",
+   "label": "COACH · WK 03 / 12 · FOUNDATION PHASE",
+   "lines": [
+    "COACH · WK 03 / 12 · FOUNDATION",
+    "PHASE"
+   ],
+   "tile": 41.09
+  },
+  {
+   "room": "dark",
+   "width": 402,
+   "size": "xxLarge",
+   "label": "COACH · WK 10 / 16 · PEAK & TAPER",
+   "lines": [
+    "COACH · WK 10 / 16 · PEAK &",
+    "TAPER"
+   ],
+   "tile": 44.99
+  },
+  {
+   "room": "dark",
+   "width": 402,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY ACCUMULATION",
+   "lines": [
+    "COACH · WK 06 / 12 · HYPERTROPHY",
+    "ACCUMULATION"
+   ],
+   "tile": 35.09
+  },
+  {
+   "room": "dark",
+   "width": 402,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY/STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 ·",
+    "HYPERTROPHY/STRENGTH"
+   ],
+   "tile": 37.84
+  },
+  {
+   "room": "dark",
+   "width": 402,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · STRENGTH-ENDURANCE",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH-",
+    "ENDURANCE"
+   ],
+   "tile": 39.4
+  },
+  {
+   "room": "dark",
+   "width": 402,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · UPPER / LOWER",
+   "lines": [
+    "COACH · WK 06 / 12 · UPPER /",
+    "LOWER"
+   ],
+   "tile": 43.95
+  },
+  {
+   "room": "dark",
+   "width": 440,
+   "size": "large",
+   "label": "COACH · WK 06 / 12",
+   "lines": [
+    "COACH · WK 06 / 12"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "dark",
+   "width": 440,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · BUILD",
+   "lines": [
+    "COACH · WK 06 / 12 · BUILD"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "dark",
+   "width": 440,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "dark",
+   "width": 440,
+   "size": "large",
+   "label": "COACH · WK 03 / 12 · FOUNDATION PHASE",
+   "lines": [
+    "COACH · WK 03 / 12 · FOUNDATION PHASE"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "dark",
+   "width": 440,
+   "size": "large",
+   "label": "COACH · WK 10 / 16 · PEAK & TAPER",
+   "lines": [
+    "COACH · WK 10 / 16 · PEAK & TAPER"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "dark",
+   "width": 440,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY ACCUMULATION",
+   "lines": [
+    "COACH · WK 06 / 12 · HYPERTROPHY ACCUMULATION"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "dark",
+   "width": 440,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY/STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 · HYPERTROPHY/STRENGTH"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "dark",
+   "width": 440,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · STRENGTH-ENDURANCE",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH-ENDURANCE"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "dark",
+   "width": 440,
+   "size": "large",
+   "label": "COACH · WK 06 / 12 · UPPER / LOWER",
+   "lines": [
+    "COACH · WK 06 / 12 · UPPER / LOWER"
+   ],
+   "tile": 38
+  },
+  {
+   "room": "dark",
+   "width": 440,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12",
+   "lines": [
+    "COACH · WK 06 / 12"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "dark",
+   "width": 440,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · BUILD",
+   "lines": [
+    "COACH · WK 06 / 12 · BUILD"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "dark",
+   "width": 440,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "dark",
+   "width": 440,
+   "size": "xLarge",
+   "label": "COACH · WK 03 / 12 · FOUNDATION PHASE",
+   "lines": [
+    "COACH · WK 03 / 12 · FOUNDATION PHASE"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "dark",
+   "width": 440,
+   "size": "xLarge",
+   "label": "COACH · WK 10 / 16 · PEAK & TAPER",
+   "lines": [
+    "COACH · WK 10 / 16 · PEAK & TAPER"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "dark",
+   "width": 440,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY ACCUMULATION",
+   "lines": [
+    "COACH · WK 06 / 12 · HYPERTROPHY",
+    "ACCUMULATION"
+   ],
+   "tile": 38.97
+  },
+  {
+   "room": "dark",
+   "width": 440,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY/STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 ·",
+    "HYPERTROPHY/STRENGTH"
+   ],
+   "tile": 42.04
+  },
+  {
+   "room": "dark",
+   "width": 440,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · STRENGTH-ENDURANCE",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH-ENDURANCE"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "dark",
+   "width": 440,
+   "size": "xLarge",
+   "label": "COACH · WK 06 / 12 · UPPER / LOWER",
+   "lines": [
+    "COACH · WK 06 / 12 · UPPER / LOWER"
+   ],
+   "tile": 42.56
+  },
+  {
+   "room": "dark",
+   "width": 440,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12",
+   "lines": [
+    "COACH · WK 06 / 12"
+   ],
+   "tile": 47.12
+  },
+  {
+   "room": "dark",
+   "width": 440,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · BUILD",
+   "lines": [
+    "COACH · WK 06 / 12 · BUILD"
+   ],
+   "tile": 47.12
+  },
+  {
+   "room": "dark",
+   "width": 440,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH"
+   ],
+   "tile": 47.12
+  },
+  {
+   "room": "dark",
+   "width": 440,
+   "size": "xxLarge",
+   "label": "COACH · WK 03 / 12 · FOUNDATION PHASE",
+   "lines": [
+    "COACH · WK 03 / 12 · FOUNDATION",
+    "PHASE"
+   ],
+   "tile": 45.32
+  },
+  {
+   "room": "dark",
+   "width": 440,
+   "size": "xxLarge",
+   "label": "COACH · WK 10 / 16 · PEAK & TAPER",
+   "lines": [
+    "COACH · WK 10 / 16 · PEAK & TAPER"
+   ],
+   "tile": 47.12
+  },
+  {
+   "room": "dark",
+   "width": 440,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY ACCUMULATION",
+   "lines": [
+    "COACH · WK 06 / 12 · HYPERTROPHY",
+    "ACCUMULATION"
+   ],
+   "tile": 38.68
+  },
+  {
+   "room": "dark",
+   "width": 440,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · HYPERTROPHY/STRENGTH",
+   "lines": [
+    "COACH · WK 06 / 12 ·",
+    "HYPERTROPHY/STRENGTH"
+   ],
+   "tile": 41.73
+  },
+  {
+   "room": "dark",
+   "width": 440,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · STRENGTH-ENDURANCE",
+   "lines": [
+    "COACH · WK 06 / 12 · STRENGTH-",
+    "ENDURANCE"
+   ],
+   "tile": 43.45
+  },
+  {
+   "room": "dark",
+   "width": 440,
+   "size": "xxLarge",
+   "label": "COACH · WK 06 / 12 · UPPER / LOWER",
+   "lines": [
+    "COACH · WK 06 / 12 · UPPER / LOWER"
+   ],
+   "tile": 47.12
+  }
+ ]
+}

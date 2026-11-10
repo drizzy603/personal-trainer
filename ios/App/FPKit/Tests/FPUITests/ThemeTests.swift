@@ -106,6 +106,62 @@ final class ThemeTests: XCTestCase {
         XCTAssertEqual(big.uiFont(.display, 74, 800).pointSize, 74 * 1.24, accuracy: 0.0001)
     }
 
+    /// The repository's root, from this file in the source tree (a simulator shares the Mac's disk).
+    static let repo: URL = (0..<6).reduce(URL(fileURLWithPath: #filePath)) { url, _ in url.deletingLastPathComponent() }
+
+    /// Every static face kerns as the web's own font does: each TTF the native chat and hub register
+    /// (`FPUI/Resources/Fonts`) and the rest Live Activity bundles (`TrovoTimerWidget/Fonts`) sets pairs with a capital
+    /// A, and the others, at the widths the web's latin woff2 sets them at that weight (the face the browser draws
+    /// those letters from, `assets/fonts`), and still draws latin-ext's letters itself. mkfonts.py merges the latin
+    /// and latin-ext subsets into each face; when the two shared a code point, fontTools' merger swapped latin's glyph
+    /// for latin-ext's copy in every Latin run (a locl lookup to A.1), which no kerning pair names: "TA" set 8.4 pt
+    /// wide of the web's at 100 pt in Archivo Bold, and Heavyweight's meta label broke where the web's did not.
+    func testEveryFaceKernsAsTheWebsFontDoes() throws {
+        let stems = ["AntonFP": "anton", "ArchivoFP": "archivo", "InterFP": "inter-var", "JetBrainsMonoFP": "jbm-var"]
+        let weights = ["Regular": 400, "Medium": 500, "SemiBold": 600, "Bold": 700, "ExtraBold": 800, "Clock": 250]
+        let folders = ["ios/App/FPKit/Sources/FPUI/Resources/Fonts", "ios/App/TrovoTimerWidget/Fonts"]
+        let runs = ["TA", "AT", "AV", "VA", "AY", "LA", "CA", "To", "Yo", "LT", "AVATAR", "COACH", "PLAN CHANGES", "WK 06 / 12"]
+        func font(_ url: URL, weight: Int?) throws -> CTFont {
+            let data = try Data(contentsOf: url)
+            let all = CTFontManagerCreateFontDescriptorsFromData(data as CFData) as? [CTFontDescriptor] ?? []
+            let d = try XCTUnwrap(all.first, "CoreText reads \(url.lastPathComponent)")
+            let f = CTFontCreateWithFontDescriptor(d, 100, nil)
+            let wght = 0x7767_6874   // 'wght'
+            let axes = CTFontCopyVariationAxes(f) as? [[CFString: Any]] ?? []
+            guard let weight, axes.contains(where: { ($0[kCTFontVariationAxisIdentifierKey] as? Int) == wght }) else { return f }
+            return CTFontCreateWithFontDescriptor(CTFontDescriptorCreateCopyWithVariation(d, wght as CFNumber, CGFloat(weight)), 100, nil)
+        }
+        func width(_ s: String, _ f: CTFont) -> Double {
+            let line = CTLineCreateWithAttributedString(NSAttributedString(string: s, attributes: [.font: f as UIFont]))
+            return CTLineGetTypographicBounds(line, nil, nil, nil)
+        }
+        var faces = 0
+        for folder in folders {
+            let dir = Self.repo.appendingPathComponent(folder, isDirectory: true)
+            let files = try FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil).filter { $0.pathExtension == "ttf" }
+            XCTAssertFalse(files.isEmpty, folder)
+            for url in files {
+                let ps = url.deletingPathExtension().lastPathComponent
+                let parts = ps.split(separator: "-").map(String.init)
+                let stem = try XCTUnwrap(stems[parts[0]], "\(ps): a family mkfonts.py makes")
+                let weight = try XCTUnwrap(weights[parts.last ?? ""], "\(ps): a style mkfonts.py makes")
+                let face = try font(url, weight: nil)
+                let web = try font(Self.repo.appendingPathComponent("assets/fonts/\(stem)-latin.woff2"), weight: weight)
+                for run in runs {
+                    // (a static face's advances are whole font units; the web's instance interpolates them: 0.23 pt
+                    // apart at most over these runs, where a lost kerning pair is 2.5 to 8.8 pt)
+                    XCTAssertEqual(width(run, face), width(run, web), accuracy: 0.5,
+                                   "\(folder)/\(ps): \(run.debugDescription) is set at the web's width at 100 pt")
+                }
+                var chars = Array("Łydka Čučoriedka Ąę".utf16)
+                var glyphs = [CGGlyph](repeating: 0, count: chars.count)
+                XCTAssertTrue(CTFontGetGlyphsForCharacters(face, &chars, &glyphs, chars.count), "\(ps): latin-ext's letters are its own")
+                faces += 1
+            }
+        }
+        XCTAssertGreaterThanOrEqual(faces, 21, "every face of both sets")
+    }
+
     func testAntonIsReallyDrawn() {
         // the face is really used, not the system fallback a missing family gets without a word
         // (Fonts.swift: an unbundled family draws the system face at the weight asked)

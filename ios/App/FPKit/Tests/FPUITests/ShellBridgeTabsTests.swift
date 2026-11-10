@@ -26,6 +26,8 @@ final class TabsScene {
     var root: RootTabController?
     /// VoiceOver's screen changes: "web" (the web view), "top" (the Coach stack's top view), "view" (another), "nil".
     var posts: [String] = []
+    /// The stand-in page loaded in the web view (`load`).
+    var pageUp = false
 
     init(bridge: ShellBridge) {
         self.bridge = bridge
@@ -174,8 +176,12 @@ final class ShellBridgeTabsTests: XCTestCase {
 
     /// A build 61 bridge (a new home unless one is given), on iOS 27, the app in use. `net`: the WAITING Coach tab's net;
     /// a minute unless a case is about it (`ShellBridge.coachNetSeconds`, 3 s), since the stand-in page never declares
-    /// `coachHome` and the cases before H8's would otherwise see the tab turn WEB under them.
-    private func makeBridge(home: Home? = nil, linkConfig: LinkState.Config = LinkState.Config(), net: TimeInterval = 60) -> ShellBridge {
+    /// `coachHome` and the cases before H8's would otherwise see the tab turn WEB under them. `linkConfig`: no hello
+    /// deadline to speak of (`ShellBridgeTests.patient`) unless a case is about it (test 17): `load` gives the stand-in
+    /// page up to 100 s on CI, and a hello said 15 s after its document started is late: every piece tripped, the root
+    /// fallen back `no-hello`, no `tabs.select` for a tap and `selectTab` refused `off` (test 2's four lines in CI's run
+    /// 42522381728; a hello said 16 s after the load gives the same four).
+    private func makeBridge(home: Home? = nil, linkConfig: LinkState.Config = ShellBridgeTests.patient, net: TimeInterval = 60) -> ShellBridge {
         let h = home ?? makeHome()
         let b = ShellBridge(defaults: h.defaults, folder: h.folder, shellBuild: "61", linkConfig: linkConfig)
         b.osMajor = { 27 }
@@ -234,7 +240,10 @@ final class ShellBridgeTabsTests: XCTestCase {
         while Date() < deadline {
             try await Task.sleep(nanoseconds: 50_000_000)
             let ready = "typeof window.FPScreens === 'object' && typeof window.__fpOld === 'undefined'"
-            if !s.webView.isLoading, (try? await s.webView.evaluateJavaScript(ready)) as? Bool == true { return }
+            if !s.webView.isLoading, (try? await s.webView.evaluateJavaScript(ready)) as? Bool == true {
+                s.pageUp = true
+                return
+            }
         }
         throw PageDidNotLoad()
     }
@@ -416,8 +425,39 @@ final class ShellBridgeTabsTests: XCTestCase {
     private func expect(_ what: @autoclosure () -> String, within timeout: Double = 4, file: StaticString = #filePath, line: UInt = #line,
                         _ ok: () async -> Bool) async throws -> Bool {
         let done = try await until(timeout, ok)
-        if !done { XCTFail("never: " + what(), file: file, line: line) }
+        if !done { XCTFail("never: " + what() + (await silentPages()), file: file, line: line) }
         return done
+    }
+
+    /// For a wait that ran out: says so when a scene's stand-in page is no longer there to answer (its `FPScreens` gone
+    /// with a web process WebKit started over, or no answer to a script in 5 s). The case fails either way (a page that
+    /// stops answering is what `tabs` trips on, and the case cannot tell a machine that took the page's process from a
+    /// shell that stalled it), but its line then names the likelier cause on a shared runner. CI run 42522381728's
+    /// test02 was first read as such a page: it was a hello said after the link's deadline (`ShellBridgeTests.patient`),
+    /// and "Client not entitled" only the last error the test host's throw hook had seen (ThrownErrors.swift).
+    private func silentPages() async -> String {
+        for s in scenes where s.pageUp && s.webView.live {
+            if !(await pageAnswers(s)) {
+                return " (the stand-in page is gone or no longer answers: its WebKit process ended or stalled, the machine's doing unless the case stalls it)"
+            }
+        }
+        return ""
+    }
+
+    private func pageAnswers(_ s: TabsScene, within seconds: Double = 5) async -> Bool {
+        await withCheckedContinuation { (c: CheckedContinuation<Bool, Never>) in
+            var open = true   // the main thread's alone: the answer and the timer both come there
+            s.webView.evaluateJavaScript("typeof window.FPScreens === 'object'") { value, _ in
+                guard open else { return }
+                open = false
+                c.resume(returning: value as? Bool == true)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + seconds) {
+                guard open else { return }
+                open = false
+                c.resume(returning: false)
+            }
+        }
     }
 
     /// Before a read that says the page heard nothing (more): the link idle (nothing queued for the page and none on its
@@ -428,6 +468,33 @@ final class ShellBridgeTabsTests: XCTestCase {
         try await expect("the link idle", within: 10, file: file, line: line) {
             b.pageLink.pending == 0 && b.screens.describe()["busy"] as? Bool == false
         }
+    }
+
+    /// For a case that makes its timeouts by hand (`timeOut`): the link's own clock out of the way (2 s -> 2 min), so
+    /// nothing times out but what the case times out. A clock scaled down instead (0.1: 0.2 s) is as short for every
+    /// answer the case waits for, the confirming ping's and the answered restate's included, and a loaded machine lets
+    /// those run out too: GitHub's runners did (a ping answered 130 ms after its 0.2 s, counted with its hold; two such
+    /// trip `tabs`).
+    private static let noClock: Double = 60
+
+    /// The page lets the `name` now in the link time out. Once the page has it (sent, the newest of its kind in
+    /// `window.__got`, unanswered) its timeout comes at once (`PageLink.timeOutInFlight`): no clock to wait for and
+    /// none to race. Fails the case when no intent of that name reaches the page in time.
+    private func timeOut(_ s: TabsScene, _ name: String, file: StaticString = #filePath, line: UInt = #line) async throws {
+        let link = try XCTUnwrap(s.binding, "a binding", file: file, line: line).pageLink
+        var sent = 0, inPage = 0
+        let ready = try await until(15) {
+            inPage = await self.calls(s, name).count
+            // read after the page's answer, in the turn the timeout is made in: the link as it is now
+            guard link.inFlightName == name, let boot = link.boot else { return false }
+            sent = link.records.filter { $0.name == name && $0.boot == boot && $0.sent }.count
+            return inPage == sent
+        }
+        guard ready else {
+            return XCTFail("never: \(name) in the page, unanswered (in the link: \(link.inFlightName ?? "none"), sent \(sent), in the page \(inPage))",
+                           file: file, line: line)
+        }
+        XCTAssertTrue(link.timeOutInFlight(name), "\(name) was in the page", file: file, line: line)
     }
 
     // MARK: 0. The root decision
@@ -679,14 +746,16 @@ final class ShellBridgeTabsTests: XCTestCase {
 
     /// Contract 4.3, D12: a `tabs.select` the page lets time out is never resent; once the link is idle (after the held
     /// timeout's ping, 4.4) one `tabs.select` with the current tab and a newer seq goes. A failed `tabs.bar` the same, with
-    /// a new rev. Nothing counts: a busy page is not a broken one.
+    /// a new rev. Nothing counts: a busy page is not a broken one. The case makes each timeout itself once the page has
+    /// the intent (`timeOut`), so the ping and the restate are answered on no clock of the case's.
     func test05AFailedTabsSelectOrTabsBarIsRestatedOnceTheLinkIsIdleNeverResent() async throws {
         let s = try await scene(first: "log")
         let root = try XCTUnwrap(s.root)
         let b = try XCTUnwrap(s.binding)
-        b.pageLink.timeoutScale = 0.1   // 2 s -> 0.2 s
+        b.pageLink.timeoutScale = Self.noClock
         await setHow(s, "tabs.select", ["never"])
         tap(s, "progress")
+        try await timeOut(s, "tabs.select")
         try await expect("the restate, answered") { await self.calls(s, "tabs.select").count == 2 && b.pageLink.pending == 0 }
         let names = await got(s).map(\.name).filter { $0 == "tabs.select" || $0 == "ping" }
         XCTAssertEqual(names, ["tabs.select", "ping", "tabs.select"], "the failed one, its ping, the restate")
@@ -704,6 +773,7 @@ final class ShellBridgeTabsTests: XCTestCase {
         await setHow(s, "tabs.select", ["never", "ok"])
         tap(s, "settings")
         tap(s, "log")
+        try await timeOut(s, "tabs.select")   // the first tap's; the second waits behind it
         try await expect("both taps' tabs.select and the second ping ended") {
             b.pageLink.pending == 0 && b.pageLink.records.filter { $0.name == "ping" }.count == 2
         }
@@ -721,11 +791,12 @@ final class ShellBridgeTabsTests: XCTestCase {
         _ = try await message(s, "sheets", ["open": true]).get()
         await setHow(s, "tabs.bar", ["never"])
         tap(s, "log")
+        try await timeOut(s, "tabs.bar")
         try await expect("the bar's restate, answered") { await self.calls(s, "tabs.bar").count == 2 && b.pageLink.pending == 0 }
         let bars = await calls(s, "tabs.bar")
         XCTAssertEqual(bars.map(\.h), [0, 0])
-        XCTAssertEqual(bars.map(\.safe), [bars[0].safe, bars[0].safe])
-        XCTAssertEqual(bars[1].rev, (bars[0].rev ?? 0) + 1, "the restate takes a new rev")
+        XCTAssertEqual(bars.map(\.safe), [bars.first?.safe, bars.first?.safe])
+        XCTAssertEqual(bars.count == 2 ? bars[1].rev : nil, (bars.first?.rev ?? 0) + 1, "the restate takes a new rev")
         XCTAssertEqual(b.pageLink.records.filter { $0.name == "tabs.bar" }.map(\.outcome), ["failed timeout", "done"])
         let selects = await calls(s, "tabs.select")
         XCTAssertEqual(selects.count, 5, "the tap's own tabs.select went once and was answered: no restate for it")
@@ -737,19 +808,27 @@ final class ShellBridgeTabsTests: XCTestCase {
     /// hears at most three restates in a row (each timeout held, then dropped uncounted by its ping's answer), then none
     /// until the page answers one; an answer starts the count again. The same for `tabs.bar`. Nothing trips: a page
     /// broken this way keeps the bar, but no longer hears a `tabs.select` and a ping every timeout for the rest of the
-    /// document.
+    /// document. The case makes each timeout itself once the page has the intent (`timeOut`), so every ping is answered
+    /// on no clock of the case's; a restate past the cap would go in the turn its ping is answered, so the link idle
+    /// after the last ping says none went (the short sleeps after it stay as a lower bound).
     func test05bRestatesStopAfterThreeInARowThatNeverSettle() async throws {
         let s = try await scene(first: "log")
         let root = try XCTUnwrap(s.root)
         let b = try XCTUnwrap(s.binding)
-        b.pageLink.timeoutScale = 0.1   // 2 s -> 0.2 s: a cycle (a timeout and its ping) takes about 0.2 s
+        b.pageLink.timeoutScale = Self.noClock
         func records(_ name: String) -> [PageLink.Record] { b.pageLink.records.filter { $0.name == name } }
+        /// `count` of `name` time out, one after the other: the one in the page, then each restate, which goes once the
+        /// ping before it is answered.
+        func timeOutEach(_ count: Int, _ name: String, line: UInt = #line) async throws {
+            for _ in 0..<count { try await timeOut(s, name, line: line) }
+        }
         await setHow(s, "tabs.select", "never")
         tap(s, "progress")
+        try await timeOutEach(4, "tabs.select")   // the tap's and three restates
         try await expect("the tap's tabs.select and three restates, each timeout with its ping answered: \(records("tabs.select").count)") {
-            records("ping").filter { $0.outcome == "done" }.count >= 4
+            records("ping").filter { $0.outcome == "done" }.count >= 4 && b.pageLink.pending == 0
         }
-        try await sleep(1.2)   // six more cycles' worth: nothing more goes
+        try await sleep(0.3)   // nothing more goes
         XCTAssertEqual(records("tabs.select").map(\.outcome), Array(repeating: "failed timeout", count: 4), "the tap's and three restates")
         XCTAssertEqual(records("ping").map(\.outcome), Array(repeating: "done", count: 4))
         XCTAssertEqual(b.pageLink.pending, 0)
@@ -762,18 +841,22 @@ final class ShellBridgeTabsTests: XCTestCase {
 
         // the cap holds for a new failure too, until the page answers one; then the count starts again
         tap(s, "settings")
-        try await expect("the tap's tabs.select and its ping") { records("ping").count == 5 && b.pageLink.pending == 0 }
-        try await sleep(0.6)
+        try await timeOut(s, "tabs.select")
+        try await expect("the tap's tabs.select and its ping") {
+            records("ping").filter { $0.outcome == "done" }.count == 5 && b.pageLink.pending == 0
+        }
+        try await sleep(0.3)
         XCTAssertEqual(records("tabs.select").count, 5, "no restate: three in a row went unanswered")
         await setHow(s, "tabs.select", "ok")
         tap(s, "log")
         try await expect("answered") { records("tabs.select").last?.outcome == "done" && b.pageLink.pending == 0 }
         await setHow(s, "tabs.select", "never")
         tap(s, "progress")
+        try await timeOutEach(4, "tabs.select")
         try await expect("three restates again: \(records("tabs.select").count)") {
-            records("ping").filter { $0.outcome == "done" }.count >= 9
+            records("ping").filter { $0.outcome == "done" }.count >= 9 && b.pageLink.pending == 0
         }
-        try await sleep(1.2)
+        try await sleep(0.3)
         XCTAssertEqual(records("tabs.select").count, 10, "5, the answered one, then the tap's and three restates")
         XCTAssertEqual(failures(s, "tabs"), 0)
 
@@ -782,10 +865,11 @@ final class ShellBridgeTabsTests: XCTestCase {
         try await hello(s, Self.all, boot: "b2")
         await setHow(s, "tabs.select", "never")
         tap(s, "log")
+        try await timeOutEach(4, "tabs.select")
         try await expect("three restates in the new document: \(records("tabs.select").count)") {
-            records("ping").filter { $0.outcome == "done" }.count >= 13
+            records("ping").filter { $0.outcome == "done" }.count >= 13 && b.pageLink.pending == 0
         }
-        try await sleep(1.2)
+        try await sleep(0.3)
         XCTAssertEqual(records("tabs.select").count, 14, "the tap's and three restates")
         let fresh = await calls(s, "tabs.select")
         XCTAssertEqual(fresh.map(\.tab), ["log", "log", "log", "log"])
@@ -799,10 +883,11 @@ final class ShellBridgeTabsTests: XCTestCase {
         try await expect("the link idle") { b.pageLink.pending == 0 }
         await setHow(s, "tabs.bar", "never")
         tap(s, "log")
+        try await timeOutEach(4, "tabs.bar")   // the change and three restates
         try await expect("the bar's change and three restates: \(records("tabs.bar").count)") {
             records("tabs.bar").count >= 4 && records("tabs.bar").allSatisfy { $0.outcome != nil } && b.pageLink.pending == 0
         }
-        try await sleep(1.2)
+        try await sleep(0.3)
         XCTAssertEqual(records("tabs.bar").map(\.outcome), Array(repeating: "failed timeout", count: 4), "the change and three restates")
         let revs = await calls(s, "tabs.bar").compactMap(\.rev)
         XCTAssertEqual(revs.count, 4)
@@ -815,10 +900,11 @@ final class ShellBridgeTabsTests: XCTestCase {
         try await expect("the bar's change answered") { records("tabs.bar").last?.outcome == "done" && b.pageLink.pending == 0 }
         await setHow(s, "tabs.bar", "never")
         tap(s, "log")
+        try await timeOutEach(4, "tabs.bar")
         try await expect("three bar restates again: \(records("tabs.bar").count)") {
             records("tabs.bar").count >= 9 && records("tabs.bar").allSatisfy { $0.outcome != nil } && b.pageLink.pending == 0
         }
-        try await sleep(1.2)
+        try await sleep(0.3)
         XCTAssertEqual(records("tabs.bar").count, 9, "4, the answered one, then the change and three restates")
         XCTAssertEqual(failures(s, "tabs"), 0)
     }

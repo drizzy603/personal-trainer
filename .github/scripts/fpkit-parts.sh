@@ -8,9 +8,11 @@
 # comment). The tab root and the native Coach tab support iOS 26 and later and FPKit iOS 17 and later, so the whole
 # suite runs on both runtimes: the parts are made from the groups, and no group can be left on one runtime alone.
 #
-# The groups are the time budget (the job's comment): on a calm Mac, with H10's and H11's tests, renders takes about
-# 200 s, tabs 230 s, stack 200 s and rest 95 s, and a GitHub runner's test step about 2.3 minutes of building plus 2.8
-# times that (16ee484's parts). rest is kept the lightest because every new class lands there.
+# The groups are the time budget (the job's comment): CI's first run of all eight parts (41951156118, at adc1192) took
+# 15.6, 10.4, 9.4 and 5.0 minutes a test step for renders, tabs, stack and rest on 27.0 (xcode-27) and 11.3, 7.7, 9.5
+# and 9.4 on 26.5 (macos-26). The meta row's checks came after it (CI-26 renders rounds 2 and 3): a calm Mac on 27.0
+# now takes about 330 s for renders (about 200 with H10's and H11's tests) and 140 s for CoachHomeViewTests (stack), so
+# renders is the part nearest the job's 22-minute warning. rest is kept the lightest because every new class lands there.
 #
 # Usage (from anywhere; the script finds the repo from its own path):
 #   fpkit-parts.sh args PART           PART's xcodebuild -only-testing / -skip-testing arguments, on one line

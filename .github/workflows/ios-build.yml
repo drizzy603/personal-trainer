@@ -37,7 +37,8 @@ env:
   # day; runner-images' README still badges it a preview). Its image of 2026-10-26 has macOS 27, Xcode 27.0, 27.1
   # (27A9275, the default) and 27.2 RC, and the iOS 27.0 and 27.1 runtimes, none of 26.x. macos-latest is macos-26
   # (image of 2026-10-26: Xcode 26.0.1 to 26.6, the iOS 26.2, 26.4.1 and 26.5 runtimes, no Xcode 27); both checked in
-  # runner-images on 2026-11-02. The app build, fpkit-mac and fpkit-ios' iOS 27 parts run on xcode-27 with this Xcode.
+  # runner-images on 2026-11-02. The app build, fpkit-mac, fpkit-ios' iOS 27 parts and the release job (disabled) run on
+  # xcode-27 with this Xcode.
   XCODE_SHIP: '27.1'
   # The newest Xcode on macos-26, the only image with iOS 26.x runtimes: fpkit-ios' iOS 26 parts (that job's comment).
   XCODE_FLOOR: '26.6'
@@ -52,10 +53,10 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'npm'
@@ -100,7 +101,7 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Select the Xcode the app ships with
         run: bash .github/scripts/select-xcode.sh "$XCODE_SHIP"
@@ -164,9 +165,16 @@ jobs:
   # seven failing cases took about 7.5 minutes on the Mac under CI's bounds, so for the last part's passing tests the 2.8
   # errs high. Another 8 to 9 minutes went outside the test steps (the first simulator boot 5.5 to 6.8), hence 40
   # minutes for the job, so the warning comes well before the job is cut off. With H10's and H11's tests
-  # (ShellBridgeTabsTests 52, ScreenHostTests 61) a calm Mac takes about 200 s for renders, 230 for tabs, 200 for stack
+  # (ShellBridgeTabsTests 52, ScreenHostTests 61) a calm Mac took about 200 s for renders, 230 for tabs, 200 for stack
   # and 95 for rest: about 12, 13, 12 and 7 minutes a test step by that rule, on either runtime, rest being the part
-  # every new class joins, and a failing case's waits on top. xcode-27's runners are not measured yet.
+  # every new class joins, and a failing case's waits on top. CI's first run of all eight parts (41951156118, at
+  # adc1192) took 15.6, 10.4, 9.4 and 5.0 minutes a test step for renders, tabs, stack and rest on xcode-27 (27.0) and
+  # 11.3, 7.7, 9.5 and 9.4 on macos-26 (26.5). The meta row's checks came after it (CI-26 renders rounds 2 and 3:
+  # CoachHomeRenderTests draws and diffs the meta label in every case, CoachHomeViewTests checks WebKit's breaks over
+  # 45,669 strings and the row's layout in every case), and a calm Mac on 27.0 now takes about 330 s for renders
+  # (CoachHomeRenderTests 240, CoachRenderTests 91) and 140 for CoachHomeViewTests (stack). So renders on xcode-27 is
+  # the part nearest the warning: when its notice passes 22 minutes CoachRenderTests leaves it, and no new render class
+  # joins it before its first run with those checks is read.
   #
   # A run takes ten macOS runners (build, fpkit-mac and eight parts), and GitHub runs at most five macOS jobs at once
   # below its Enterprise plan: the parts run in two waves (time queued is not counted in timeout-minutes).
@@ -188,7 +196,7 @@ jobs:
           - { part: rest-26, runner: macos-26, xcode: floor, ios: '26.5' }
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # The scripts below check the tests' split, pick the simulator and name the failures; each *-test.sh beside them
       # runs that script on made-up inputs, so a script that would run the wrong classes, take another runtime or hide a
@@ -275,17 +283,19 @@ jobs:
           echo "::notice title=toolchain::$(xcodebuild -version | tr '\n' ' ') on ${{ steps.sim.outputs.name }}"
           .github/scripts/annotate-xc.sh "$RUNNER_TEMP/build.log" "$RUNNER_TEMP/test.log"
 
+  # Disabled (if: false). Were it enabled, it would archive with the Xcode the app ships with, on the build job's image
+  # and by the build job's selection step: XCODE_SHIP (CI's 27.1 until the image carries 27.2's release; see env).
   release:
     name: Archive + TestFlight upload
     if: false
-    runs-on: macos-latest
+    runs-on: xcode-27
     needs: build
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'npm'
@@ -295,6 +305,9 @@ jobs:
 
       - name: Bump build number + sync web
         run: ./release-ios.sh
+
+      - name: Select the Xcode the app ships with
+        run: bash .github/scripts/select-xcode.sh "$XCODE_SHIP"
 
       - name: Import signing certificate
         env:

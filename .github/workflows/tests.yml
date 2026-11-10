@@ -74,12 +74,12 @@ jobs:
     steps:
       # The whole history: BASE_PAGE() (tests/lib/harness.js) reads index.html at 91708ae, the page before the tabs
       # half, which a shallow checkout does not have.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
