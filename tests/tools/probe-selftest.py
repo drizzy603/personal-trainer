@@ -95,6 +95,7 @@ import os
 import plistlib
 import secrets
 import shutil
+import subprocess
 import sys
 import tempfile
 import time
@@ -112,9 +113,10 @@ STARTER_LABEL = 'No key? Build a starter plan instead \u2192'   # the connect sc
 # run types or sends leaves it (D-T8).
 LOOPBACK = 'http://127.0.0.1:9'
 PHOTO = 'selftest-photo.jpg'            # the share hook's `jpeg` file, beside the steps files
-# The shell's own UserDefaults copies (ShellSwitches, the breaker book, ShellCounters): read when the file beside them
-# does not, so they are put back as found too.
-SHELL_PREFS = ('fp.shell.switches', 'fp.shell.breakers', 'fp.shell.counters')
+# The shell's own UserDefaults copies (ShellSwitches, the breaker book, ShellCounters) and the policy fetch's (PolicyFetch's
+# state, which a launch with -fpPolicyFile rewrites): each is read when the file beside it does not, so they are put back
+# as found too.
+SHELL_PREFS = ('fp.shell.switches', 'fp.shell.breakers', 'fp.shell.counters', 'fp.policy')
 RUNS = [0]
 
 
@@ -1445,54 +1447,79 @@ def put_back_shell(sim, saved):
         shutil.copytree(saved, live)
 
 
-# The shell's UserDefaults copies (ShellSwitches, the breaker book, ShellCounters) live in the app's preferences plist,
-# which the simulator's cfprefsd caches and writes later. Stopping it (launchd starts it again at the next use) makes it
-# write what it holds and keep no copy: the plist is then what the app last wrote, and an edit is what the app reads next.
+# The shell's UserDefaults copies live in the app's preferences, which the simulator's cfprefsd holds. They are read and
+# written through that daemon: `defaults` spawned in the simulator with the app's data container as its home
+# (SIMCTL_CHILD_HOME and SIMCTL_CHILD_CFFIXED_USER_HOME, as the app's own process has it), so the domain it names is the
+# app's own. What it reads is what the app's next launch reads, and the app reads what it writes (measured on iOS 27.0,
+# 2026-11-10: an app's write read back 0.3 s after its launch ended, and on disk by then; a draft written this way stood
+# in the next launch's composer). A `defaults` spawned without the container as its home names another file
+# (<device>/data/Library/Preferences/<bundle id>.plist), which the app's UserDefaults reads too: nothing is written there.
+# So that a simulator where the home does not carry the domain is noticed, every read is held to the container's plist.
+# The daemon is never stopped (these helpers stopped it around a plist edit until T21's review): after a stop of
+# com.apple.cfprefsd.xpc.daemon the phone's appearance no longer reaches apps until SpringBoard starts again or the
+# phone reboots. `simctl ui appearance dark` is stored and read back and every launch stays light, so each "phone dark"
+# launch that followed on that boot, of any tool, ran on a light phone.
 
-def prefs_path(sim):
-    return sim.path('Library', 'Preferences', BID + '.plist')
+def prefs_defaults(sim, *args):
+    """`defaults <args>` in the simulator on the app's own preferences: its stdout's bytes (RuntimeError when it fails)."""
+    home = sim.container()
+    env = dict(os.environ, SIMCTL_CHILD_HOME=home, SIMCTL_CHILD_CFFIXED_USER_HOME=home)
+    r = subprocess.run(['xcrun', 'simctl', 'spawn', sim.udid, 'defaults', *args], capture_output=True, timeout=180, env=env)
+    if r.returncode != 0:
+        raise RuntimeError('defaults %s: %s' % (' '.join(args[:3]), (r.stderr or r.stdout).decode('utf-8', 'replace').strip()[:300]))
+    return r.stdout
 
 
-def prefs_settle(sim):
-    sim.sh('xcrun', 'simctl', 'spawn', sim.udid, 'launchctl', 'stop', 'com.apple.cfprefsd.xpc.daemon', check=False)
-    time.sleep(1.0)
-
-
-def read_shell_prefs(sim):
-    """The three copies as the app last wrote them (the app ended): key -> bytes, None when absent."""
-    prefs_settle(sim)
+def prefs_on_disk(sim, keys=SHELL_PREFS):
+    """The copies in the container's plist as it is on disk now (cfprefsd writes a change there within a second): key ->
+    value, or None when the file does not read (caught mid-write)."""
+    p = sim.path('Library', 'Preferences', BID + '.plist')
     d = {}
-    if os.path.exists(prefs_path(sim)):
-        with open(prefs_path(sim), 'rb') as f:
-            d = plistlib.load(f)
-    return {k: d.get(k) for k in SHELL_PREFS}
+    if os.path.exists(p):
+        try:
+            with open(p, 'rb') as f:
+                d = plistlib.load(f)
+        except (OSError, ValueError):
+            return None
+    return {k: d.get(k) for k in keys}
+
+
+def read_shell_prefs(sim, keys=SHELL_PREFS, most=15):
+    """The copies as the app's next launch reads them (the app ended): key -> bytes, None when absent. Read through the
+    daemon and held to the container's plist, which must say the same within `most` s: RuntimeError otherwise (where
+    `defaults` does not reach the app's own domain, nothing may be kept or put back through it)."""
+    out = prefs_defaults(sim, 'export', BID, '-')
+    try:
+        d = plistlib.loads(out) if out.strip() else {}
+    except ValueError as e:
+        raise RuntimeError('defaults export %s: not a property list (%s)' % (BID, e))
+    got = {k: d.get(k) for k in keys}
+    t0 = time.time()
+    while True:
+        disk = prefs_on_disk(sim, keys)
+        if disk == got:
+            return got
+        if time.time() - t0 >= most:
+            break
+        time.sleep(0.5)
+    diff = sorted(k for k in keys if (disk or {}).get(k) != got.get(k))
+    raise RuntimeError('the app\'s preferences as the simulator\'s cfprefsd gives them are not the container\'s plist (%s differ after '
+                       '%d s): `defaults` with the container as its home does not name the app\'s domain here' % (', '.join(diff) or 'unread', most))
 
 
 def put_back_shell_prefs(sim, found):
-    """The three copies as found (the app ended), every other key of the plist left as the run left it (the store's own
-    copies follow its database, which the run did not put back)."""
-    prefs_settle(sim)
-    p = prefs_path(sim)
-    d, fmt, mode = {}, plistlib.FMT_BINARY, 0o600
-    if os.path.exists(p):
-        with open(p, 'rb') as f:
-            raw = f.read()
-        fmt = plistlib.FMT_XML if raw.lstrip().startswith(b'<') else plistlib.FMT_BINARY
-        d = plistlib.loads(raw)
-        mode = os.stat(p).st_mode & 0o777
-    if all(d.get(k) == found[k] for k in SHELL_PREFS):
-        return
-    for k in SHELL_PREFS:
-        if found[k] is None:
-            d.pop(k, None)
+    """The copies as found (the app ended), every other key of the app's preferences left as the run left it (the store's
+    own copies follow its database, which the run did not put back). Only a copy that differs is written."""
+    now = read_shell_prefs(sim, tuple(found))
+    for k, v in found.items():
+        if now.get(k) == v:
+            continue
+        if v is None:
+            prefs_defaults(sim, 'delete', BID, k)
+        elif isinstance(v, bytes) and v:
+            prefs_defaults(sim, 'write', BID, k, '-data', v.hex())
         else:
-            d[k] = found[k]
-    os.makedirs(os.path.dirname(p), exist_ok=True)
-    with open(p + '.selftest', 'wb') as f:
-        plistlib.dump(d, f, fmt=fmt)
-    os.chmod(p + '.selftest', mode)
-    os.replace(p + '.selftest', p)
-    prefs_settle(sim)
+            raise RuntimeError('%s was found as %s, not as Data: not put back' % (k, type(v).__name__))
 
 
 def found_totals(found):
@@ -1509,7 +1536,7 @@ def screens_word(e):
 
 
 def check_put_back(c, saved, found):
-    """What the run changed in the shell's own state, put back and proven: the folder and the three copies as found, then
+    """What the run changed in the shell's own state, put back and proven: the folder and the copies as found, then
     one launch that reads them (the switches and every screen's word as the run's first state had them, the counters'
     totals as found), then both put back once more (that launch leaves its crash markers) and the copies read back."""
     sim, s = c.sim, 'restore'
