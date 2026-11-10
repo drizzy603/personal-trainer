@@ -44,14 +44,24 @@ final class ShellBridgeTests: XCTestCase {
         try? FileManager.default.removeItem(at: folder)
     }
 
+    /// Every link of these cases, and of ShellBridgeTabsTests' unless a case is about the deadline: no hello deadline to
+    /// speak of. The contract's 15 s (2.3) run from the document's start, and here the hello is the case's own, said once
+    /// its stand-in page has loaded: a machine that took 15 s over that load said it late, and every piece was tripped
+    /// `no-hello` before the case's first check (CI's run 42829897155 on iOS 27.0, a job twice its usual length:
+    /// testBelowIOS26TheBarIsOffForTheOS read `breaker` on seven lines; a hello said 16 s after the load gives the same
+    /// seven). No case leaves that state to another: each has its own folder and defaults, and a new book. The deadline
+    /// is held by LinkStateTests on a clock of its own and, through the bridge, by ShellBridgeTabsTests' test 17, which
+    /// passes its own second.
+    nonisolated static let patient = LinkState.Config(helloDeadline: 3600)
+
     /// Build 60's bridge: the chat only.
     private func bridge() -> ShellBridge {
-        ShellBridge(defaults: defaults, folder: folder, shellBuild: "60", binary: ["coach"])
+        ShellBridge(defaults: defaults, folder: folder, shellBuild: "60", binary: ["coach"], linkConfig: Self.patient)
     }
 
     /// Build 61's: coach, coachHome and tabs.
     private func bridge61() -> ShellBridge {
-        ShellBridge(defaults: defaults, folder: folder, shellBuild: "61")
+        ShellBridge(defaults: defaults, folder: folder, shellBuild: "61", linkConfig: Self.patient)
     }
 
     /// How long a stand-in page gets to load. The wait ends when the page is up, so the length costs a passing run

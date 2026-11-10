@@ -176,8 +176,12 @@ final class ShellBridgeTabsTests: XCTestCase {
 
     /// A build 61 bridge (a new home unless one is given), on iOS 27, the app in use. `net`: the WAITING Coach tab's net;
     /// a minute unless a case is about it (`ShellBridge.coachNetSeconds`, 3 s), since the stand-in page never declares
-    /// `coachHome` and the cases before H8's would otherwise see the tab turn WEB under them.
-    private func makeBridge(home: Home? = nil, linkConfig: LinkState.Config = LinkState.Config(), net: TimeInterval = 60) -> ShellBridge {
+    /// `coachHome` and the cases before H8's would otherwise see the tab turn WEB under them. `linkConfig`: no hello
+    /// deadline to speak of (`ShellBridgeTests.patient`) unless a case is about it (test 17): `load` gives the stand-in
+    /// page up to 100 s on CI, and a hello said 15 s after its document started is late: every piece tripped, the root
+    /// fallen back `no-hello`, no `tabs.select` for a tap and `selectTab` refused `off` (test 2's four lines in CI's run
+    /// 42522381728; a hello said 16 s after the load gives the same four).
+    private func makeBridge(home: Home? = nil, linkConfig: LinkState.Config = ShellBridgeTests.patient, net: TimeInterval = 60) -> ShellBridge {
         let h = home ?? makeHome()
         let b = ShellBridge(defaults: h.defaults, folder: h.folder, shellBuild: "61", linkConfig: linkConfig)
         b.osMajor = { 27 }
