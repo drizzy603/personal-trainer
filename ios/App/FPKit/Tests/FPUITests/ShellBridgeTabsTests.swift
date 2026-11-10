@@ -432,9 +432,9 @@ final class ShellBridgeTabsTests: XCTestCase {
     /// For a wait that ran out: says so when a scene's stand-in page is no longer there to answer (its `FPScreens` gone
     /// with a web process WebKit started over, or no answer to a script in 5 s). The case fails either way (a page that
     /// stops answering is what `tabs` trips on, and the case cannot tell a machine that took the page's process from a
-    /// shell that stalled it), but its line then names the likelier cause on a shared runner: CI run 42522381728's
-    /// test02 heard nothing from its page after the hello, while WebKit was refused the end of a web process ("Client
-    /// not entitled"), and the same job passed when run again.
+    /// shell that stalled it), but its line then names the likelier cause on a shared runner. CI run 42522381728's
+    /// test02 was first read as such a page: it was a hello said after the link's deadline (`ShellBridgeTests.patient`),
+    /// and "Client not entitled" only the last error the test host's throw hook had seen (ThrownErrors.swift).
     private func silentPages() async -> String {
         for s in scenes where s.pageUp && s.webView.live {
             if !(await pageAnswers(s)) {
