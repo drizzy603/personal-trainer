@@ -10,9 +10,9 @@ and its title) must stand at least --min to 1 (default 3: WCAG 1.4.11's contrast
 capsule it sits on and against the platter.
 
   tab-glass.py --phone UDID --app App.app [--no-install] [--rooms lime,heavyweight] [--looks light,dark]
-               [--only waiting,connect,hub,chat,toast,web] [--out DIR] [--min 3]
+               [--only waiting,connect,hub,chat,toast,web,webafter,hubagain,chatagain] [--out DIR] [--min 3]
 
-Three launches per room and phone appearance (FPUI ShellProbe, Debug builds only: -fpShellProbe, -fpOffline,
+Four launches per room and phone appearance (FPUI ShellProbe, Debug builds only: -fpShellProbe, -fpOffline,
 -fpIgnoreMarker, -devNav coach, -devTheme; the page's coach calls go to a closed loopback port, -fpApiBase):
   waiting  the Coach tab's WAITING ground (contract 1.4: from the scene's start until the page declares coachHome, at
            most 3 s after its hello's answer), held for a launch of its own: the first launch stages a page that never
@@ -30,8 +30,17 @@ Three launches per room and phone appearance (FPUI ShellProbe, Debug builds only
   toast    the pushed chat with the page's toast forwarded over it
   web      the Coach tab WEB (the third launch, a policy file turning screens.coachHome off): the page's own Coach
            screen under the bar, the room's page as the owner sees it there
+and the fourth, a round trip inside one scene (the owner's own switch, About's Native Coach, flipped off and on again
+as the page flips it: toggleNativeChat):
+  webafter   the Coach tab turned WEB in a scene that showed the hub: the page's Coach screen under the bar while the
+             hidden stack still holds the hub, the stack's ground out of the view tree
+  hubagain   the hub again, the switch put back: NATIVE once more, the ground back under the stack
+  chatagain  the chat pushed over that hub: its conversation ends above its composer, so the stack's ground alone lies
+             under the bar there
 Each shot is read only for the state it claims: the probe's state just before it must show Coach selected, the bar
-shown, the tab's mode (NATIVE or WEB), its root (connect or hub), the chat pushed or not and the toast up.
+shown, the tab's mode (NATIVE or WEB), its root (connect or hub), the chat pushed or not and the toast up. The fourth
+launch's shots also need the hub NATIVE before the switch went off, the tab WEB while it was off, and the switch off
+and back as the page answers.
 
 The reading: the bar's frame from the root's describe() (points; the shot's scale from its width), the platter inside it
 by PLATTERS (21 pt in from each side and 62 pt tall from the bar's top: the iPhone 17 Pro's 402 x 83 pt bar, run on iOS
@@ -45,8 +54,9 @@ room's own over the hub and over the room's page).
 
 The app's data on the phone is replaced (uninstalled, installed) unless --no-install, which runs the app the phone holds
 and needs it to be --app's (its executables' hashes). Either way the run changes that data and puts nothing back: the
-Coach key is taken away and a page is staged through TrovoOta and thrown out by its breaker, so never point it at a
-phone whose data is wanted. The phone's appearance is put back as found. The run holds the paired simulators' lock
+Coach key is taken away, the owner's Native Coach switch is flipped off and on again (kt_native_off ends unset) and a
+page is staged through TrovoOta and thrown out by its breaker, so never point it at a phone whose data is wanted. The
+phone's appearance is put back as found. The run holds the paired simulators' lock
 (~/Library/Caches/FPKit/sim.lock, tests/tools/simlock.sh) unless its caller already does. Build the app first:
 tests/tools/fp-build.sh glass. Frames, a contact sheet (sheet.png) and results.json go to --out (default
 screenshots/out/tab-glass/<runtime>).
@@ -73,7 +83,8 @@ BID = 'app.kt.trainer'
 TABS = ('log', 'progress', 'coach', 'settings')     # the bar's order (ShellTabs.ids)
 ROOMS = {'lime': ('dark', (0x0b, 0x0b, 0x0c)), 'heavyweight': ('heavyweight', (0xf7, 0xf5, 0xef))}   # -devTheme, bg
 LOOKS = ('light', 'dark')
-STATES = ('waiting', 'connect', 'hub', 'chat', 'toast', 'web')
+AGAIN = ('webafter', 'hubagain', 'chatagain')        # the fourth launch's states, in its order
+STATES = ('waiting', 'connect', 'hub', 'chat', 'toast', 'web') + AGAIN
 # The bar's size -> the platter's inset from each side and its height, points: the iPhone 17 Pro's bar and the Pro Max's
 # (iPhone 17 Pro Max, iPhone 18 Pro Max), each measured from the platter's edges in a frame over Lime's dark ground.
 PLATTERS = {(402, 83): (21.0, 62.0), (440, 83): (21.0, 62.0)}
@@ -94,6 +105,11 @@ STAGE_JS = ("var p = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.
             "if (!p) return { error: 'no TrovoOta' };"
             "try { await p.stage({ html: args.html, build: args.build }); return { staged: args.build }; }"
             "catch (e) { return { error: String(e && e.message || e) }; }")
+# The owner's own switch (Settings > About > Native Coach) as the page flips it: kt_native_off set or cleared, and the
+# Coach tab out of the shell's hands or back in them at once (the tab root and its bar stay either way).
+SWITCH_JS = ("toggleNativeChat(); return { off: localStorage.getItem('kt_native_off') !== null, "
+             "tabs: document.documentElement.classList.contains('fp-tabs') };")
+SWITCH_MS = 4500                                    # past the switch's own toast and the tab's change of hands
 
 
 # ── the probe ────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -415,6 +431,66 @@ def run_combo(sim, rep, opts, room, look, only, results, cells):
         else:
             ok = judge(rep, scen, 'web (the page\'s Coach screen)', p, r['bar']['frame'], opts.min, results, '%s/web' % scen)
             cells.append(('web', p, ok))
+    if set(AGAIN) & set(only):
+        run_again(sim, rep, opts, room, look, only, results, cells)
+
+
+def run_again(sim, rep, opts, room, look, only, results, cells):
+    """The fourth launch, a round trip inside one scene: the hub, the owner's switch off (the Coach tab WEB), the
+    switch back (the hub again) and the chat pushed over it. The switch always goes back, whatever `only` asks for."""
+    theme, _ = ROOMS[room]
+    scen = '%s/%s' % (room, look)
+    pre = os.path.join(opts.out, '%s-%s' % (room, look))
+    steps = [js('no key', NOKEY_JS), wait(1500), js('key', KEY_JS, key=PROBE_KEY), wait(1500), state('before'),
+             js('native off', SWITCH_JS), wait(SWITCH_MS), state('webafter')]
+    if 'webafter' in only:
+        steps += [mark('webafter')]
+    steps += [js('native on', SWITCH_JS), wait(SWITCH_MS), state('hubagain')]
+    if 'hubagain' in only:
+        steps += [mark('hubagain')]
+    if 'chatagain' in only:
+        steps += [intent('open chat', 'coachHome.openChat'),
+                  {'op': 'waitCoach', 'label': 'chat up', 'until': 'up', 'ms': 8000}, wait(1200), state('chatagain'),
+                  mark('chatagain')]
+    steps += [js('key away', NOKEY_JS), wait(300)]
+    ev = probe(sim, '%s-%s-again' % (room, look), [steps], ['-devNav', 'coach', '-devTheme', theme],
+               lambda label: '%s-%s.png' % (pre, label))
+    off = (ev.last('js', label='native off') or {}).get('result')
+    on = (ev.last('js', label='native on') or {}).get('result')
+    before = root_of(ev.state('before')).get('coach') or {}
+    between = root_of(ev.state('webafter'))
+    went = before.get('mode') == 'native' and before.get('root') == 'hub' and not before.get('pushed') \
+        and isinstance(off, dict) and off.get('off') is True
+    turned = went and (between.get('coach') or {}).get('mode') == 'web' \
+        and (between.get('web') or {}).get('slot') == 'coach'
+    back = turned and isinstance(on, dict) and on.get('off') is False
+    expect = {   # the state's own Coach tab as it must read, then the check's words and the reading's name
+        'webafter': (lambda c: turned, 'the tab WEB with the page in it, in a scene that showed the NATIVE hub until '
+                     'the owner\'s switch went off', 'webafter (the page\'s Coach screen over the hidden stack)'),
+        'hubagain': (lambda c: back and c.get('mode') == 'native' and c.get('root') == 'hub' and not c.get('pushed'),
+                     'NATIVE on the hub again, the switch put back after the tab was WEB',
+                     'hubagain (the hub after the tab was WEB)'),
+        'chatagain': (lambda c: back and c.get('mode') == 'native' and c.get('pushed') is True,
+                      'the chat pushed over that hub', 'chatagain (the chat pushed after the tab was WEB)'),
+    }
+    for st in AGAIN:
+        if st not in only:
+            continue
+        r = root_of(ev.state(st))
+        frame = (r.get('bar') or {}).get('frame')
+        p = '%s-%s.png' % (pre, st)
+        holds, says, what = expect[st]
+        seen = r.get('selected') == 'coach' and (r.get('bar') or {}).get('hidden') is False and bool(frame) \
+            and bool(holds(r.get('coach') or {}))
+        if not rep.check(scen, '%s: the shot\'s state (Coach selected, the bar shown, %s)' % (st, says),
+                         seen and os.path.exists(p),
+                         {'selected': r.get('selected'), 'bar': (r.get('bar') or {}).get('hidden'),
+                          'coach': r.get('coach'), 'web': r.get('web'), 'before': before, 'off': off, 'on': on,
+                          'fellBack': r.get('fellBack'), 'timedOut': ev.timedOut, 'shot': os.path.exists(p)}):
+            cells.append((st, p if os.path.exists(p) else None, False))
+            continue
+        ok = judge(rep, scen, what, p, frame, opts.min, results, '%s/%s' % (scen, st))
+        cells.append((st, p, ok))
 
 
 def hold_sim_lock():

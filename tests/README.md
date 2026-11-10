@@ -320,9 +320,12 @@ python3 tests/tools/tab-glass.py --phone <an iPhone 17 Pro or Pro Max simulator,
 `tools/tab-glass.py` reads the selected Coach tab under the native glass bar from
 screenshots of the real app (plan task H9 fix-1, contract 6.1): the Coach tab's
 WAITING ground (held for a launch by a staged page that never says hello), the
-connect screen, the hub, the pushed chat with and without the page's toast, and
-Coach WEB (a policy file turning `screens.coachHome` off), in each room and each
-phone appearance. The selected item must stand 3:1 at least (`--min`) against its
+connect screen, the hub, the pushed chat with and without the page's toast,
+Coach WEB (a policy file turning `screens.coachHome` off), and a round trip inside
+one scene (the owner's Native Coach switch off and on again, as the page flips
+it): Coach WEB over the hidden stack that still holds the hub, the hub again and
+the chat pushed over it; all of it in each room and each phone appearance. The
+selected item must stand 3:1 at least (`--min`) against its
 capsule and against the platter, and a shot is read only when the probe's state
 just before it shows the screen it claims. iOS 26.x draws the glass from what a
 scroll view under the bar shows and in the phone's style where none lies there,
@@ -341,5 +344,8 @@ the paired simulators itself (`sim.lock`) unless its caller does, and writes the
 frames, `sheet.png` and `results.json` to `--out` (default
 `screenshots/out/tab-glass/<runtime>`). Exit 1 names every failed check; 2 is bad
 arguments, an OS below 26, a bar with no numbers, another app under
-`--no-install`, or no Pillow. Nothing runs it on its own yet: run it after a
-change to the tab root, the Coach stack or the bar's look.
+`--no-install`, or no Pillow. Nothing runs it on its own yet (wiring it into the
+simulator tools waits for plan task T24, after build 61's TestFlight build). Until
+then it is a gate by hand: run it on an iOS 26.5 and an iOS 27.0 simulator after a
+change to the tab root, the Coach stack or the bar's look, and on the merged tree
+before an archive.
