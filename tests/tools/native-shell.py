@@ -526,11 +526,28 @@ def sim_lock_held():
 # ── what a shot draws ────────────────────────────────────────────────────────────────────────────────────────────────
 
 def appearance(sim, value=None):
-    """The phone's appearance (simctl ui): read it ('light' or 'dark'), or set it to `value`."""
+    """The phone's appearance (simctl ui): read it ('light' or 'dark'), or set it to `value` (RuntimeError when simctl
+    refuses). What simctl reads back is what it stored, not what apps see: a launch proves that itself (SCHEME_JS)."""
     if value is None:
         return sim.sh('xcrun', 'simctl', 'ui', sim.udid, 'appearance', check=False).strip()
-    sim.sh('xcrun', 'simctl', 'ui', sim.udid, 'appearance', value, check=False)
+    sim.sh('xcrun', 'simctl', 'ui', sim.udid, 'appearance', value)
     return value
+
+
+# What the app sees of the phone's appearance: the page's prefers-color-scheme. The web view keeps the phone's style on
+# both roots (delta 16.1: the room's style goes on the bar, its container and the native screens, never on the window,
+# the root, a slot or the web view), hidden under a native screen too. simctl's read-back does not show it: on a phone
+# whose cfprefsd was stopped since its boot, `simctl ui appearance dark` is stored and read back while every launch
+# stays light, until SpringBoard starts again (T21's review, 2026-11-09: a run's "phone dark" launches were light ones).
+SCHEME_JS = "return { dark: window.matchMedia('(prefers-color-scheme: dark)').matches };"
+
+
+def sees(ev, label='scheme'):
+    """The phone's appearance as the launch's page saw it (its js step `label`, running SCHEME_JS): 'dark', 'light', or
+    None when the step did not answer."""
+    r = (ev.first('js', label=label) or {}).get('result')
+    dark = r.get('dark') if isinstance(r, dict) else None
+    return ('dark' if dark else 'light') if isinstance(dark, bool) else None
 
 
 def png_bmp(png):
@@ -1072,39 +1089,44 @@ def scen_chat(c):
     # Lime on a light phone (the run's phones are light): the chat and its toast window are dark, and on the tab root the
     # bar as the root asks for it (its style and its container's) and as the shot draws it (the band of its frame)
     phone = appearance(c.sim)
-    ev = shell_probe(c.sim, 'chat-lime', [[wait(1000), state('lime'), mark('lime'),
+    ev = shell_probe(c.sim, 'chat-lime', [[wait(1000), js('scheme', SCHEME_JS), state('lime'), mark('lime'),
                                             js('toast', "showToast('Probe saved'); return true;"), wait(300), state('lime toast'), mark('lime-toast', cap=1500, transient=True)]],
                      args=['-devNav', 'coach/chat', '-devTheme', 'dark'])
     lime, lt = ev.state('lime'), ev.state('lime toast')
+    phone_seen = sees(ev)   # the phone as this launch's page saw it (simctl's read-back is only what it stored)
     olt = screens(lt).get('overlay') or {}
     dark = coach(lime).get('interfaceStyle') == DARK and olt.get('interfaceStyle') == DARK and olt.get('toast') == 'Probe saved'
     if c.tabs:
-        c.rep.check(s, 'Lime\'s pushed chat, its bar and the toast window ask for dark (the room\'s style; the phone %s)' % (phone or '?'),
+        c.rep.check(s, 'Lime\'s pushed chat, its bar and the toast window ask for dark (the room\'s style; the phone %s)' % (phone_seen or '?'),
                     dark and coach(lime).get('host') == 'stack' and rbar(lime).get('style') == 'dark' and rbar(lime).get('containerStyle') in ('dark', None),
                     '%s / bar %s, container %s / %s' % (coach(lime).get('interfaceStyle'), rbar(lime).get('style'), rbar(lime).get('containerStyle'), olt))
         luma, seen = drawn_bar(lime, ev.tag, 'lime')
-        c.rep.check(s, 'Lime\'s bar draws dark over the dark Coach stack (the mean luminance of its frame in the shot under %d of 255; '
-                    'iOS 26.5\'s light glass there is H9f1)' % DARK_BAR_MAX, luma is not None and luma < DARK_BAR_MAX, seen)
+        c.rep.check(s, 'Lime\'s bar draws dark over the dark Coach stack (the mean luminance of its frame in the shot under %d of 255)'
+                    % DARK_BAR_MAX, luma is not None and luma < DARK_BAR_MAX, seen)
     else:
-        c.rep.check(s, 'Lime\'s chat and its toast window are dark (overrideUserInterfaceStyle from paper; the phone %s)' % (phone or '?'), dark,
+        c.rep.check(s, 'Lime\'s chat and its toast window are dark (overrideUserInterfaceStyle from paper; the phone %s)' % (phone_seen or '?'), dark,
                     '%s / %s' % (coach(lime).get('interfaceStyle'), olt))
     # Heavyweight on a phone set to dark: the room's light all the same (the chat, and on the tab root the bar as asked
     # and as drawn); the phone's own appearance put back after
     appearance(c.sim, 'dark')
     try:
-        ev = shell_probe(c.sim, 'chat-dark-phone', [[wait(1000), state('dark phone'), mark('dark-phone')]], args=['-devNav', 'coach/chat'])
+        stored = appearance(c.sim)
+        ev = shell_probe(c.sim, 'chat-dark-phone', [[wait(1000), js('scheme', SCHEME_JS), state('dark phone'), mark('dark-phone')]],
+                         args=['-devNav', 'coach/chat'])
     finally:
         appearance(c.sim, phone if phone in ('light', 'dark') else 'light')
     dp = ev.state('dark phone')
     cd = coach(dp)
+    c.rep.check(s, 'the phone set to dark is dark to the app (the page\'s prefers-color-scheme, not simctl\'s read-back): the checks '
+                   'below ran on a dark phone', sees(ev) == 'dark', {'page': sees(ev), 'simctl': stored})
     if c.tabs:
         c.rep.check(s, 'Heavyweight on a phone set to dark: the pushed chat and the bar still ask for light (the room\'s style, not the phone\'s)',
                     cd.get('presented') and cd.get('host') == 'stack' and cd.get('interfaceStyle') == LIGHT and rbar(dp).get('style') == 'light'
                     and rbar(dp).get('containerStyle') in ('light', None),
                     '%s / bar %s, container %s' % (cd.get('interfaceStyle'), rbar(dp).get('style'), rbar(dp).get('containerStyle')))
         luma, seen = drawn_bar(dp, ev.tag, 'dark-phone')
-        c.rep.check(s, 'Heavyweight\'s bar draws light on a phone set to dark (the mean luminance of its frame in the shot over %d of 255; '
-                    'iOS 26.5\'s dark glass there is H9f1\'s too)' % LIGHT_BAR_MIN, luma is not None and luma > LIGHT_BAR_MIN, seen)
+        c.rep.check(s, 'Heavyweight\'s bar draws light on a phone set to dark (the mean luminance of its frame in the shot over %d of 255)'
+                    % LIGHT_BAR_MIN, luma is not None and luma > LIGHT_BAR_MIN, seen)
     else:
         c.rep.check(s, 'Heavyweight on a phone set to dark: the chat stays light (overrideUserInterfaceStyle, the room\'s)',
                     cd.get('presented') and cd.get('interfaceStyle') == LIGHT, {k: cd.get(k) for k in ('presented', 'interfaceStyle', 'style')})
