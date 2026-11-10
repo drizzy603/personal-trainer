@@ -102,6 +102,21 @@ public final class PageLink {
     /// Intents queued or in the page.
     public var pending: Int { queue.count + (inFlight == nil ? 0 : 1) }
 
+    /// The intent in the page now, by name (tests).
+    var inFlightName: String? { inFlight?.intent.name }
+
+    /// The intent in the page, when it is `name`, times out now, as its timer would have (tests). A case about what
+    /// follows a timeout makes the timeout itself, once the page has the intent, and leaves the clock alone: scaled down
+    /// (`timeoutScale`) it is as short for every answer the case waits for, the confirming ping's included, and a
+    /// loaded machine lets those run out too. False, and nothing done, when no intent of that name is in the page.
+    @discardableResult
+    func timeOutInFlight(_ name: String) -> Bool {
+        guard let item = inFlight, item.intent.name == name else { return false }
+        timer?.cancel()
+        timedOut(seq: item.seq)
+        return true
+    }
+
     /// The document now linked (its hello was answered), or nil while a new one's hello is awaited. Whatever was asked
     /// for under another boot ends as `documentGone`, unsent or unanswered, and is never sent again.
     public func setBoot(_ newBoot: String?) {
