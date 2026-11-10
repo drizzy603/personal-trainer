@@ -111,6 +111,12 @@ the web's rules (route, meta, hero, the connect block, rows, Open Chat's sub, th
 `resume` true in `hub-resume` alone). `tests/golden/check.sh` runs it, with CoachModelTests, BlocksTests and
 TabsModelTests, after the page's own checks.
 
+`CoachModelTests` holds every page-built `Fixtures/coach` file alike (N16): its palette (every ColorToken, satAccent
+left out only where the accent stands in for it, its room's chat-model keys, each the compiled colour) and its scale
+(type, space, radius, font). The decode budgets (`testSixtyMessagesDecodeQuickly` 0.25 s,
+`CoachHomeModelTests.testA4KBModelDecodesQuickly` 16 ms) time the test thread's CPU time (`threadCPUSeconds`,
+`clock_gettime(CLOCK_THREAD_CPUTIME_ID)`) with the 10x CI slack, so a loaded Mac's waits for a core do not fail them.
+
 ## FPUI: the native Coach chat
 
 The SwiftUI chat (plan task C6), drawn from FPCore's `CoachModel` and sending FPCore's `Intent`s
