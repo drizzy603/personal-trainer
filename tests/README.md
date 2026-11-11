@@ -180,6 +180,15 @@ Put back, the policy file, the store breaker, a crash marker, a scene reconnect,
 an OTA page, Settings › About › Storage through the real TrovoStore plugin). It
 reinstalls the app on that phone and leaves it with the scenario seed.
 
+The scene scenario runs FPUI's ShellProbe beside the store probe
+(`-fpShellProbe`), sets the shell's own state aside (Application Support/FPShell
+and the UserDefaults copies fp.shell.switches, fp.shell.breakers,
+fp.shell.counters, fp.policy) and puts it back, failing its last check and
+naming the kept copy when it cannot. `--ota-build` defaults to the bundled
+page's date with suffix 99, and the seed's round dates count from today. The
+[boot] check (facade boot under 50 ms in every attached launch) is
+load-sensitive: run the tool with nothing else on the simulators.
+
 `../test-native.sh` (the "test it" flow) drives its routes with launch arguments
 too (`-devNav <route>`, `-devTheme <room>`), builds as build 61 at least so the
 native copy stays attached (a new store's minReader is 60), runs every route once
