@@ -207,62 +207,179 @@ names its storyboards).
 ## The native screens on a simulator
 
 ```sh
-./tests/native-shell.sh               # build as build 61 at least, every scenario on iOS 26.x
-./tests/native-shell.sh --os 27 --only chat,wckill
+./tests/native-shell.sh               # build as build 61 at least; the tab root on iOS 26.x and 27.x, the classic root on 27.x
+./tests/native-shell.sh --os 27 --root tabs --only chat,wckill
+./tests/native-shell.sh --list        # the scenarios in run order, the modules' included (no build)
+python3 tests/tools/native-shell.py --self-test    # the module loader on scratch modules (no simulator)
 ```
 
-runs the screen bridge (plan task C5: the TrovoShell plugin, FPUI's ShellBridge,
-ScreenHost and PageLink) in the real app on the real page: the app's Debug build
-takes each scenario's steps from launch arguments (`-fpShellProbe`), and
-`tools/native-shell.py` decides from what it reports. `-fpSmoke` logging
-`fp: ping ok v1`; the native chat presented `.overFullScreen` on the page's model,
-with a message, the model switch, a forwarded confirm and Undo toast round-tripping
-and Back; no `visibilitychange` while it is up; a focused web field (with the
-simulator's software keyboard turned on for the scenario) and then present and
-dismiss by the page, Back and the edge pan: no keyboard comes back and the document
-is not scrolled; WebContent killed with the chat up: taken over by the new
-document, resynced on its boot, nothing resent, the open confirm closed as stale;
-a planted crash marker bringing back the web chat once; the policy file's
-`screens.coach` "off"; the breaker; Settings › About keeping the Native Coach
-chat row and saying why it is off in each case, and the owner's "Try the native
-chat again" bringing it back at the next launch; the shell's counters (the web
-view taken out of its window with the chat up). Spec 118 holds the page's half
-(its C5 cases: the take-over after a reload, and the About row, its sheet,
-TrovoShell `status`/`reset` and the `visibility` report on the mock).
+runs the screen bridge (plan tasks C5 and T16: the TrovoShell plugin, FPUI's
+ShellBridge, ScreenHost and PageLink, and build 61's tab root) in the real app on
+the real page: the app's Debug build takes each scenario's steps from launch
+arguments (`-fpShellProbe`), and `tools/native-shell.py` decides from what it
+reports.
 
-These are build 60's scenarios. On an iOS 26+ phone whose app data turns nothing
-off the scene takes the tab root, where only `smoke` holds: there the chat is
-pushed in the Coach tab's stack rather than presented over the page, so `chat`
-and every other scenario that puts the chat up need the classic root, which the
-Native tab bar switch off gives (`{"tabs": false}` in the app container's
-`Library/Application Support/FPShell/switches.json`), as does build 60's page
-bundled (it declines `tabs`; FPKit README, "tests/native-shell.sh").
+**Two roots** (`--root tabs|classic|both`, both by default). The tab pass
+launches with `-fpOffline` alone (the compiled policy: every piece on), so an
+iOS 26+ phone builds the tab root: the native tab bar and the native Coach tab,
+the chat pushed on its stack. The classic pass, on iOS 27.x only whatever `--os`
+says (plan D-T5: the owner's OS), writes the policy offs (`coachHome` and `tabs`
+off, plan 13-tests-release.md section 6) into the container as
+`fp-policy-offs.json` and adds `-fpPolicyFile fp-policy-offs.json
+-fpPolicyEvery 0` to every launch, which gives build 60's look on 61's binary
+(the page's own bar, the chat presented over the page): what the owner's first
+launches show. `--os` takes any installed major; on iOS 17 or 18 the root is
+classic by the OS. Each pass starts from a fresh container (the app uninstalled
+and installed, so no decline, verdict, switch or stored policy an earlier run
+left decides the root; `--keep-data` installs over it), seeds the probe's key, a
+starter programme and a short conversation, and checks the root its launches
+build before any scenario runs.
+
+**Build 60's nine and `teardown`, under both roots**: `smoke` (`-fpSmoke` logging
+`fp: ping ok v1` in that launch's process, the root, hello's negotiation, the
+flag's 83-point bar, Settings › About's Native tab bar and Native Coach rows:
+"Off by the policy file" and "On · the iPhone's own chat screen" on the classic
+root by policy, and the share hook's `pendingShare.jpg` in the App Group's
+container with the page's own share reads held off);
+`chat` (classic: presented `.overFullScreen`; tab root: pushed on the NATIVE Coach
+stack, `host: stack`, not modal, the web view hidden in the Coach slot, the bar
+shown; a message, the model switch, a forwarded confirm and Undo toast, the
+screen marker, Back to the hub with the page still covered; Lime dark on a light
+phone and Heavyweight light on a phone set to dark (`simctl ui appearance`, put
+back after), on the tab root the bar both as the root asks for it and as the shot
+draws it: the mean luminance of the bar's frame, under 80 for Lime, over 200 for
+Heavyweight, read through `sips`); `focus`
+(a focused web field, then the chat up and down by the page, Back and the edge
+pan, or navPop on the tab root: no keyboard comes back, the document not
+scrolled; `interactivePop` on with Back, off in setup); `wckill` (WebContent
+killed with the chat up: the new document takes it over, on the tab root
+coachHome too with the Coach tab NATIVE throughout, resynced, nothing resent, the
+open confirm stale); `marker` (a planted crash marker, on the tab root the chat's
+and then the hub's: the web Coach once, About's row and counters, Try again);
+`policy` (`screens.coach` "off" at once, on the tab root `screens.coachHome` too,
+the bar staying); `breaker` (three timeouts: pings on the classic root, `coach.*`
+intents on the tab root, which count for the chat alone); `counters` (the web view
+out of its window; on the tab root a stray selection, listed by both 61 sheets;
+after that nothing leaves the window or hides the page again);
+`inactive` (no marker while the app is away); `teardown` (plan delta 17.10, 20-order
+9 item 35: the scene torn down and connected again by the App's replay,
+`sceneCycle`, with the chat up, since UIKit never destroys an iPhone app's only
+scene: a new root in a new window around a new web view, and 5 s later the web
+view, the root and the window it replaced all let go, ShellProbe's `replaced`).
+Spec 118 holds the page's half of build 60's (its C5 cases), specs 122-127 the
+page's half of the tab root's.
+
+**Modules.** Every `tools/shellscen/*.py` (not `_*.py`) is loaded with importlib
+and exports `SCENARIOS = [(name, function, rank, backgrounds[, marks]), ...]`;
+`marks` is `True`/`False` (`leaves`) or a dict `{'leaves': bool, 'roots':
+'tabs' | 'classic' | 'both'}` with either key left out, so a tab-root-only row
+is `(name, function, rank, False, {'roots': 'tabs'})`. The base ten run first,
+then the modules' by rank (ties by file name, then place); a pass on a root a row
+leaves out skips it and says so (never counted as run), and a pass with nothing
+of `--only` to run on its root ends before it boots or installs anything;
+`--list` shows a row's roots when they are not both. `--only` takes any name,
+and a module that does not load or a malformed row stops the run before the
+build. A module reaches the runner's helpers with
+`import native_shell as shell` (`shell_probe`, `state`, `js`, `wait`, `mark`,
+`intent`, `step`, `shot`, `sim_lock_held`, `appearance`, `drawn_bar`, the readers
+and About's steps; the docstring of `tools/native-shell.py` lists them) and gets
+the context `c` (`c.sim`, `c.rep`, `c.root`, `c.tabs`, `c.os`, `c.page`,
+`c.shell`).
+
+**What every run checks besides**: over every state of every launch,
+`leftWindow` and `leftWindowAny` 0 (but in scenarios that take the web view out
+on purpose, `leaves`), no `visibilitychange` (but where the app goes to the
+background, `backgrounds`, and in a `leaves` scenario once it has left), no
+fallback for want of a hello, every launch run to its end (no probe timed out);
+each mark holds the app still until its shot is on disk (the probe waits in the
+page for a go file the runner writes once `simctl io screenshot` has returned,
+60 s at most), so a shot never shows the next step however slow a loaded machine
+makes it: a shot counts only when the page went on at or after the shot's end (the
+wait's wall time), else it is late and fails, but for a `transient` mark (a toast,
+whose own life is shorter: its cap stays under it), which is reported. Before a
+launch that reads verdicts, what the launch before it left goes: a screen marker
+its last state listed with the screen up is removed (a fact); any other screen
+marker, or a section or model marker at 1, is a failed check naming the file and
+that launch (a fact when that launch timed out). Shots land in
+`screenshots/out/native-shell/` as
+`<runtime>-<root>-<scenario>-<launch>-<label>.png`, a scenario's older shots of
+the same runtime and root removed first: read every one.
 
 ## The live native chat in test-native.sh
 
-`../test-native.sh` drives the live chat (plan task C7) after its routes, through
-`tools/native-chat.py` on the same phone and container: `-fpSmoke`'s ping; the
-keyboard sequences (the simulator's software keyboard turned on for them: the
-native composer on the keys, typed words in the chat's store, Back with the keys
-up, the composer's words kept across a present and a relaunch, a web field's keys
-gone when the chat covers it, a short chat's newest message in view as the keys
-come up); a real coach turn from the native composer on
-`tools/coach-stub.py`, a stand-in for Anthropic's Messages API on the Mac's
-loopback (the Debug argument `-fpApiBase` hands it to the page as
-`window.__FP_SHELL.dev.api`; spec 121 holds the page to taking only a loopback
-origin): the echo, Thinking, the reply with a tool pill and PLAN CHANGES, Undo
-through the forwarded confirm, Keep changes, Send and Stop while scrolled to the
-top each bringing the end into view, a reader scrolled up keeping their place; then
-`coach/chat` by launch argument in both rooms x `simctl ui appearance light|dark`
-x `content_size large|extra-extra-large`; the app's Larger Text off keeping the empty composer at its Large
-height. It puts back what it changed in the container and the
-phone's settings. `python3 tools/coach-stub.py --script FILE` serves the stand-in
-on its own (one JSON line per request).
-
-On an iOS 26+ phone the launches (`-fpOffline`, no policy file) take the tab root
-the same way, where `native-chat.py`, written for 60's chat over the page, fails,
-and `../test-native.sh` exits 1 after the routes, the store check and the watch;
-the classic root comes with the same `{"tabs": false}` switch file.
+`../test-native.sh` drives the live native Coach (plan tasks C7 and T21) after its
+routes, through `tools/native-chat.py` on the same phone and container, under one
+root: `--root tabs` (the default: `-fpOffline` alone, so an iOS 26+ phone builds
+the tab root, the chat pushed on the native Coach tab's stack) or `--root classic`
+(section 6's policy offs written into the container as `fp-policy-offs.json`, every
+launch with `-fpPolicyFile fp-policy-offs.json -fpPolicyEvery 0`: build 60's look,
+the chat presented `.overFullScreen`, the only root where that style is asserted;
+an iOS 17 or 18 phone builds the classic root either way). `prepare` keeps every
+localStorage value but the key's (only whether there is one and whether it is the
+probe's), adds the probe's key and a starter programme where there are none, and
+checks the root: a tab pass that finds the classic one (a decline, a verdict, a
+trip, the bar's switch off: plan delta 16.7) turns it back on through TrovoShell and
+launches again; the shell's folder and UserDefaults copies (`fp.policy` among
+them: a launch with `-fpPolicyFile` rewrites it) are kept before the first launch
+and put back after the last (`tools/probe-selftest.py`'s helpers, through the
+simulator's cfprefsd).
+Then: `-fpSmoke`'s ping and the root's pieces negotiated; the keyboard sequences
+(the simulator's software keyboard turned on, the phone at Large: the native
+composer on the keys, typed words in the chat's store, Back with the keys up, a
+pop to the hub on the tab root, the composer's words kept across a present and a
+relaunch, a web field's keys gone when the chat covers it, on the tab root when the
+Coach tab is selected, a short chat's newest message in view as the keys come up,
+and the page's pending photo in the native composer, its preview measured in the
+shots: 140 pt with the keys down, 96 with them up, N5's cap); a real coach turn
+from the native composer on `tools/coach-stub.py`, a stand-in for Anthropic's
+Messages API on the Mac's loopback (the Debug argument `-fpApiBase` hands it to the
+page as `window.__FP_SHELL.dev.api`; spec 121 holds the page to taking only a
+loopback origin; every other launch gets a closed loopback port): the echo,
+Thinking, the reply with a tool pill and PLAN CHANGES, Undo through the forwarded
+confirm, Keep changes, Send and Stop while scrolled to the top each bringing the end
+into view, a reader scrolled up keeping their place, the chat where the root puts
+it through the turn (on the tab root pushed, Coach selected, the bar visible);
+`connect` on the tab root (the key taken out inside the page, the native connect
+screen in both rooms with its ground drawn in the room, an invalid key refused with
+the page's toast, the probe's key saved on the stand-in and verified, the hub;
+neither key in a probe log; a phone holding a key that is not the probe's fails
+`connect`, which then takes nothing out and types nothing: the tool never reads a
+key's value, only whether there is one and whether it is the probe's, so it could
+not put one back after a crash; remove the key in Settings first, or run on a
+phone that holds the probe's key or none); then, in both rooms x `simctl ui
+appearance light|dark` x `content_size large|extra-extra-large`, three launches by
+route: `coach/chat`, `coach` (the native hub, its ground drawn in the room) and
+`log/workout` (a web tab under the glass bar), each proving the phone's appearance
+from the app (the page's `prefers-color-scheme` against the combo's: simctl reads
+its own setting back even on a phone whose apps never get it), the bar asking for
+the room's look
+and, over the chat and the hub, drawing it (the mean luminance of its frame in the
+shot, `native-shell.py`'s bounds; over a web tab the glass shows the page's own
+cards through it, so only the look asked is checked there); the app's Larger Text
+off keeping the empty composer at its Large height;
+`restore` in two launches, never a reload. It puts back what it changed in the
+container and the phone's settings, after Ctrl-C or a SIGTERM too (a SIGTERM exits
+143). No tool stops the simulator's cfprefsd: after a stop of
+`com.apple.cfprefsd.xpc.daemon` the phone's appearance no longer reaches apps until
+SpringBoard starts again or the phone reboots (`simctl ui appearance dark` reads
+back dark and every launch stays light), which is how the "phone dark" half of the
+combos ran on a light phone until T21's review. The shell's copies are read and
+written through the daemon instead, by `defaults` spawned with the app's data
+container as its home, and held to the container's plist; a phone left in that
+state by anything else fails each combo's appearance check, which names the
+remedy. Every mark holds the app until its shot is on disk (`native-shell.py`'s go
+files); a shot that left no file fails the run, and a scenario's older shots of the
+root are removed before it runs (by name: test-native.sh's route shots share the
+folder). Shots in `screenshots/out/native/` (`coach-chat-*`, `coach-home-*`,
+`tabs-log-*`, `connect-*`, `keys-*`, `live-*`, `textoff-*`; `classic-` in front on
+the classic root). A run names the app it ran (its build, its page's stamp and
+`fp-build.sh`'s fingerprint, the `app` of a build's `build-id.txt`).
+`python3 tools/native-chat.py --self-test` holds the run's own judging without a
+simulator: a missing, late or misnamed shot, a state that reports no
+visibilitychange list, the bar's container unreported, a launch on another phone
+appearance than its combo's, which shots a scenario clears, the copies' keep and
+put-back, how a run ends. `python3 tools/coach-stub.py --script
+FILE` serves the stand-in on its own (one JSON line per request).
 
 ## The probe's self-test and the Release strings check
 
@@ -295,8 +412,10 @@ The page's coach calls go to a closed loopback port (`-fpApiBase`), so the canar
 never leaves the Mac. A phone holding a key that is not the probe's fails the
 `typeKey` launch, which then types nothing: remove the key first. The run keeps what
 the container holds (never the key's value), the shell's folder and its UserDefaults
-copies (`fp.shell.switches`, `fp.shell.breakers`, `fp.shell.counters`, read through
-the simulator's cfprefsd stopped first), turns a remembered decline of the tab bar
+copies (`fp.shell.switches`, `fp.shell.breakers`, `fp.shell.counters`, `fp.policy`:
+read and written through the simulator's cfprefsd, by `defaults` spawned with the
+app's container as its home; the daemon is never stopped, see the section above),
+turns a remembered decline of the tab bar
 back on through About's Try again (the paired phones hold one for page build
 20261012-2), and puts all of it back at the end, proven by one more launch that
 reads it. It holds the paired simulators itself (`sim.lock`) unless its caller
