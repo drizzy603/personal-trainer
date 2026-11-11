@@ -34,10 +34,10 @@ around the page in code, see [In the app](#in-the-app)), the bridge's tabs half,
 its tab bar switch (see [The screen bridge](#the-screen-bridge-in-the-app)); and the Coach tab's view and store (see
 [The native Coach tab](#the-native-coach-tab-coachhomeview-and-coachhomestore)), which ScreenHost hosts at the Coach
 stack's root from H10, so the page's `present coachHome` turns the Coach tab native. The published policy file keeps
-`screens.coachHome` and `screens.tabs` off until build 61 is checked. As the tools launch it, a build of this tree
-passes tests/native-shell.sh's `smoke` on either root, but not test-native.sh's live chat or the other scenarios: on an
-iOS 26+ simulator it takes the tab root, where the chat is pushed in the Coach tab's stack, not presented over the page
-as they check (see [tests/native-shell.sh](#testsnative-shellsh)).
+`screens.coachHome` and `screens.tabs` off until build 61 is checked. The simulator tools run a build of this tree
+under both roots: tests/native-shell.sh's scenarios on the tab root (iOS 26.x and 27.x) and on the classic root (iOS
+27.x), and test-native.sh's live chat on the tab root, where the chat is pushed in the Coach tab's stack (see
+[tests/native-shell.sh](#testsnative-shellsh) and tests/README.md).
 
 ## Targets
 
@@ -304,45 +304,32 @@ the real app, `tests/native-shell.sh`.
 
 ### tests/native-shell.sh
 
-The screen bridge in the real app on the real page, on the first paired iPhone + Watch of a runtime (iOS 26.x by
-default; `--os 27`), scenario by scenario through `ShellProbe` and `tests/tools/native-shell.py`: `smoke` (`-fpSmoke`
-logs `fp: ping ok v1`; v1 negotiated with the coach on the classic root, with the three pieces on the tab root, its bar
-and first tab checked), `chat` (the chat presented `.overFullScreen` on the page's model,
-a message sent and answered, the model switch, a forwarded confirm and an Undo toast round-tripping, Back, no
-`visibilitychange`, Heavyweight light and Lime dark), `focus` (a tap into the page and a focused field low enough that
-WebKit scrolls to it, then present and dismiss by the page, by Back and by the edge pan: no keyboard comes back and the
-document is not scrolled; an edge pan let go early leaves the chat up; the simulator's software keyboard is turned on
-for the scenario, since it counts a hardware keyboard as attached), `wckill` (WebContent killed with the chat up and a
-send in flight: the new document takes the chat over, the shell resyncs on its boot, nothing is resent, the words go
-back in the composer, the open confirm closes as stale), `marker` (a planted crash marker brings back the web chat,
-once; Settings > About keeps the row and says why, its sheet lists the counters, and the owner's "Try the native chat
-again" brings the native chat back at the next launch), `policy` (`screens.coach` "off" takes the chat down at once, and
-About says so), `breaker` (three timeouts turn it off for the page build; About says it is paused; Try again brings it
-back), `counters` (the web view taken out of its window with the chat up: the leave-window and hidden-page counts go up,
-and About's sheet lists them) and `inactive` (the app sent to the background right after launch, so the page presents
-the chat while it is not active: no crash marker is written while it is away, so a kill there gives no verdict at the
-next launch). Shots in `screenshots/out/native-shell/`.
+The screen bridge and build 61's tab root in the real app on the real page, scenario by scenario through `ShellProbe`
+and `tests/tools/native-shell.py` (plan tasks C5 and T16). The tab root runs on the first paired iPhone + Watch of iOS
+26.x and of 27.x, the classic root on iOS 27.x only (`--root tabs|classic|both`, both by default; `--os`, `--phone`):
+the classic pass stages an offs policy file and launches with `-fpPolicyFile` and `-fpPolicyEvery 0`, which is build
+60's look on build 61's binary. Each pass replaces the app's data (the app uninstalled and installed, delta 16.7), seeds
+its own key, programme and conversation, and checks the root its launches build before any scenario runs.
 
-**These are build 60's scenarios, run on build 61's binary.** `smoke` holds on either root: the flag names the
-binary's three screens and offers the chat, or under a tab root the three pieces, where the root is live (`fellBack`
-null), the flag's first bar is 83 high over a safe inset of 34 or 0 and the flag names the first frame's tab. `chat`
-checks after Back that no presenting marker is left and that every section and model marker rests at 0. Every scenario
-that puts the chat up needs the classic root, and the tool does not ask for it: its launches pass `-fpOffline` (only
-`policy` passes a policy file, `{"v":1}`: the defaults), so on an iOS 26+ phone whose app data turns nothing off the
-scene takes the tab root, where the Coach tab is native (H10) and the chat is pushed in its stack rather than presented
-over the page, which these scenarios were written for. A phone gives the classic root with the Native tab bar switch
-off (`{"tabs": false}` in the app container's `Library/Application Support/FPShell/switches.json`) or with a decline of
-`tabs` for the bundled page's build: build 60's page (91708ae's `index.html` and `build.txt`) declines it at its first
-hello, so every later launch of that build is classic. Such a bundle is built by hand into `dd-shell` (that page staged
-with `cap copy`, the App scheme built at 61, its `build-id.txt` removed) and run with `--no-build=any`, which runs a
-build of a tree unknown and says so (`--no-build` refuses a build with no `build-id.txt`, another tree's, or one whose
-bundled page is not the page this checkout staged); the tree's own page is staged again after. The build and the run
-share one `sim.lock` hold (`tests/tools/simlock.sh`): `dd-shell` is the folder `tests/native-shell.sh` builds into and
-reuses in this checkout, so a run of it in between would build the tree's own page over the hand build, and the
-`--no-build=any` run would then test that build without a word (it is this tree's); every simulator tool takes
-`sim.lock` first and counts a hold of its shell or an ancestor as its own, so one hand hold covers the build and the
-run. No other build of the checkout runs meanwhile either: the hand build stages its page in `www/` and
-`ios/App/App/public` outside fp-build's `build.lock`.
+Build 60's nine scenarios and `teardown` run under both roots: `smoke` (`-fpSmoke`'s ping, the root the launch built,
+hello, the flag's bar, About's rows, the share hook's file), `chat` (classic: presented `.overFullScreen` over the page;
+tab root: pushed on the NATIVE Coach tab's stack; a message sent and answered, the model switch, a forwarded confirm and
+an Undo toast, the screen marker, Back, and the rooms' appearance: Lime dark on a light phone, Heavyweight light on a
+dark one, the phone's appearance proven from the page's `prefers-color-scheme`, and on the tab root the bar as drawn),
+`focus` (a focused web field, then the chat up and down by the page, Back and the edge pan or `navPop`: no keyboard
+comes back and the document is not scrolled), `wckill` (WebContent killed with the chat up: taken over and resynced on
+the new boot, the Coach tab NATIVE throughout, nothing resent, the open confirm stale), `marker` (a planted crash marker
+brings back the web Coach once; on the tab root the hub's marker too), `policy` (`screens.coach` off at once; on the tab
+root `screens.coachHome` too), `breaker` (three timeouts turn it off for the page build), `counters` (the web view out
+of its window; on the tab root a stray selection), `inactive` (no marker while the app is away) and `teardown` (the
+scene torn down and connected again with the chat up: the web view, the root and the window it held all let go). Then
+every module of `tests/tools/shellscen/*.py`, by rank; a row marked `{'roots': 'tabs'}` or `'classic'` runs on that
+root's passes only.
+
+Each mark holds the app until its shot is on disk (the page waits for a go file the runner writes once the screenshot
+has returned), so a loaded Mac cannot shoot the next step. Shots land in `screenshots/out/native-shell/` as
+`<runtime>-<root>-<scenario>-...png`: look at them. `python3 tests/tools/native-shell.py --self-test` runs the tool's
+own cases with no simulator. tests/README.md, "The native screens on a simulator", lists every check.
 
 ## The live chat: CoachStore
 
