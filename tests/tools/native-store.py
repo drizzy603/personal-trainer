@@ -4,17 +4,20 @@
 tests/native-store.sh builds the app (Debug, as build 61 at least, through tests/tools/fp-build.sh into
 ~/Library/Caches/FPKit/<checkout>/dd-store, holding the paired simulators' sim.lock) and calls this. Every scenario
 drives the real index.html in the real Capacitor shell through the app's own launch arguments (FPHost's StoreProbe, Debug
-builds only), so nothing writes WebKit's file behind the facade except the scenarios that are about exactly that (WebKit
-wiped). The host reads the two SQLite files itself (WebKit's localstorage.sqlite3 and FPStore's store.sqlite, copied
-first) and decides; the app only acts and reports.
+builds only; the scene scenario runs FPUI's ShellProbe in the same launches, for the root and what a replay let go), so
+nothing writes WebKit's file behind the facade except the scenarios that are about exactly that (WebKit wiped). The host
+reads the two SQLite files itself (WebKit's localstorage.sqlite3 and FPStore's store.sqlite, copied first) and decides;
+the app only acts and reports.
 
   native-store.py --phone UDID --app App.app [--app59 App59.app] [--only a,b] [--sweep N]
 
 Exit 1 when any check fails. Output: one PASS/FAIL line per check, then the facts the report needs.
 """
 import argparse
+import datetime
 import json
 import os
+import plistlib
 import re
 import shutil
 import sqlite3
@@ -87,8 +90,11 @@ class Sim:
         self.sh('xcrun', 'simctl', 'terminate', self.udid, BID, check=False)
         time.sleep(0.8)
 
-    def launch(self, args=()):
-        out = self.sh('xcrun', 'simctl', 'launch', self.udid, BID, *args)
+    def launch(self, args=(), stdout=None, stderr=None):
+        """The app's pid. `stdout`, `stderr`: host files the app's standard output and error go to (simctl's --stdout= and
+        --stderr=; a scenario that reads what the app printed, as the key canary does)."""
+        opts = (['--stdout=' + stdout] if stdout else []) + (['--stderr=' + stderr] if stderr else [])
+        out = self.sh('xcrun', 'simctl', 'launch', *opts, self.udid, BID, *args)
         m = re.search(r':\s*(\d+)', out)
         return int(m.group(1)) if m else None
 
@@ -164,10 +170,13 @@ def read_log(path):
     return out
 
 
-def probe(sim, name, phases, args=(), until='done', timeout=90, terminate=True, during=None, verdicts=False):
+def probe(sim, name, phases, args=(), until='done', timeout=90, terminate=True, during=None, verdicts=False, shell=None):
     """One launch running `phases`. Returns its events. `during(events)` is called while waiting (host actions).
     `verdicts`: a stale store marker found at this launch gives its verdict (the marker scenario); otherwise the launch
-    takes -fpIgnoreMarker (see MARKED)."""
+    takes -fpIgnoreMarker (see MARKED). `shell`: the shell probe's phases for the same launch (FPUI ShellProbe,
+    -fpShellProbe: phase k at the k-th page's bootDone, as here; its `state` reports `describe()`, the tab root's
+    included, and after its own `sceneCycle` what the replay let go); its events are `ev.shell`, and the launch waits
+    for its `done` too."""
     RUNS[0] += 1
     tag = '%02d-%s' % (RUNS[0], name)
     pdir = sim.path('Documents', 'fp-probe')
@@ -177,9 +186,17 @@ def probe(sim, name, phases, args=(), until='done', timeout=90, terminate=True, 
     logp = os.path.join(pdir, tag + '.jsonl')
     if os.path.exists(logp):
         os.remove(logp)
+    slogp, sargs = None, []
+    if shell is not None:
+        with open(os.path.join(pdir, tag + '-shell.json'), 'w') as f:
+            json.dump({'phases': shell}, f)
+        slogp = os.path.join(pdir, tag + '-shell.jsonl')
+        if os.path.exists(slogp):
+            os.remove(slogp)
+        sargs = ['-fpShellProbe', tag + '-shell.json', '-fpShellProbeLog', tag + '-shell.jsonl']
     sim.terminate()
     marker = [] if verdicts else ['-fpIgnoreMarker']
-    pid = sim.launch(['-fpProbe', tag + '.json', '-fpProbeLog', tag + '.jsonl', '-fpOffline', *marker, *args])
+    pid = sim.launch(['-fpProbe', tag + '.json', '-fpProbeLog', tag + '.jsonl', '-fpOffline', *marker, *sargs, *args])
     t_end = time.time() + timeout
     ev = Events()
     while time.time() < t_end:
@@ -187,12 +204,14 @@ def probe(sim, name, phases, args=(), until='done', timeout=90, terminate=True, 
         ev = read_log(logp)
         if during:
             during(ev)
-        if ev.first(until) or (until != 'sigkill' and ev.first('sigkill')):
+        if (ev.first(until) or (until != 'sigkill' and ev.first('sigkill'))) and (not slogp or read_log(slogp).first('done')):
             break
     ev = read_log(logp)
     ev.pid = pid
     ev.tag = tag
     ev.timedOut = not ev.first(until)
+    ev.shell = read_log(slogp) if slogp else Events()
+    ev.shellTimedOut = bool(slogp) and not ev.shell.first('done')
     if not verdicts and (ev.first('launch') or {}).get('markerFound'):
         MARKED.append(tag)
     if terminate and until != 'sigkill':
@@ -338,13 +357,23 @@ return { wrote: n, mode: st ? st.mode : null, fallbacks: st ? st.fallbacks : nul
 """
 
 
+SEED_DAY = []   # the day the seed's dates count from: one set of dates for the whole run, even across midnight
+
+
 def seed_values():
     with open(os.path.join(REPO, 'tests', 'seed-dump.json')) as f:
         s = json.load(f)
     routine = s['kt_routine']
+    if not SEED_DAY:
+        SEED_DAY.append(datetime.date.today())
+    day = SEED_DAY[0]
+    # A set next round starting on a Monday two weeks or more ahead, and its ROUND N card shown until three weeks ahead:
+    # dates every boot of the run leaves as they are. A start already gone builds the round at the next boot, which
+    # rewrites both keys (the wiped scenario compares them with this seed; the fixed dates of October 2026 went stale).
+    starts = day + datetime.timedelta(days=14 + (7 - day.weekday()) % 7)
     s.update({
-        'kt_routine_next': '{"startsOn":"2026-10-19","at":1791700000000}',
-        'kt_round_intro': '{"cycle":2,"top":"Bench","until":"2026-10-25"}',
+        'kt_routine_next': '{"startsOn":"%s","at":1791700000000}' % starts.isoformat(),
+        'kt_round_intro': '{"cycle":2,"top":"Bench","until":"%s"}' % (day + datetime.timedelta(days=21)).isoformat(),
         'kt_hk_imported': '["11111111-AAAA-4000-8000-000000000001","22222222-BBBB-4000-8000-000000000002"]',
         'kt_hk_last_sync': '1791600000000',
         'kt_routine_backup': routine,
@@ -702,8 +731,184 @@ def scen_proxy(c):
     c.in_step(s, 'proxy back', ev)
 
 
+# ── the scene: the replay builds 61's root (plan task T22) ───────────────────────────────────────────────────────────
+
+# Section 6's offs (13-tests-release.md: the policy file published days before build 61's upload): the native Coach tab
+# and the tab bar off, 60's overlay chat on. Under it the gate gives the classic root.
+OFFS_POLICY = '{"v":1,"store":{"facade":"on","repair":"off"},"screens":{"coach":"on","coachHome":"off","tabs":"off"}}'
+
+THEME_JS = r"""
+var was = localStorage.getItem('kt_theme');
+if (args.theme === null) localStorage.removeItem('kt_theme'); else localStorage.setItem('kt_theme', args.theme);
+var st = window.__ktStoreState;
+return { was: was, now: localStorage.getItem('kt_theme'), acked: st ? st.acked('kt_theme') : null, mode: st ? st.mode : null };
+"""
+
+ROOM_JS = "return { room: document.documentElement.getAttribute('data-room'), theme: localStorage.getItem('kt_theme') };"
+
+# The UserDefaults copies of the shell's switches, breaker book and counters, and the policy copy (60 reads only this
+# one): each is read only when its file in Application Support/FPShell does not read.
+SHELL_PREFS = ('fp.shell.switches', 'fp.shell.breakers', 'fp.shell.counters', 'fp.policy')
+
+
+def _prefs_path(sim):
+    return sim.path('Library', 'Preferences', BID + '.plist')
+
+
+def _prefs_settle(sim):
+    # The simulator's cfprefsd caches the app's preferences and writes them later. Stopping it (launchd starts it again at
+    # the next use) makes it write what it holds and keep no copy: the plist is then what the app last wrote, and an edit
+    # is what the app reads next (probe-selftest.py does the same).
+    sim.sh('xcrun', 'simctl', 'spawn', sim.udid, 'launchctl', 'stop', 'com.apple.cfprefsd.xpc.daemon', check=False)
+    time.sleep(1.0)
+
+
+def _read_prefs(sim, keys):
+    """The app's preferences for `keys` as the app last wrote them (the app ended): key -> value, None when absent."""
+    _prefs_settle(sim)
+    d = {}
+    if os.path.exists(_prefs_path(sim)):
+        with open(_prefs_path(sim), 'rb') as f:
+            d = plistlib.load(f)
+    return {k: d.get(k) for k in keys}
+
+
+def _write_prefs(sim, values):
+    """`values` (None: absent) into the app's preferences, every other key left as it is (the app ended)."""
+    _prefs_settle(sim)
+    p = _prefs_path(sim)
+    d, fmt, mode = {}, plistlib.FMT_BINARY, 0o600
+    if os.path.exists(p):
+        with open(p, 'rb') as f:
+            raw = f.read()
+        fmt = plistlib.FMT_XML if raw.lstrip().startswith(b'<') else plistlib.FMT_BINARY
+        d = plistlib.loads(raw)
+        mode = os.stat(p).st_mode & 0o777
+    if all(d.get(k) == v for k, v in values.items()):
+        return
+    for k, v in values.items():
+        if v is None:
+            d.pop(k, None)
+        else:
+            d[k] = v
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    with open(p + '.fpns', 'wb') as f:
+        plistlib.dump(d, f, fmt=fmt)
+    os.chmod(p + '.fpns', mode)
+    os.replace(p + '.fpns', p)
+    _prefs_settle(sim)
+
+
+class ShellAside:
+    """The shell's own state, set aside while the launch's arguments must decide the root, and put back as found after:
+    Application Support/FPShell (the switches, the breaker book, the section and model markers, the policy copy) and
+    the UserDefaults copies read when those files do not read. A tabs decline, a switch, a crash verdict or a breaker
+    trip that another tool left for this shell and page build would give the classic root (delta 16.7: the paired
+    phones after the build 60 drill)."""
+
+    def __init__(self, sim):
+        self.sim = sim
+        self.folder = sim.path('Library', 'Application Support', 'FPShell')
+        self.tmp = tempfile.mkdtemp(prefix='fpns-shell-')
+        self.saved = None
+        self.found = None
+
+    def take(self):
+        self.sim.terminate()
+        if os.path.isdir(self.folder):
+            self.saved = os.path.join(self.tmp, 'FPShell')
+            shutil.copytree(self.folder, self.saved)
+            shutil.rmtree(self.folder)
+        self.found = _read_prefs(self.sim, SHELL_PREFS)
+        _write_prefs(self.sim, {k: None for k in SHELL_PREFS})
+        return self
+
+    def put_back(self):
+        """What was found, put back, each part tried even when another fails (a wedged simulator's terminate times out);
+        answers what still differs when read back, or could not be put back (none: as found). The set-aside copy is kept,
+        and named, unless everything went back."""
+        left = []
+        try:
+            self.sim.terminate()
+        except Exception as e:  # noqa: BLE001 -- the app may still run: put back what can be, and say so
+            left.append('terminate: %r' % e)
+        try:
+            if os.path.isdir(self.folder):
+                shutil.rmtree(self.folder)
+            if self.saved:
+                shutil.copytree(self.saved, self.folder)
+        except Exception as e:  # noqa: BLE001
+            left.append('the folder: %r' % e)
+        if self.found is not None:
+            try:
+                _write_prefs(self.sim, self.found)
+                now = _read_prefs(self.sim, SHELL_PREFS)
+                left += sorted(k for k in SHELL_PREFS if now.get(k) != self.found.get(k))
+            except Exception as e:  # noqa: BLE001
+                left.append('the copies: %r' % e)
+        if left:
+            left.append('what was found is kept in %s' % self.tmp)
+        else:
+            shutil.rmtree(self.tmp, ignore_errors=True)
+        return left
+
+
+def tab_root_os(rt):
+    """Whether the runtime ('iOS-26-5') builds a tab root at all (the gate's `os`: iOS 26 and later)."""
+    m = re.match(r'iOS-(\d+)', rt or '')
+    return bool(m) and int(m.group(1)) >= 26
+
+
+def after_replay(label):
+    """The store probe's phase on the page the replay brought: its state and a status 1.5 s in, a status 5 s after."""
+    return [{'op': 'wait', 'ms': 1500}, state(label), {'op': 'status', 'label': '1.5 s'},
+            {'op': 'wait', 'ms': 3500}, {'op': 'status', 'label': '5 s'}]
+
+
+def shell_root(ev, label):
+    """The shell probe's `describe().root` at its state `label` ({} when there is none)."""
+    return ((((ev.shell.last('state', label=label) or {}).get('shell') or {}).get('root')) or {})
+
+
+def replay_reads(ev, cycle):
+    """The store's page count and detach count at the 1.5 s and 5 s statuses after the replay event `cycle`, with how
+    long after the replay each was read."""
+    out = []
+    for label in ('1.5 s', '5 s'):
+        e = ev.last('status', label=label) or {}
+        st = e.get('status') or {}
+        after = (e['wall'] - cycle['wall']) / 1000.0 if e.get('wall') and (cycle or {}).get('wall') else None
+        out.append({'alive': st.get('pagesAlive'), 'detached': (st.get('counters') or {}).get('detached'), 'after': after})
+    return out
+
+
+def reads_text(reads):
+    return ', '.join('%s page(s) alive and %s detached %s s after it' % (r['alive'], r['detached'], '%.1f' % r['after'] if r['after'] is not None else '?')
+                     for r in reads)
+
+
 def scen_scene(c):
+    """The scene's replay (StoreProbe.sceneReplay, the App's root factory: SceneDelegate's teardown, then its connection
+    on the same window scene) builds the root the gate decides, tabs under -fpOffline and the classic root under section
+    6's offs file, lets the old page, root and window go, and keeps the store in step; the first frame takes the owner's
+    room from the store (delta 16.4). The shell's own state is set aside for it and put back after."""
     s = 'scene'
+    aside = ShellAside(c.sim)
+    try:
+        aside.take()
+        _scene_tabs(c, s)
+        _scene_hook(c, s)
+        _scene_classic(c, s)
+        _scene_room(c, s)
+    finally:
+        left = aside.put_back()
+        c.rep.check(s, 'the shell\'s own state put back as found (Application Support/FPShell, and %s read back)' % ', '.join(SHELL_PREFS),
+                    not left, '; '.join(left))
+
+
+def _scene_tabs(c, s):
+    """The replay through the store probe (H9's path), under -fpOffline: the tab root on iOS 26 and later."""
+    want = 'tabs' if tab_root_os(c.rt) else 'classic'
     acted = {}
 
     def during(ev):
@@ -716,29 +921,140 @@ def scen_scene(c):
     ev_t0 = [time.time()]
     ev = probe(c.sim, 'scene', [
         [state('scene 1'), {'op': 'sceneDestroy'}, {'op': 'sceneCycle'}],
-        [{'op': 'wait', 'ms': 1500}, state('scene 2'), {'op': 'status'}]], timeout=150, during=during)
+        after_replay('scene 2')], timeout=150, during=during, shell=[[], [{'op': 'wait', 'ms': 1500}, {'op': 'state', 'label': 'new root'}]])
     refused = ev.first('sceneDestroyRefused')
     if refused:
-        c.rep.fact(s, 'UIKit refuses a scene destruction here (%s); the scenario replays the reconnect in the process: '
-                      'sceneDidDisconnect\'s call, sceneConnected, a new window and its root around a new SuperoViewController, '
-                      'built by SceneDelegate in code'
+        c.rep.fact(s, 'UIKit refuses a scene destruction here (%s); the scenario replays the reconnect in the process: SceneDelegate\'s '
+                      'teardown (sceneDidDisconnect\'s body: the old window and page let go), then its connection on the same window scene '
+                      '(a new window, a new SuperoViewController and the root the gate decides, built in code, no storyboard)'
                       % refused.get('error', '')[:90])
+    cycle = ev.first('sceneCycle') or {}
     disc = ev.first('sceneDisconnected')
     det = ev.first('detached') or {}
     inst = [e for e in ev.all('installed')]
-    stat = (ev.first('status') or {}).get('status') or {}
+    root = shell_root(ev, 'new root')
     c.rep.check(s, 'the scene disconnected and its page was detached', disc is not None and det.get('serial') == 1, '%s / %s' % (disc, det))
     c.rep.check(s, 'the new scene\'s web view bound the store (install #2) and attached', len(inst) >= 2 and inst[-1].get('serial') == 2
                 and (c.hello(ev, 1) or {}).get('attached'), [i.get('serial') for i in inst])
-    c.rep.check(s, 'one page at a time (the old web view released)', stat.get('pagesAlive') == 1 and stat.get('counters', {}).get('detached') == 1,
-                'alive %s, detached %s' % (stat.get('pagesAlive'), stat.get('counters', {}).get('detached')))
+    c.rep.check(s, 'the replay (StoreProbe.sceneReplay) built the root the gate decides under -fpOffline: %s, in a new window' % want,
+                cycle.get('root') == want and cycle.get('newWindow') is True and not cycle.get('error'),
+                {k: cycle.get(k) for k in ('root', 'newWindow', 'error') if k in cycle})
+    c.rep.check(s, 'the shell is bound to the new page under that root (the shell probe\'s describe().root.kind %s)' % want,
+                root.get('kind') == want and not ev.shellTimedOut, {'kind': root.get('kind'), 'shellTimedOut': ev.shellTimedOut})
+    c.rep.fact(s, 'the replay\'s own turn read oldWindowAlive %s and %s page(s) alive; UIKit may still hold them there (H11\'s 846fc15 took '
+                  'the same read out of the shell probe), so the checks read them after it' % (cycle.get('oldWindowAlive'), cycle.get('alive')))
+    reads = replay_reads(ev, cycle)
+    c.rep.check(s, 'one page at a time (the old web view released) by the status read after the replay', reads[0]['alive'] == 1 and reads[0]['detached'] == 1,
+                reads_text(reads[:1]))
+    c.rep.check(s, '5 s after the replay still one page: nothing holds the old page any more (the hook round reads the old root and window themselves gone)',
+                reads[1]['alive'] == 1 and reads[1]['detached'] == 1 and (reads[1]['after'] or 0) >= 5, reads_text(reads[1:]))
     c.in_step(s, 'scene 2', ev)
     c.note_state(s, ev)
 
 
+def _scene_hook(c, s):
+    """The same replay through the shell probe's hook (the App's one closure), which holds what the scene held weakly and
+    says in each later state whether the web view, the root and the window it replaced are still alive."""
+    want = 'tabs' if tab_root_os(c.rt) else 'classic'
+    ev = probe(c.sim, 'scene-hook', [[state('hook 1')], after_replay('hook 2')], timeout=150,
+               shell=[[{'op': 'wait', 'ms': 3000}, {'op': 'sceneCycle'}],
+                      [{'op': 'wait', 'ms': 1500}, {'op': 'state', 'label': '1.5 s'}, {'op': 'wait', 'ms': 3500}, {'op': 'state', 'label': '5 s'}]])
+    cycle = ev.shell.first('sceneCycle') or {}
+    st1 = ev.state('hook 1') or {}
+    c.rep.check(s, 'the shell probe\'s replay (the App\'s sceneCycle hook) built the %s root in a new window around a new web view' % want,
+                cycle.get('ran') is True and cycle.get('root') == want and cycle.get('newWebView') is True and cycle.get('newWindow') is True
+                and bool(st1.get('wall')) and st1['wall'] < cycle.get('wall', 0),
+                {k: cycle.get(k) for k in ('ran', 'root', 'newWebView', 'newWindow', 'error') if k in cycle})
+    rep = {}
+    for label in ('1.5 s', '5 s'):
+        e = ev.shell.last('state', label=label) or {}
+        r = e.get('replaced') or {}
+        rep[label] = {'webView': r.get('webView'), 'root': r.get('root'), 'window': r.get('window'),
+                      'after': round((e['wall'] - cycle['wall']) / 1000.0, 1) if e.get('wall') and cycle.get('wall') else None,
+                      'kind': (((e.get('shell') or {}).get('root')) or {}).get('kind')}
+    gone = {'webView': False, 'root': False, 'window': False}
+    c.rep.fact(s, 'what the replay let go, %s s after it: %s' % (rep['1.5 s']['after'], rep['1.5 s']))
+    c.rep.check(s, '5 s after the replay the web view, the root and the window it replaced are gone (H11\'s replaced, read after the replay\'s turn)',
+                {k: rep['5 s'][k] for k in gone} == gone and (rep['5 s']['after'] or 0) >= 5 and rep['5 s']['kind'] == want, rep['5 s'])
+    reads = replay_reads(ev, cycle)
+    c.rep.check(s, 'and the store saw one page throughout: the old one detached, the new one bound (install #2) and attached',
+                all(r['alive'] == 1 and r['detached'] == 1 for r in reads) and [i.get('serial') for i in ev.all('installed')][-1:] == [2]
+                and (c.hello(ev, 1) or {}).get('attached'), reads_text(reads))
+    c.in_step(s, 'hook 2', ev)
+    c.note_state(s, ev)
+
+
+def _scene_classic(c, s):
+    """The replay through the store probe under section 6's offs file: the classic root, the SuperoViewController itself."""
+    pol = c.sim.path('Documents', 'fp-policy-offs.json')
+    with open(pol, 'w') as f:
+        f.write(OFFS_POLICY)
+    try:
+        ev = probe(c.sim, 'scene-classic', [[state('classic 1'), {'op': 'sceneCycle'}], after_replay('classic 2')], timeout=150,
+                   args=['-fpPolicyFile', 'Documents/fp-policy-offs.json', '-fpPolicyEvery', '0'],
+                   shell=[[], [{'op': 'wait', 'ms': 1500}, {'op': 'state', 'label': 'classic root'}]])
+    finally:
+        os.remove(pol)
+    cycle = ev.first('sceneCycle') or {}
+    root = shell_root(ev, 'classic root')
+    c.rep.check(s, 'under section 6\'s offs file (screens.tabs off) the replay builds the classic root, in a new window, and the shell says so',
+                cycle.get('root') == 'classic' and cycle.get('newWindow') is True and root.get('kind') == 'classic',
+                {'event': cycle.get('root'), 'newWindow': cycle.get('newWindow'), 'describe': root.get('kind')})
+    reads = replay_reads(ev, cycle)
+    c.rep.check(s, 'one page 1.5 s and 5 s after it (the classic root is the old page\'s own controller)',
+                all(r['alive'] == 1 and r['detached'] == 1 for r in reads) and (reads[1]['after'] or 0) >= 5, reads_text(reads))
+    c.in_step(s, 'classic 2', ev)
+    c.note_state(s, ev)
+
+
+def _scene_room(c, s):
+    """Delta 16.4: the first frame's room (`describe().root.firstRoom`) is the owner's room as the store holds it, read at
+    the scene's connection (no -devTheme); with Storage's Native copy switch off the store may lag WebKit, so the first
+    frame is Heavyweight while the page itself paints the room WebKit holds."""
+    if not tab_root_os(c.rt):
+        c.rep.fact(s, 'the first frame\'s room is a tab root\'s: none on %s' % c.rt)
+        return
+    ev = probe(c.sim, 'room-lime', [[js('lime', THEME_JS, theme='dark'), state('lime stored')]])
+    r = (ev.first('js', label='lime') or {}).get('result') or {}
+    was = r.get('was')
+    c.rep.check(s, 'Lime saved through the page (kt_theme "dark", mirrored to the store)', r.get('now') == 'dark' and r.get('acked') is True
+                and r.get('mode') == 'shadow', r)
+    c.in_step(s, 'lime stored', ev)
+    look = [[state('room'), js('room', ROOM_JS)]]
+    ev = probe(c.sim, 'room-dark', look, shell=[[{'op': 'state', 'label': 'first room'}]])
+    root, page = shell_root(ev, 'first room'), (ev.first('js', label='room') or {}).get('result') or {}
+    c.rep.check(s, 'kt_theme "dark" in the store and no -devTheme: the tab root\'s first frame is Lime (describe().root.firstRoom "dark")',
+                root.get('kind') == 'tabs' and root.get('firstRoom') == 'dark' and page.get('room') == 'dark',
+                {'kind': root.get('kind'), 'firstRoom': root.get('firstRoom'), 'page': page.get('room')})
+    ev = probe(c.sim, 'room-switch-off', look, args=['-fpStoreSwitch', 'off'], shell=[[{'op': 'state', 'label': 'first room'}]])
+    root, page = shell_root(ev, 'first room'), (ev.first('js', label='room') or {}).get('result') or {}
+    st = ((ev.state('room') or {}).get('js') or {}).get('st') or {}
+    c.rep.check(s, 'with Storage\'s Native copy switch off (-fpStoreSwitch off) the first frame is Heavyweight while the page itself stays Lime',
+                root.get('kind') == 'tabs' and root.get('firstRoom') == 'heavyweight' and page.get('room') == 'dark' and st.get('mode') == 'off',
+                {'kind': root.get('kind'), 'firstRoom': root.get('firstRoom'), 'page': page.get('room'), 'facade': st.get('mode')})
+    ev = probe(c.sim, 'room-back', [[js('back', THEME_JS, theme=was), state('room back')]], args=['-fpStoreSwitch', 'on'],
+               shell=[[{'op': 'state', 'label': 'first room'}]])
+    r = (ev.first('js', label='back') or {}).get('result') or {}
+    c.rep.check(s, 'the switch on again and the room as found (%s): the first frame is the stored room again ("dark") before the page puts it back'
+                % (was if was is not None else 'none'), r.get('now') == was and shell_root(ev, 'first room').get('firstRoom') == 'dark',
+                {'now': r.get('now'), 'firstRoom': shell_root(ev, 'first room').get('firstRoom')})
+    c.in_step(s, 'room back', ev)
+
+
+def ota_build(c):
+    """The test page's stamp: --ota-build, else newer than the bundled page's (`c.page`) on the same date, so the next
+    launch serves it while any later real page (a later date) still beats a copy a broken run left staged."""
+    if c.opts.ota_build:
+        return c.opts.ota_build
+    m = re.match(r'^(\d{8})-(\d+)$', c.page or '')
+    return '%s-%d' % (m.group(1), max(99, int(m.group(2)) + 1)) if m else None
+
+
 def scen_ota(c):
     s = 'ota'
-    build = c.opts.ota_build
+    build = ota_build(c)
+    if not c.rep.check(s, 'a stamp newer than the bundled page\'s for the test page', build and build != c.page, '%s over %s' % (build, c.page)):
+        return
     src = open(os.path.join(REPO, 'index.html'), encoding='utf-8').read()
     html = re.sub(r'<meta name="build" content="[^"]+"/>', '<meta name="build" content="%s"/>' % build, src, count=1)
     with open(c.sim.path('Documents', 'fp-probe', 'ota.html'), 'w', encoding='utf-8') as f:
@@ -1115,7 +1431,7 @@ def main():
     ap.add_argument('--sweep', type=int, default=24)
     ap.add_argument('--burst-chars', type=int, default=4000)
     ap.add_argument('--sweep-extra', type=int, default=30)
-    ap.add_argument('--ota-build', default='20261011-99')
+    ap.add_argument('--ota-build', default='', help='the OTA test page\'s stamp (default: the bundled page\'s date, suffix 99)')
     ap.add_argument('--out')
     opts = ap.parse_args()
     BURST_CHARS[0] = opts.burst_chars
@@ -1125,6 +1441,7 @@ def main():
     rep = Report('%s %s' % (name, rt))
     print('== native store scenarios on %s (%s, %s)' % (name, rt, opts.phone), flush=True)
     c = Ctx(sim, rep, opts)
+    c.rt = rt
     only = [x for x in opts.only.split(',') if x]
     run = only or ALL
     if 'fresh' not in run and 'migration' not in run:
