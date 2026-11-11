@@ -72,8 +72,11 @@ Scenarios, in this order (prepare and restore always run; --only picks among the
            through it, so the look asked is what is checked there). On the classic root:
            coach/chat presented .overFullScreen, coach and log/workout the page's own under its own tab bar. Every
            launch proves the phone's appearance from the app (the page's prefers-color-scheme against the combo's:
-           simctl reads its own setting back even on a phone whose apps never get it). Shots coach-chat-*,
-           coach-home-*, tabs-log-*; the phone's settings go back
+           simctl reads its own setting back even on a phone whose apps never get it). Where the page itself is on
+           screen (log/workout on either root, coach on the classic one) its shot draws no band behind the status
+           bar: down the bar's height the page's side margin reads as it does just under it (from iOS 27.0 UIKit's
+           top scroll edge effect drew the web view's paper there on a dark phone, a grey haze over Lime, until
+           ShellWebView hid it). Shots coach-chat-*, coach-home-*, tabs-log-*; the phone's settings go back
   textoff  the phone at extra-extra-large and the app's Larger Text turned off with the chat up: the empty composer is as
            tall as at Large (the chat is pinned to Large, its field too), and the phone's setting goes back
   restore  what prepare kept goes back (only the values that changed), the key as it was, the composer empty, read back
@@ -92,8 +95,10 @@ folder), so a mark the run never reached leaves no earlier run's PNG to be read 
 
 --self-test (no simulator): the run's own judging on made-up records (a missing, late or misnamed shot, a state that
 reports no visibilitychange list, the bar's container unreported, a launch on another phone appearance than its
-combo's), which shots a scenario clears, the copies' keep and put-back on a stand-in for the daemon, how a run ends
-(a scenario that breaks, a SIGTERM), and the app's hash against fp-build.sh's own pipeline.
+combo's) and made-up shots (a band behind the status bar, lighter or darker, a shade over the bound and under it; a
+shot or a screen width that cannot be read), which shots a scenario clears, the copies' keep and put-back on a stand-in
+for the daemon, how a run ends (a scenario that breaks, a SIGTERM), and the app's hash against fp-build.sh's own
+pipeline.
 
 Exit 1 when any check fails, 2 on bad arguments, when the paired simulators' lock is not this run's or when the app's
 container or preferences cannot be read (nothing run), 143 after a SIGTERM (restore and the put-back ran first).
@@ -115,6 +120,7 @@ import sys
 import tempfile
 import time
 import traceback
+import zlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -170,6 +176,21 @@ PHOTO_CAP_DOWN, PHOTO_CAP_UP = 140, 96
 # edge, where no row, card or title reaches (Heavyweight's paper about 245 of 255, Lime's dark ground under 30). The
 # bounds are the bar's (native-shell.py's DARK_BAR_MAX, LIGHT_BAR_MIN).
 GROUND_X, GROUND_TOP = (2, 12), 140
+# The strip behind the status bar where the page itself is on screen (the web tabs; the classic root's Coach home), as a
+# shot draws it. From iOS 27.0 UIKit gives a scroll view that reaches under the status bar a top edge effect, and on a
+# dark phone the effect replays the scroll view's background over the content through a fading mask: the web view's is
+# Capacitor's one paper colour in every room, so Lime drew a grey band behind the clock (the haze of 2026-11-10; the
+# shell's web view now hides the effect, ShellWebView). What is read: the page's side margin (STRIP_X points in from
+# the left edge: clear of the 4 px mark every simulator shot carries in its corner, and no clock, island or row reaches
+# it), slice by slice (STRIP_SLICE points) down STRIP_ROWS, each against the same margin just under the status bar
+# (UNDER_ROWS: the band was gone by 57 pt under a 62 pt status bar). Read this way in the shots from before the hide
+# (T21's runs: iOS 27.0 on both roots, iOS 26.5 on the tab root; 32 shots of these routes), the 26 without a band
+# differ by at most STRIP_CLEAN either way and the 6 of Lime on a dark phone on iOS 27.0 by +101.6; in the
+# investigation's frames, Heavyweight on a dark phone under a sheet's scrim +64.1, and a Lime-coloured scroll
+# background under Heavyweight, a fix that was tried, -107.1 (STRIP_BANDS). STRIP_MAX is at least ten times the first
+# and at most a tenth of the faintest band (the self-test holds it), so a band a shade of those still fails.
+STRIP_X, STRIP_ROWS, STRIP_SLICE, UNDER_ROWS = (3, 15), (0, 60), 2, (63, 69)
+STRIP_CLEAN, STRIP_BANDS, STRIP_MAX = 0.4, (101.6, 64.1, -107.1), 6
 RUNS = [0]
 
 
@@ -437,6 +458,43 @@ def ground(e, rec):
     return (None, dict(info, why='no pixel read')) if luma is None else (round(luma, 1), dict(info, luma=round(luma, 1)))
 
 
+def strip_band(rec, width):
+    """The band behind the status bar in the shot `rec`, if it draws one (`width`: the screen's in points, as the page
+    reports it): the largest difference, lighter (+) or darker (-), between a STRIP_SLICE-point slice of the page's side
+    margin down the status bar (STRIP_X, STRIP_ROWS) and the same margin just under it (UNDER_ROWS), in mean luminance
+    of 255. Returns (difference, what was read) or (None, why not)."""
+    if not rec or not rec.get('ok'):
+        return None, 'no shot (%s)' % ((rec or {}).get('file'),)
+    data = nsh.png_bmp(rec['path']) if os.path.isfile(rec.get('path') or '') else None
+    if not data:
+        return None, 'the shot %s could not be read' % rec.get('file')
+    pw, ph = nsh.bmp_size(data)
+    k = pw / float(width) if isinstance(width, (int, float)) and not isinstance(width, bool) and width > 0 else None
+    if not k or not 1 <= k <= 4 or ph < UNDER_ROWS[1] * k:
+        return None, 'the shot is %d x %d px for a screen %s points wide' % (pw, ph, width)
+    x0, x1 = STRIP_X[0] * k, STRIP_X[1] * k
+    under = nsh.bmp_luma(data, (x0, UNDER_ROWS[0] * k, x1, UNDER_ROWS[1] * k))
+    worst = None
+    for pt in range(STRIP_ROWS[0], STRIP_ROWS[1], STRIP_SLICE):
+        luma = nsh.bmp_luma(data, (x0, pt * k, x1, (pt + STRIP_SLICE) * k))
+        if luma is None or under is None:
+            return None, {'shot': rec.get('file'), 'scale': round(k, 3), 'why': 'no pixel read'}
+        if worst is None or abs(luma - under) > abs(worst[0]):
+            worst = (luma - under, pt, luma)
+    return round(worst[0], 1), {'shot': rec.get('file'), 'scale': round(k, 3), 'under': round(under, 1),
+                               'slice': '%d-%d pt' % (worst[1], worst[1] + STRIP_SLICE), 'luma': round(worst[2], 1),
+                               'difference': round(worst[0], 1)}
+
+
+def no_band(c, s, combo, ev, label, rm):
+    """Where the page itself is on screen: no band behind the status bar in the launch's shot of mark `label` (`rm`: its
+    ROOM_JS answer, which carries the screen's width). A shot or a width that cannot be read fails: unread is not "no
+    band"."""
+    delta, seen = strip_band(shot_of(c, ev.tag, label), rm.get('w'))
+    c.check(s, '%s: no band behind the status bar: down its height the page\'s margin reads as it does just under it (within %d of 255)' % (
+        combo, STRIP_MAX), delta is not None and abs(delta) <= STRIP_MAX, seen)
+
+
 def looks(luma, look):
     """Whether a mean luminance reads as the look: dark under DARK_BAR_MAX, light over LIGHT_BAR_MIN."""
     if luma is None:
@@ -485,8 +543,9 @@ while (Date.now() - t0 < args.ms) {
 return { met: false, ms: Date.now() - t0, tab: (typeof currentTab !== 'undefined') ? currentTab : null,
   view: (typeof coachView !== 'undefined') ? coachView : null, shown: (window._fp && _fp.shown) || null };
 """
-# The room the page paints (-devTheme paints one for the launch and never saves it).
-ROOM_JS = "return { room: document.documentElement.getAttribute('data-room'), saved: localStorage.getItem('kt_theme') };"
+# The room the page paints (-devTheme paints one for the launch and never saves it), and the screen's width in points (a
+# shot's pixels per point are its width over it, as for the pending photo).
+ROOM_JS = "return { room: document.documentElement.getAttribute('data-room'), saved: localStorage.getItem('kt_theme'), w: screen.width };"
 TYPED = 'Draft kept across presents and launches'
 # The keys check needs a chat longer than the space left above the keys and shorter than the screen (review 4: six
 # messages showed the newest cut under the composer once the keys came up): older ones go in front up to six.
@@ -1091,6 +1150,7 @@ def combo_hub(c, s, room, appearance, name, combo):
         c.check(s, '%s: the page\'s own Coach home under its own tab bar (no native screen up)' % combo, w.get('met') is True
                 and p.get('tab') == 'coach' and p.get('view') == 'home' and up_list(e) == [] and p.get('tabsDisplay') not in (None, 'none'),
                 {'wait': w, 'tab': p.get('tab'), 'view': p.get('view'), 'up': up_list(e), 'tabsDisplay': p.get('tabsDisplay')})
+        no_band(c, s, combo, ev, name, rm)
     c.check(s, '%s: the page paints its room (data-room %s)' % (combo, room), rm.get('room') == room, rm)
 
 
@@ -1114,6 +1174,7 @@ def combo_log(c, s, room, appearance, name, combo):
                 and up_list(e) == [] and p.get('tabsDisplay') not in (None, 'none'),
                 {'wait': w, 'tab': p.get('tab'), 'up': up_list(e), 'tabsDisplay': p.get('tabsDisplay')})
     c.check(s, '%s: the page paints its room (data-room %s)' % (combo, room), rm.get('room') == room, rm)
+    no_band(c, s, combo, ev, name, rm)
 
 
 def scen_textoff(c):
@@ -1354,9 +1415,9 @@ def run(c, kept, only):
 def self_test():
     """No simulator: how the run judges itself, on made-up records (a shot that left no file, a late one, a transient late
     one, a misnamed one; a state without its visibilitychange list or its window counts; the bar's container
-    unreported; a launch on another phone appearance than its combo's), which shots a scenario clears, the copies' keep
-    and put-back on a stand-in for the daemon's `defaults`, how a run ends (a scenario that breaks, a SIGTERM), and the
-    app's fingerprint against fp-build.sh's own pipeline."""
+    unreported; a launch on another phone appearance than its combo's) and made-up shots (a band behind the status bar),
+    which shots a scenario clears, the copies' keep and put-back on a stand-in for the daemon's `defaults`, how a run
+    ends (a scenario that breaks, a SIGTERM), and the app's fingerprint against fp-build.sh's own pipeline."""
     bad, n = [], [0]
 
     def case(what, ok, detail=''):
@@ -1472,6 +1533,66 @@ def self_test():
     case('a launch whose page sees dark on a combo that names light fails', seen(True, 'light', 'light')[0] is False)
     v, d = seen(None, 'dark', 'dark')
     case('a launch whose page did not answer fails, with no guess at why', v is False and 'why' not in d, d)
+
+    # the strip behind the status bar, read in made-up shots (through sips, as a run's)
+    with tempfile.TemporaryDirectory() as d:
+        def frame(name, ground, band=0.0, k=3, dot=False, tall=80):
+            """A shot at `k` pixels per point, 20 points wide and `tall` high: `ground` everywhere, or under a band `band`
+            lighter (darker when negative) at the top row and gone by 57 pt, as the haze was drawn; `dot`: the 4 px
+            black mark every simulator shot carries in its top left corner."""
+            w, h = 20 * k, tall * k
+            rows = []
+            for y in range(h):
+                v = max(0, min(255, int(round(ground + band * max(0.0, 1 - (y / float(k)) / 57.0)))))
+                row = bytearray(bytes((v, v, v)) * w)
+                if dot and y < 4:
+                    row[:12] = bytes(12)
+                rows.append(b'\x00' + bytes(row))
+
+            def chunk(t, data):
+                return struct.pack('>I', len(data)) + t + data + struct.pack('>I', zlib.crc32(t + data) & 0xffffffff)
+            path = os.path.join(d, name + '.png')
+            with open(path, 'wb') as f:
+                f.write(b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0))
+                        + chunk(b'IDAT', zlib.compress(b''.join(rows))) + chunk(b'IEND', b''))
+            return {'scenario': 'combos', 'tag': 't', 'label': name, 'file': name + '.png', 'path': path, 'ok': True}
+
+        def band(rec, w=20, label=None):
+            c = ctx()
+            c.shots = [rec] if rec else []
+            ev = Events([])
+            ev.tag = 't'
+            no_band(c, 'combos', 'x', ev, label or rec['label'], {'w': w})
+            seen = c.rep.rows[-1][3]
+            return verdict(c, 'no band behind the status bar'), seen, (seen.get('difference') if isinstance(seen, dict) else None)
+
+        v, seen, diff = band(frame('lime', 11))
+        case('a shot whose margin behind the status bar is the page\'s ground has no band (difference 0)', v is True and diff == 0, seen)
+        v, seen, diff = band(frame('haze', 11, band=STRIP_BANDS[0]))
+        case('the haze as it was drawn (Lime\'s ground under a band %s lighter at the top, gone by 57 pt) fails, read in the top slice' % STRIP_BANDS[0],
+             v is False and seen.get('slice') == '0-2 pt' and STRIP_BANDS[0] - 3 < diff <= STRIP_BANDS[0], seen)
+        v, seen, diff = band(frame('scrim', 98, band=STRIP_BANDS[1]))
+        case('the fainter band under a sheet\'s scrim fails', v is False and STRIP_BANDS[1] - 3 < diff <= STRIP_BANDS[1], seen)
+        v, seen, diff = band(frame('dark', 245, band=STRIP_BANDS[2]))
+        case('a darker band fails too (a dark scroll background under Heavyweight\'s paper)', v is False and STRIP_BANDS[2] <= diff < STRIP_BANDS[2] + 3, seen)
+        over, under = band(frame('over', 11, band=STRIP_MAX + 2)), band(frame('under', 11, band=STRIP_MAX - 2))
+        case('a band a shade over the bound fails, one a shade under it passes', over[0] is False and under[0] is True, (over[1], under[1]))
+        v, seen, diff = band(frame('two', 11, band=STRIP_BANDS[0], k=2))
+        case('a shot at 2 pixels per point is read at its own scale', v is False and seen.get('scale') == 2.0 and seen.get('slice') == '0-2 pt', seen)
+        v, seen, diff = band(frame('dot', 245, dot=True))
+        case('the 4 px mark in a simulator shot\'s top left corner is no band (the margin is read clear of it)', v is True and diff == 0, seen)
+        v, seen, diff = band(dict(frame('gone', 11), ok=False))
+        case('a shot that left no file fails: unread is not "no band"', v is False and 'no shot' in str(seen), seen)
+        v, seen, diff = band(None, label='never')
+        case('a mark that was never shot fails', v is False and 'no shot' in str(seen), seen)
+        v, seen, diff = band(frame('nowidth', 11), w=None)
+        case('a page that reported no screen width fails', v is False, seen)
+        v, seen, diff = band(frame('wide', 11), w=2)
+        case('a shot whose scale makes no sense for the width reported fails', v is False, seen)
+        v, seen, diff = band(frame('short', 11, tall=40))
+        case('a shot too short to reach under the status bar fails', v is False, seen)
+    case('the band\'s bound keeps its distance: at least ten times the largest reading without a band, at most a tenth of the faintest band seen',
+         10 * STRIP_CLEAN <= STRIP_MAX <= min(abs(b) for b in STRIP_BANDS) / 10.0, (STRIP_CLEAN, STRIP_MAX, STRIP_BANDS))
 
     # the shots a scenario clears
     with tempfile.TemporaryDirectory() as d:

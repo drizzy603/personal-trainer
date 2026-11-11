@@ -964,6 +964,70 @@ final class ShellBridgeTests: XCTestCase {
         XCTAssertEqual(UserDefaults.standard.data(forKey: ShellBridge.countersKey), stored,
                        "the shared bridge's counters, kept in the host's UserDefaults, are as the test found them")
     }
+
+    /// The shell's web view draws no scroll edge effect behind the status bar (the haze of 2026-11-10). From iOS 27.0
+    /// UIKit gives a scroll view that reaches under the status bar a top effect, and on a dark phone the effect replays
+    /// the scroll view's background over the content through a fading mask. Capacitor sets that background to
+    /// capacitor.config.json's paper in every room, so Lime's web tabs wore a grey band behind the clock (+101 of 255
+    /// over its ground on the iOS 27.0 simulator, builds 60 and 61, both roots), and Heavyweight's did under a sheet's
+    /// scrim. Every ShellWebView hides the effect as it is made, whichever initializer makes it and whatever root it
+    /// goes under, and the hide holds through a document, the phone's appearance changing under it, and a second
+    /// document. It sets no style: the web view and what its page sees of the phone stay the window's (contract 6.1).
+    func testTheShellsWebViewHidesItsTopScrollEdgeEffect() async throws {
+        guard #available(iOS 26.0, *) else { throw XCTSkip("UIScrollView's edge effects are iOS 26's") }
+        let frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        XCTAssertTrue(ShellWebView(frame: frame).scrollView.topEdgeEffect.isHidden, "made by frame alone: no top edge effect")
+        let wv = ShellWebView(frame: frame, configuration: WKWebViewConfiguration())
+        XCTAssertTrue(wv.scrollView.topEdgeEffect.isHidden,
+                      "made as SuperoViewController.webView(with:configuration:) makes it: no top edge effect")
+
+        // in a window, as the app's: this case's own move out of it stays out of About's totals
+        let active = ShellWebView.appActive
+        let note = ShellWebView.noteLeftWindow
+        let noteAny = ShellWebView.noteLeftAny
+        defer {
+            wv.removeFromSuperview()
+            ShellWebView.appActive = active
+            ShellWebView.noteLeftWindow = note
+            ShellWebView.noteLeftAny = noteAny
+        }
+        ShellWebView.appActive = { false }
+        ShellWebView.noteLeftWindow = {}
+        ShellWebView.noteLeftAny = {}
+        func sees(_ scheme: String, _ what: String, title: String = "ground") async throws {
+            let read = "document.readyState === 'complete' && document.title === '\(title)' ? "
+                + "(matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : 'loading'"
+            let deadline = Date().addingTimeInterval(Self.loadWait)
+            var seen: String?
+            while Date() < deadline {
+                seen = (try? await wv.evaluateJavaScript(read)) as? String
+                if seen == scheme { break }
+                try await Task.sleep(nanoseconds: 50_000_000)
+            }
+            XCTAssertEqual(seen, scheme, "\(what): the page sees the window's appearance")
+            XCTAssertTrue(wv.scrollView.topEdgeEffect.isHidden, "\(what): the top edge effect is still hidden")
+            XCTAssertEqual(wv.overrideUserInterfaceStyle, .unspecified, "\(what): the web view carries no style of its own")
+            XCTAssertEqual(wv.scrollView.overrideUserInterfaceStyle, .unspecified, "\(what): nor does its scroll view")
+        }
+        // a dark ground under a fixed header, taller than the screen: the kind of page the band was drawn over
+        func page(_ title: String) -> String {
+            """
+            <!doctype html><meta name="viewport" content="width=device-width, viewport-fit=cover"><title>\(title)</title>
+            <body style="margin:0;background:#0b0b0c">
+            <div style="position:fixed;top:0;left:0;right:0;height:62px;background:#0b0b0c"></div><div style="height:3000px"></div>
+            """
+        }
+        window.overrideUserInterfaceStyle = .dark
+        window.addSubview(wv)
+        wv.loadHTMLString(page("ground"), baseURL: URL(string: "https://fp.test/"))
+        try await sees("dark", "a document on a dark phone")
+        window.overrideUserInterfaceStyle = .light
+        try await sees("light", "the phone turned light")
+        window.overrideUserInterfaceStyle = .dark
+        try await sees("dark", "and dark again")
+        wv.loadHTMLString(page("ground again"), baseURL: URL(string: "https://fp.test/"))
+        try await sees("dark", "a second document", title: "ground again")
+    }
 }
 
 /// The stall page never came up (ShellBridgeTests.stalledBridge): the test fails there, saying so.

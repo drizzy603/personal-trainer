@@ -360,7 +360,13 @@ appearance light|dark` x `content_size large|extra-extra-large`, three launches 
 route: `coach/chat`, `coach` (the native hub, its ground drawn in the room) and
 `log/workout` (a web tab under the glass bar), each proving the phone's appearance
 from the app (the page's `prefers-color-scheme` against the combo's: simctl reads
-its own setting back even on a phone whose apps never get it), the bar asking for
+its own setting back even on a phone whose apps never get it) and, where the page
+itself is on screen (`log/workout`; `coach` on the classic root), drawing no band
+behind the status bar (the page's side margin, slice by slice down the bar's
+height, against the same margin just under it, within 6 of 255 either way: from
+iOS 27.0 UIKit's top scroll edge effect drew the web view's paper there on a dark
+phone, a grey haze 101 lighter than Lime's ground, until `ShellWebView` hid the
+effect), the bar asking for
 the room's look
 and, over the chat and the hub, drawing it (the mean luminance of its frame in the
 shot, `native-shell.py`'s bounds; over a web tab the glass shows the page's own
@@ -386,8 +392,10 @@ the classic root). A run names the app it ran (its build, its page's stamp and
 `python3 tools/native-chat.py --self-test` holds the run's own judging without a
 simulator: a missing, late or misnamed shot, a state that reports no
 visibilitychange list, the bar's container unreported, a launch on another phone
-appearance than its combo's, which shots a scenario clears, the copies' keep and
-put-back, how a run ends. `python3 tools/coach-stub.py --script
+appearance than its combo's, a band behind the status bar in made-up shots (lighter
+or darker, a shade over the bound and under it, a shot or a screen width that
+cannot be read), which shots a scenario clears, the copies' keep and put-back, how
+a run ends. `python3 tools/coach-stub.py --script
 FILE` serves the stand-in on its own (one JSON line per request).
 
 ## The probe's self-test and the Release strings check
