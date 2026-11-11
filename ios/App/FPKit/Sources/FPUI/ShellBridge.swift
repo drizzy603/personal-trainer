@@ -1732,7 +1732,36 @@ public struct ShellInstall: Equatable, Sendable {
 /// counters: while the app is active (`leftWindowWhileActive`, build 60's), and in any app state (`leftWindowAny`,
 /// build 61's: a move while the app is inactive or in the background, a deep link that foregrounds it included, G23).
 /// A scene's teardown letting the page go counts in neither.
+///
+/// It also draws no scroll edge effect behind the status bar (`hideTopEdgeEffect`), under either root.
 public final class ShellWebView: WKWebView {
+    public override init(frame: CGRect, configuration: WKWebViewConfiguration) {
+        super.init(frame: frame, configuration: configuration)
+        hideTopEdgeEffect()
+    }
+
+    public required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        hideTopEdgeEffect()
+    }
+
+    /// No scroll edge effect at the top of the page (the haze of 2026-11-10). From iOS 27.0 UIKit gives a scroll view that
+    /// reaches under the status bar a top effect (iOS 26.5 keeps the same view at no size), and on a dark phone the
+    /// effect replays the scroll view's background over the content through a fading mask. Capacitor sets that
+    /// background to capacitor.config.json's `backgroundColor`, Heavyweight's paper, in every room
+    /// (CAPBridgeViewController), so on a dark phone Lime's web tabs wore a grey band behind the clock (112 of 255 on a
+    /// ground of 11, gone by 57 pt; builds 60 and 61, both roots) and Heavyweight a light one wherever a sheet's scrim
+    /// reached the status bar, the clock black on it. The page masks the status bar itself (`body::before`), and
+    /// nothing it draws or declares reaches the effect, so the web view has none: hidden as the view is made, through
+    /// UIKit's own switch, which holds through documents, a WebContent restart and the phone's appearance changing.
+    /// No colour is given and no style set: the web view's traits, and with them the page's prefers-color-scheme and
+    /// its keyboards, stay the phone's (contract 6.1). A colour would not do: one cannot serve two rooms (Lime's
+    /// ground as the scroll background draws a dark band in Heavyweight), and a room's own leaves the band under a
+    /// sheet. The bottom effect is the tab root's to hide (RootTabController: it lies under the glass bar).
+    private func hideTopEdgeEffect() {
+        if #available(iOS 26.0, *) { scrollView.topEdgeEffect.isHidden = true }
+    }
+
     public private(set) static var leftWindowWhileActive = 0
     /// Every move out of its window this launch, whatever the app's state, outside a scene's teardown.
     public private(set) static var leftWindowAny = 0
