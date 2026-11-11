@@ -419,7 +419,8 @@ phone whose apps never get it; the phone's settings put back), `textoff` (the ap
 extra-extra-large: the empty composer as tall as at Large) and `restore` (only the values that changed put back and read
 back in the next launch, never a reload: a page reloaded under the tab root counts as hidden in use). The shell's
 folder and its UserDefaults copies are kept and put back around the run, the copies through the simulator's cfprefsd
-(`defaults` spawned with the app's container as its home). No tool stops that daemon: after a stop the phone's
+(`defaults` spawned with the app's container as its home). These two tools never stop that daemon (`tests/tools/native-store.py` still does, `_prefs_settle`: run the store
+test last or shut its phone down after it): after a stop the phone's
 appearance no longer reaches apps until SpringBoard starts again. Every launch takes `-fpIgnoreMarker`. Shots in
 `screenshots/out/native/` (`coach-chat-*`, `coach-home-*`, `tabs-log-*`, `connect-*`, `keys-*`, `live-*`, `textoff-*`;
 `classic-` in front on the classic root). tests/README.md, "The live native chat in test-native.sh", has each scenario's

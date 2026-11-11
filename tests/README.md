@@ -374,7 +374,9 @@ cards through it, so only the look asked is checked there); the app's Larger Tex
 off keeping the empty composer at its Large height;
 `restore` in two launches, never a reload. It puts back what it changed in the
 container and the phone's settings, after Ctrl-C or a SIGTERM too (a SIGTERM exits
-143). No tool stops the simulator's cfprefsd: after a stop of
+143). These tools never stop the simulator's cfprefsd (`tools/native-store.py`
+still does, `_prefs_settle`: run the store test last, or shut its phone down
+after it, before a tool that needs a dark phone): after a stop of
 `com.apple.cfprefsd.xpc.daemon` the phone's appearance no longer reaches apps until
 SpringBoard starts again or the phone reboots (`simctl ui appearance dark` reads
 back dark and every launch stays light), which is how the "phone dark" half of the
