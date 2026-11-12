@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20261113-5"/>
+<meta name="build" content="20261114-1"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -18636,7 +18636,9 @@ function _confirmCancelIntake(){
 // of the shell.
 // One parser, two outputs (plan task C2): _mdModel() parses into blocks, md() draws them as HTML
 // (_mdHTML), and the native chat reads the same blocks as contract v1 (_mdBlocksV1), so the two
-// chats cannot disagree and Swift never parses markdown.
+// chats cannot disagree and Swift never parses markdown. The Coach hub's one-line preview reads a
+// reply line by line on the same tokens and restates _mdModel's line rules (_coachPlainLine): a
+// change to them is made there too (spec 126 reads every golden text both ways).
 function _mdInline(s){   // s is already escaped
   s=s.replace(/`([^`\n]+)`/g,'<code class="kt-md-code">$1</code>');
   s=s.replace(/\*\*([^*\n]+)\*\*/g,'<strong>$1</strong>');
@@ -21660,11 +21662,34 @@ var _COACH_HOME_TYPE={
 };
 // Text for an HTML text node: & < > (a quote reads the same unescaped; _esc escapes quotes too, for attributes).
 function _escT(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+// One line of a coach reply as the words the chat shows for it, md()'s reading with the styles left out: the mark
+// md() takes at the line's start gone (a heading's #, a bullet, a quote's >), a table row its cells, a rule or a
+// table's separator row nothing, and the inline marks read by md()'s own tokens (_mdTokens: **bold**, *em*, `code`,
+// a link's URL), so the hub's line shows a mark only where the chat shows it too. A numbered line keeps its number
+// (the chat draws it as the list's marker). The line rules are _mdModel's, restated in its order: change them there
+// and here together (spec 126 reads every golden text both ways). Read alone, a line cannot know that it ends its
+// run, which md() trims first: an empty bullet there is the text "-" in the chat and nothing here.
+function _coachPlainLine(l){
+  var raw=String(l==null ? '' : l).replace(/\r/g,''), t=raw.trim(), m;
+  var words=function(x){ return _mdTokens(_mdEsc(x)).filter(function(k){ return typeof k==='string'; }).join('').trim(); };
+  if(t.charAt(0)==='|'){
+    if(/^\|?\s*:?-{2,}/.test(t)) return '';
+    return t.replace(/^\|/,'').replace(/\|\s*$/,'').split('|').map(function(c){ return words(c.trim()); }).filter(Boolean).join(' ');
+  }
+  if((m=/^#{1,6}\s+(.*)$/.exec(t))) return words(m[1]);
+  if(/^(-{3,}|\*{3,}|_{3,})$/.test(t)) return '';
+  if((m=/^\s*[-*+•]\s+(.*)$/.exec(raw))) return words(m[1]);
+  if((m=/^>\s?(.*)$/.exec(t))) t=m[1];
+  return words(t);
+}
 // The hub's line for the newest message: its text (a photo alone reads [Image]), %% marker lines dropped (a structured
-// reply's grammar is not prose), cut at 65 characters with an ellipsis. Whole characters: an emoji is never split (the
-// 65-unit slice before build 61 could leave half of one), and ASCII text is cut where that slice cut it.
+// reply's grammar is not prose), a coach reply's markdown read as the chat reads it (_coachPlainLine; the owner's words
+// and the app's own notes stay as written, as their bubble and note draw them), cut at 65 characters with an ellipsis.
+// Whole characters: an emoji is never split (the 65-unit slice before build 61 could leave half of one), and ASCII text
+// is cut where that slice cut it. The string is plain text: the web row escapes it once (_escT) and the native row
+// draws it verbatim.
 function _coachHomePreview(msg){
-  var s='';
+  var s='', reply=!!msg && msg.role==='assistant' && !msg._local;
   if(msg && typeof msg.content==='string') s=msg.content;
   else if(msg && Array.isArray(msg.content)){
     var tb=msg.content.find(function(b){ return b && b.type==='text'; });
@@ -21672,7 +21697,7 @@ function _coachHomePreview(msg){
   }
   var ch=_chars(s.split('\n').filter(function(l){
     return l.trim() && !/^%%(type|metric|takeaway|action):/.test(l.trim());
-  }).join(' '));
+  }).map(function(l){ return reply ? _coachPlainLine(l) : l; }).filter(Boolean).join(' '));
   return ch.length>65 ? ch.slice(0,65).join('')+'…' : ch.join('');
 }
 // What the Coach tab's root shows, the content of the Coach home model below: the connect screen with no key (even
@@ -22042,9 +22067,13 @@ function _syncAppIcon(){
   }catch(e){}
 }
 function applyTheme(name) {
-  if(!_paintTheme(name)) return;
+  if(!THEMES[name]) return;   // no such look: nothing changes (_paintTheme's own test)
+  // Saved and set before the paint: _paintTheme renders, and that render draws Settings' Theme row and the open
+  // sheet's tick from currentTheme (painted first, 20260909-1 to 20261111-1, both named the look just left). A save
+  // that throws (a full store) now paints nothing: the look, the row and the tick stay with the store (spec 131).
   localStorage.setItem('kt_theme',name);
   currentTheme=name;
+  _paintTheme(name);
   _scheduleNativeSync();   // the watch and widgets follow the room
   _syncAppIcon();          // and so does the Home Screen icon
 }
@@ -25167,9 +25196,10 @@ function _fpPushModel(s, force){
   return true;
 }
 // One deferred check per task, from _fpSync: the bar's model while tabs mode is live, the Coach tab's while the page
-// has handed it to the shell (whether or not Coach shows, so a tap opens on a current hub). Deferred because applyTheme
-// repaints (_paintTheme renders) before it sets currentTheme: a check inside that paint would send the old room. No
-// timer when neither can go (classic mode: build 60's chat and 61's classic root run as before).
+// has handed it to the shell (whether or not Coach shows, so a tap opens on a current hub). Deferred so a task's
+// renders make one check, after all the task changes (a render can come before the value it shows is set, as
+// applyTheme's did until 20261111-1). No timer when neither can go (classic mode: build 60's chat and 61's classic
+// root run as before).
 function _fpModelsSoon(){
   if(_fp.modelsT || !(_fpTabsLive() || _fp.shown.coachHome)) return;
   _fp.modelsT=setTimeout(function(){

@@ -27,6 +27,18 @@
 //   the narrow screen's 41 px (view geometry) and wider screens are over 47 px.
 // - The preview cuts in whole characters: a 65th character that is an emoji stays whole in the model and the HTML,
 //   with no lone surrogate in either; ASCII is cut where the old 65-unit slice cut it.
+// - Open Chat's line reads a coach reply as the chat reads it (web 20261114-1; until then it showed the reply's raw
+//   marks, "**Bench: 170 lb.** Hold…"): the words md() shows for the reply's prose with the marks gone (a bold lead-in
+//   after the %% lines, a heading's #, a bullet, a quote's >, a table's pipes and its separator row, a rule, a link's
+//   URL, code, italics), counted and cut after the marks are gone (a bold pair open across the 65th character leaves
+//   none), & < > and both quotes as typed and never as entities, and no \r from \r\n line ends. The owner's words and
+//   the app's own notes stay as written, as their bubble and note draw them. In every case the model's sub is the web
+//   row's text and the string in the JSON the shell is handed (the native row draws it verbatim), with no shell and
+//   under the native bar. Parity: for every golden text (tests/golden/coach-cases.js's TEXTS) as a reply, the lines
+//   the preview keeps, read by _coachPlainLine, are the words the web chat draws in the reply's md sections
+//   (whitespace aside, and a numbered line's own number, which the chat draws as the list's marker), so a change to
+//   md()'s grammar that the hub's line does not follow fails here. A stored reply reads the same at the boot's first
+//   paint on the Coach tab.
 // - Escaping (plan P-D4): a name and a block name holding a quote, & and markup draw as text (no <b> element) equal to
 //   the model's, which is raw; the model never holds the key (saved, or typed and unsaved) nor its masked form.
 // - TabsModel v1 (_tabsModel) per room: tint and idle are the web bar's selected and idle colours (Heavyweight
@@ -46,7 +58,7 @@
 const fs = require('fs');
 const path = require('path');
 const { boot, assert, run, SHELLS } = require('../lib/harness');
-const { CLOCK_INIT } = require('../golden/coach-cases');
+const { CLOCK_INIT, TEXTS, asciiJSON } = require('../golden/coach-cases');
 const { SCENARIOS, applyScenario } = require('../golden/dump-coach-home');
 
 // One case at a time: each starts its own browser.
@@ -377,6 +389,113 @@ serial('tokens.type is the chat\'s plus the home* table, in a copy; whole-charac
   } finally { await app.close(); }
 });
 
+// Open Chat's line, case by case (made-up conversations): msgs, the line the row shows for them (sub), cut when the
+// line is 65 characters and an ellipsis, html the line as the row's HTML holds it (escaped once, for text). The first
+// five are coach replies, read as the chat reads them; the last three are not, and stay as written.
+const ASKED = { role: 'user', content: 'How was my week?' };
+const REPLY = (content, more) => Object.assign({ role: 'assistant', content }, more || {});
+const PHOTO = { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: 'R0lGODlhAQABAAAAACw=' } };
+const LINES = {
+  'a bold lead-in after the %% lines': { cut: true,
+    msgs: [ASKED, REPLY('%%type: Week review\n%%metric: RUNS | 2 | of 3 | -1 | warn\n**Bench: 170 lb.** Hold it there this week and own the last rep of every set.\n%%action: Plan week 7 | Plan my week 7')],
+    sub: '1 exchange · Bench: 170 lb. Hold it there this week and own the last rep of ev…' },
+  'the line marks (a heading, a bullet, a quote, a table and its separator row, a rule, a numbered line, a link) with bold, code and italics': {
+    msgs: [ASKED, REPLY('## Week 7\n- **Bench** `170`\n> *Easy* runs\n| Lift | Top |\n|---|---|\n| Squat | 225 |\n---\n3) see the [guide](https://example.com/x)')],
+    sub: '1 exchange · Week 7 Bench 170 Easy runs Lift Top Squat 225 3) see the guide' },
+  'a bold pair open across the 65th character': { cut: true,
+    msgs: [ASKED, REPLY('This is a long opening sentence that runs on and on up to **the bold part that crosses** the cut.')],
+    sub: '1 exchange · This is a long opening sentence that runs on and on up to the bol…' },
+  '& < > and both quotes, as typed': {
+    msgs: [ASKED, REPLY('**Tom & Jerry** <3 "double" \'single\' &amp; `a<b`\n> 2 > 1')],
+    sub: '1 exchange · Tom & Jerry <3 "double" \'single\' &amp; a<b 2 > 1',
+    html: '1 exchange · Tom &amp; Jerry &lt;3 "double" \'single\' &amp;amp; a&lt;b 2 &gt; 1' },
+  '\\r\\n line ends': {
+    msgs: [ASKED, REPLY('**Squat day.**\r\nKeep the bar path straight.\r\n\r\n- warm up\r\n- work sets\r\n')],
+    sub: '1 exchange · Squat day. Keep the bar path straight. warm up work sets' },
+  'the owner\'s words, as written': {
+    msgs: [{ role: 'user', content: 'What does **RPE** mean in `sets`, *exactly*?' }],
+    sub: '1 exchange · What does **RPE** mean in `sets`, *exactly*?' },
+  'the owner\'s words beside a photo, as written': {
+    msgs: [{ role: 'user', content: [PHOTO, { type: 'text', text: '# 1: is my **bar path** ok?' }] }],
+    sub: '1 exchange · # 1: is my **bar path** ok?' },
+  'the app\'s own note, as written': {
+    msgs: [ASKED, REPLY('Stopped. Changes made **before** the stop are kept:', { _local: true })],
+    sub: '1 exchange · Stopped. Changes made **before** the stop are kept:' },
+};
+
+// One boot per shell. Every case's line is read from the model, from the JSON the shell is handed and from the web row
+// drawn from it, and every check is held (not thrown at the first), so a failure names each line that reads otherwise.
+// The golden texts (once, with no shell): as a reply each is drawn by the web chat, and the words of its md sections
+// are held against the lines the preview keeps, read by _coachPlainLine.
+serial('Open Chat\'s line reads a coach reply\'s Markdown as the chat reads it, in the model, its JSON and the web row, with no shell and under the native bar; the owner\'s words and the app\'s notes stay as written; every golden text reads as the web chat draws it', async () => {
+  const bad = [], hold = (cond, msg) => { if (!cond) bad.push(msg); };
+  const drawn = { none: {}, tabsWeb: {} };
+  for (const shell of ['none', 'tabsWeb']) {
+    const S = shell + ': ';
+    const app = await boot({ native: true, shell, page: { timezoneId: 'UTC' }, seed: DUMP_SEED });
+    try {
+      const out = await app.page.evaluate(({ HELPERS, lines, texts }) => {
+        eval(HELPERS);
+        const res = {};
+        for (const name of Object.keys(lines)) {
+          __state({ msgs: lines[name].msgs });
+          const m = __home(7);
+          res[name] = { m, json: _nativeJSON(m), d: __read() };
+        }
+        let parity = null;
+        if (texts) {
+          const LONE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g;
+          const bare = (s) => s.replace(LONE, '').replace(/\s+/g, '');
+          parity = { reader: typeof _coachPlainLine === 'function', n: 0, off: [] };
+          if (parity.reader) {
+            for (const [name, text] of JSON.parse(texts)) {
+              // the web chat's words for the reply: what it draws in its md sections (the %% lines are its tag, cards
+              // and chips)
+              __state({ msgs: [{ role: 'assistant', content: text }], view: 'chat' });
+              const chat = [...document.querySelectorAll('#screen .kt-cmb .kt-cmb-para')].map((p) => p.textContent).join(' ');
+              // the hub's: each line the preview keeps, read by _coachPlainLine; md() draws a numbered line's number as
+              // the list's marker, so the hub's own copy of it is left out here
+              const hub = text.split('\n').filter((l) => l.trim() && !/^%%(type|metric|takeaway|action):/.test(l.trim())).map((l) => {
+                const w = _coachPlainLine(l);
+                return /^(\s*)(\d{1,3})[.)]\s+(.*)$/.test(l.replace(/\r/g, '')) ? w.replace(/^\d{1,3}[.)]\s*/, '') : w;
+              }).join(' ');
+              parity.n++;
+              if (bare(hub) !== bare(chat)) parity.off.push(name + ' ' + JSON.stringify([bare(hub).slice(0, 90), bare(chat).slice(0, 90)]));
+            }
+          }
+        }
+        __state({});
+        return { res, parity, impure: __impure, flag: !!_fpShellFlag() };
+      }, { HELPERS, lines: LINES, texts: shell === 'none' ? asciiJSON(TEXTS) : null });
+      assert(out.flag === (shell !== 'none'), S + 'the boot runs under its shell (a flag only under tabsWeb)');
+      hold(out.impure.length === 0, S + 'the builder has no side effects: ' + out.impure.join(' | '));
+      for (const name of Object.keys(LINES)) {
+        const { m, json, d } = out.res[name], want = LINES[name];
+        const row = m.groups[0].rows[0], web = (d.groups[0] || { rows: [] }).rows[0] || {};
+        drawn[shell][name] = d;
+        hold(m.route === 'hub' && row.do === 'openChat' && row.sub === want.sub, S + name + ': the line reads ' + J(row.sub) + ', not ' + J(want.sub));
+        hold(!/[\r\n]/.test(row.sub) && [...row.sub.slice('1 exchange · '.length)].length <= 66, S + name + ': one line of 65 characters at most and an ellipsis ' + J(row.sub));
+        if (want.cut) hold(/…$/.test(row.sub) && [...row.sub.slice('1 exchange · '.length)].length === 66, S + name + ': cut at 65 characters, counted without the marks ' + J(row.sub));
+        hold(web.sub === row.sub && JSON.parse(json).groups[0].rows[0].sub === row.sub, S + name + ': the web row\'s text and the string in the shell\'s JSON are the model\'s sub ' + J([web.sub, row.sub]));
+        if (want.html) hold(d.html.indexOf('<div class="settings-row-sub">' + want.html + '</div>') > 0, S + name + ': the row\'s HTML holds the line escaped once, for text ' + J((/<div class="settings-row-sub">[^<]*<\/div>/.exec(d.html) || [''])[0]));
+        // the whole screen against the whole model (the existing cases' check), where the row itself agrees
+        if (web.sub === row.sub) { try { sameAsScreen(S + name, m, d); } catch (e) { bad.push(String(e.message).replace(/^ASSERT: /, '').slice(0, 300)); } }
+      }
+      if (out.parity) {
+        hold(out.parity.reader, 'the page reads a reply\'s lines for the hub through _coachPlainLine, on md()\'s own tokens: this page has no such reader');
+        if (out.parity.reader) {
+          hold(out.parity.n === TEXTS.length && TEXTS.length >= 40, 'every golden text was read: ' + out.parity.n + ' of ' + TEXTS.length);
+          hold(out.parity.off.length === 0, 'the lines the preview keeps read as the words the web chat draws, for every golden text: ' + out.parity.off.length + ' differ: ' + out.parity.off.join(' | '));
+        }
+      }
+    } finally { await app.close(); }
+  }
+  for (const name of Object.keys(LINES)) {
+    hold(J(drawn.none[name]) === J(drawn.tabsWeb[name]), name + ': the same screen with no shell and under the native bar');
+  }
+  assert(bad.length === 0, bad.length + ' check(s) failed: ' + bad.join(' || '));
+});
+
 // The native hub draws the model's sizes, so each must be the size the web draws (delta 14.9: the contract's table had
 // Heavyweight's group head and CTA label at the shared rules' 9 px, where the room's own rule draws 10). Read on the
 // connect screen with its starter link and the hub with every row, in each room, at 390 px and, for the headline, at
@@ -505,19 +624,22 @@ serial('the tabs model: the web bar\'s colours and labels per room; its room fol
 // A document that starts on the Coach tab (the flag's selected tab, as a reload under the native bar does) paints the
 // hub or the connect screen before the script has defined _COACH_TOKENS: the web screen is drawn from
 // _coachHomeScreen(), never the whole model, whose tokens would throw there (and under a 61 flag close() fails on any
-// page error).
-serial('the boot\'s first paint on the Coach tab draws the hub or the connect screen', async () => {
+// page error). With a key the document holds a stored conversation whose newest reply opens in bold: that first paint
+// reads its line through md()'s tokens (_coachPlainLine), whose tables the script must have defined by then.
+serial('the boot\'s first paint on the Coach tab draws the hub or the connect screen, a stored reply\'s line read as the chat reads it', async () => {
   const flag = Object.assign({}, SHELLS.tabsWeb, { tabs: Object.assign({}, SHELLS.tabsWeb.tabs, { selected: 'coach' }) });
+  const stored = JSON.stringify([ASKED, REPLY('**Solid week.** Four sessions and two `easy` runs.')]);
   for (const key of ['sk-ant-api03-SPEC126-KEY', null]) {
-    const app = await boot({ native: true, shell: flag, seed: key ? { kt_apikey: key } : {}, page: { timezoneId: 'UTC' } });
+    const app = await boot({ native: true, shell: flag, seed: key ? { kt_apikey: key, kt_coach_msgs: stored } : {}, page: { timezoneId: 'UTC' } });
     try {
       const d = await app.page.evaluate((HELPERS) => {
         eval(HELPERS);
         return { tab: currentTab, route: _lastRenderedRoute, head: (document.querySelector('#screen .kt-hero-headline') || {}).textContent,
-          model: __home(0).route, impure: __impure };
+          line: (document.querySelector('#screen .settings-row-sub') || {}).textContent, model: __home(0).route, impure: __impure };
       }, HELPERS);
       assert(d.tab === 'coach' && d.route === 'coach/home' && d.head === (key ? 'Coachready.' : 'Connectyour coach.') && d.model === (key ? 'hub' : 'connect'),
         'the first paint on Coach (' + (key ? 'a key' : 'no key') + '): ' + J(d) + ' ' + app.errors.join(' | '));
+      if (key) assert(d.line === '1 exchange · Solid week. Four sessions and two easy runs.', 'the first paint reads the stored reply\'s line as the chat reads it: ' + J(d.line) + ' ' + app.errors.join(' | '));
       assert(d.impure.length === 0, 'the builder has no side effects: ' + d.impure.join(' | '));
       assert(app.errors.length === 0, 'no page errors: ' + app.errors.join(' | '));
     } finally { await app.close(); }
