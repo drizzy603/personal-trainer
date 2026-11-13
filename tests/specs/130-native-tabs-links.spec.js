@@ -7,10 +7,11 @@
 //   +400 ms) the same.
 // - trovo://share, warm, as the root does it (Coach selected by deepLink, then _trovoOpen): one getPendingShare at
 //   once (the parked link taken first), the photo pending, one selectTab {tab:'coach', intent:'chat'} of the selected
-//   tab, the chat presented on a model holding the photo's key with nothing in #screen but the placeholder, and 200 ms
-//   on the model's composer.draft is the comment; the return path's +0.6 s check then finds nothing; a call while a
-//   read is in flight never reaches the plugin; a share while the native chat is up keeps it up (no dismiss) and its
-//   next model has the new photo. Under none and build 60's coach the deep link reads the share at once too.
+//   tab, the chat presented on a model holding the photo's key and the comment as its composer.draft (the words go in
+//   before the chat's first paint, spec 132) with nothing in #screen but the placeholder; the return path's +0.6 s
+//   check then finds nothing; a call while a read is in flight never reaches the plugin; a share while the native chat
+//   is up keeps it up (no dismiss) and its next model has the new photo. Under none and build 60's coach the deep link
+//   reads the share at once too.
 // - Cold shares, on Playwright's clock, paused once the page is up (each window run with clock.runFor, so the page's
 //   timers fire in order at their own times however busy the machine is; times count from hello's call and the link's
 //   taking, and the checks read what the page recorded: each link's and read's time, and hello's state at its answer):
@@ -254,7 +255,7 @@ serial('trovo://start under tabs: the shell\'s order (Log selected by deepLink, 
 });
 
 // ── trovo://share, warm ───────────────────────────────────────────────────────────────────────────────────────────
-serial('trovo://share, warm, as the root does it under tabs: one getPendingShare at once, one selectTab {tab:\'coach\', intent:\'chat\'} of the selected tab, the chat presented on a model holding the photo\'s key and #screen only the placeholder, the comment as composer.draft 200 ms on; the return path\'s check finds nothing; no second reader while one is in flight; a share over the chat keeps it up', async () => {
+serial('trovo://share, warm, as the root does it under tabs: one getPendingShare at once, one selectTab {tab:\'coach\', intent:\'chat\'} of the selected tab, the chat presented on a model holding the photo\'s key and the comment as its composer.draft, #screen only the placeholder; the return path\'s check finds nothing; no second reader while one is in flight; a share over the chat keeps it up', async () => {
   const app = await pageBoot('tabs');
   try {
     await readyChecked(app, true);
@@ -281,8 +282,8 @@ serial('trovo://share, warm, as the root does it under tabs: one getPendingShare
     assert(o.sel.length === 1 && J(o.sel[0].args) === J({ tab: 'coach', intent: 'chat' }) && J(o.sel[0].answer) === J({ tab: 'coach', seq: o.seq1 }) && o.seq === o.seq1,
       'one selectTab {tab:\'coach\', intent:\'chat\'} of the selected tab, the seq unchanged: ' + J(o));
     assert(J(o.back) === J([{ tab: 'coach', seq: o.seq1 }]), 'the deep link\'s own tabs.select, nothing sent back after the page\'s: ' + J(o.back));
-    assert(J(m.ops) === J(['present coach']) && m.onPresent && m.onPresent.image && m.onPresent.image.key === m.key && !!m.key,
-      'the chat presented once, on a model holding the photo\'s key: ' + J(m));
+    assert(J(m.ops) === J(['present coach']) && m.onPresent && m.onPresent.image && m.onPresent.image.key === m.key && !!m.key
+      && m.onPresent.draft && m.onPresent.draft.text === WORDS, 'the chat presented once, on a model holding the photo\'s key and the comment: ' + J(m));
     assert(o.screens.length > 0 && o.screens.every((x) => x === 'kt-fp-ph/coachHome'), 'no frame of the page\'s own: #screen held only the placeholder: ' + J(o.screens));
     assert(m.comp.draft && m.comp.draft.text === WORDS && m.draft && m.comp.draft.nonce === m.draft.nonce && m.tab === 'coach' && m.view === 'chat',
       'the comment is the model\'s composer.draft: ' + J(m));

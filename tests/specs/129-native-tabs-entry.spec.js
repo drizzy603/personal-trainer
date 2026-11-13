@@ -115,7 +115,7 @@ const TOUR = [
     check: () => coachView === 'chat' && coachMessages.some((m) => m._seed === 'Recovery check') },
   { name: 'startWeeklyReview', from: 'log', tab: 'coach', intent: 'chat', act: () => { startWeeklyReview(); },
     check: () => coachView === 'chat' && coachMessages.some((m) => m._seed === 'Weekly review') },
-  // armed in the call's own task, so the boot's 2.5 s check can never take it first; the comment is drafted 200 ms on
+  // armed in the call's own task, so the boot's 2.5 s check can never take it first; the comment is drafted at once
   { name: 'checkPendingShare', from: 'progress', tab: 'coach', intent: 'chat',
     act: () => { window.__share = { imageBase64: '/9j/4AAQ', comment: 'Form check' }; return checkPendingShare(); },
     until: () => __prefill.length > 0,

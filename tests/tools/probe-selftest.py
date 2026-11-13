@@ -654,8 +654,10 @@ COMPOSER_JS = r"""
 var i = document.getElementById('coach-input');
 return { web: i ? i.value.length : null, photo: (typeof pendingImage !== 'undefined' && pendingImage) ? pendingImage.data.length : 0 };
 """
+# The photo goes through the page's own remove (web 20261113-1 keeps a pending photo in IndexedDB until it is sent or
+# removed): set to null by hand, its kept copy would come back at a later launch and open the chat over the next step.
 CLEAR_JS = r"""
-if (typeof pendingImage !== 'undefined') pendingImage = null;
+if (typeof clearPendingImage === 'function') clearPendingImage(); else if (typeof pendingImage !== 'undefined') pendingImage = null;
 var i = document.getElementById('coach-input'); if (i) _fillComposer('');
 render();
 return true;

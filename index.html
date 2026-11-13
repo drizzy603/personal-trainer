@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20261111-1"/>
+<meta name="build" content="20261113-1"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -9812,7 +9812,10 @@ function runnerSetRpe(val){
 // reads, or waits to, reads nothing. Under the shell's bridge the read first waits for hello's answer or failure, or
 // the page leaving tabs mode, at most 3 s of visible time (contract 9, D46): the chat it opens is then the one hello
 // negotiated (no web chat drawn before build 60's overlay covers it), and a hello that never answers strands nothing,
-// because coachPrefill keeps the comment for the native composer too while hello is out.
+// because coachPrefill keeps the comment for the native composer too while hello is out. The comment goes in before
+// the chat's first paint, so the model the chat opens on (or the web composer it draws) has it at once. The photo is
+// kept on the device until it is sent or removed (_photoKeep, below), and every step leaves one line in kt_wch_log
+// (Settings > About > Error log): sizes and states only, never the words or the photo.
 var _shareBusy=false;
 // hello went to the shell (its flag and TrovoShell) and has neither answered nor failed.
 function _fpHelloOut(){
@@ -9835,28 +9838,198 @@ function _fpAfterHello(ms){
     }, 50);
   });
 }
-async function checkPendingShare(){
-  if(!isNativeIOS()) return;
-  var TS = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.TrovoShare;
-  if(!TS || typeof TS.getPendingShare!=='function' || _shareBusy) return;
-  _shareBusy=true;
-  try {
-    await _fpAfterHello(3000);
-    var r = await TS.getPendingShare();
-    if(!r || !r.imageBase64) return;
-    pendingImage = {data: r.imageBase64, mediaType: 'image/jpeg', previewUrl: 'data:image/jpeg;base64,'+r.imageBase64};
-    // Through the tab switch: it leaves COMPARE and closes the day sheet (either sat over the
-    // chat, with its Delete buttons mid-screen) and lights the Coach tab. Then the chat itself.
-    // The switch's own paint (the Coach tab opens on its hub) presents and dismisses nothing, so a
-    // native chat already up stays up and takes the photo with its next model.
+// ── The pending photo, kept on the device until it is sent or removed ──
+// Once read, a shared photo lived only in this document's memory (pendingImage) and the native composer's image cache,
+// while the native composer keeps its words in UserDefaults: the app closed, or ended by iOS, before Send kept the
+// words and lost the photo (the owner's iPhone, 13 Nov 2026, build 61), and a document reloaded under the native chat
+// took it over with no photo. So the page keeps its pending photo (a share's, or one picked in the web composer) in
+// IndexedDB: one database (fp-photo), one store, one record {data, mediaType, at, src: 'share' | 'pick'}, written when
+// the photo is set and deleted when it is sent (coachSend) or removed (clearPendingImage: the web composer's remove
+// button, the native one's coach.clearImage). Never localStorage: a photo of a megabyte or more there would put every
+// later kt_* write at risk of the origin's quota, and the native copy mirrors kt_* keys. Device-only: no backup carries
+// it and the native store never sees it. Fire-and-forget: any failure (no IndexedDB, a throw, an open blocked or slower
+// than 4 s, a quota) leaves the photo in memory as it always was, and nothing waits on IndexedDB. Steps run in the
+// order asked (one open, then one transaction each), and the boot's read and its deletion of an old record are one
+// transaction, so neither undoes a newer write. At boot (_photoRestore, after the first paint) a record younger than
+// 24 h comes back as the pending photo while the page has none (an older one is deleted), and a share younger than 30
+// minutes opens the chat as a fresh share does, once the parked link has been taken (_linkDone), through the one reader
+// (checkPendingShare, _photoBack): it reads the App Group first, so a share waiting there wins and opens the chat in
+// its place, and the two never both open it; a place the owner or a link asked for meanwhile keeps it shut (_photoAsked).
+var _photoSeq=0;      // the page set or cleared its pending photo (a share, a pick, a send, a removal): a restore stands down
+var _photoBack=null;  // {img, mins}: the kept share whose chat the reader opens when it finds no new share waiting
+// The owner, or a link, asked for a place since this document booted (a touch or a key on the page, the native bar's
+// tabs.select, trovo://start, a dev route): the kept share comes back but its chat stays shut, so a launch from the
+// widget's Start, or a tap made while hello was still out, is never pulled over to the chat.
+var _photoAsked=0;
+var _photoOpen=null;  // the database's open (a promise of {db, why}); a failed or lost one is forgotten: the next step opens again
+function _photoWhy(e, dflt){
+  var n=String((e && e.name) || '');
+  return n==='QuotaExceededError' ? 'quota' : (n || dflt);
+}
+function _photoDb(){
+  if(_photoOpen) return _photoOpen;
+  var p=new Promise(function(res){
+    var done=false, t=null;
+    var fin=function(db, why){
+      if(done){ if(db){ try{ db.close(); }catch(e){} } return; }   // an open that answered after its 4 s
+      done=true; clearTimeout(t); res({db:db, why:why});
+    };
+    t=setTimeout(function(){ fin(null, 'open timed out'); }, 4000);
+    try{
+      var idb=window.indexedDB;
+      if(!idb || typeof idb.open!=='function'){ fin(null, 'no IndexedDB'); return; }
+      var rq=idb.open('fp-photo', 1);
+      rq.onupgradeneeded=function(){ try{ if(!rq.result.objectStoreNames.contains('photo')) rq.result.createObjectStore('photo'); }catch(e){} };
+      rq.onsuccess=function(){
+        var db=rq.result, lost=function(){ if(_photoOpen===p) _photoOpen=null; };
+        try{ db.onversionchange=function(){ try{ db.close(); }catch(e){} lost(); }; db.onclose=lost; }catch(e){}
+        fin(db, null);
+      };
+      rq.onerror=function(){ fin(null, _photoWhy(rq.error, 'open failed')); };
+      rq.onblocked=function(){ fin(null, 'open blocked'); };
+    }catch(e){ fin(null, _photoWhy(e, 'open failed')); }
+  });
+  _photoOpen=p;
+  p.then(function(o){ if(!o.db && _photoOpen===p) _photoOpen=null; });
+  return p;
+}
+// One transaction on the store: fn(store, set) makes its requests (set(v): what the step answers with). Resolves
+// {ok:true, val} once it has committed, else {ok:false, why}, 8 s at most. A connection that is gone or hung (no
+// transaction to be had, an abort that says so, the 8 s) is closed and forgotten, so the next step opens again; a
+// refusal such as the quota keeps it.
+function _photoTx(mode, fn){
+  var p=_photoDb();
+  return p.then(function(o){
+    if(!o.db) return {ok:false, why:o.why};
+    return new Promise(function(res){
+      var done=false, val, tx=null, t=null;
+      var fin=function(r, lost){
+        if(done) return;
+        done=true; clearTimeout(t);
+        if(lost && _photoOpen===p){ _photoOpen=null; try{ o.db.close(); }catch(e){} }
+        res(r);
+      };
+      t=setTimeout(function(){ fin({ok:false, why:'timed out'}, true); }, 8000);
+      try{
+        tx=o.db.transaction('photo', mode);
+        tx.oncomplete=function(){ fin({ok:true, val:val}); };
+        tx.onabort=function(){ var n=String((tx.error && tx.error.name) || ''); fin({ok:false, why:_photoWhy(tx.error, 'aborted')}, n==='UnknownError' || n==='InvalidStateError'); };
+        fn(tx.objectStore('photo'), function(v){ val=v; });
+      }catch(e){
+        fin({ok:false, why:_photoWhy(e, 'failed')}, !tx);
+        try{ if(tx) tx.abort(); }catch(e2){}
+      }
+    });
+  }).then(null, function(e){ return {ok:false, why:_photoWhy(e, 'failed')}; });
+}
+// A kept record the page can show and send: an image's type, base64 data, a time and where it came from.
+function _photoGood(rec){
+  return !!rec && typeof rec==='object' && typeof rec.mediaType==='string' && /^image\/[A-Za-z0-9.+-]+$/.test(rec.mediaType)
+    && typeof rec.data==='string' && /^[A-Za-z0-9+\/]+={0,2}$/.test(rec.data) && typeof rec.at==='number' && isFinite(rec.at)
+    && (rec.src==='share' || rec.src==='pick');
+}
+// The pending photo as it is now, kept (src 'share' or 'pick').
+function _photoKeep(src){
+  var img=pendingImage;
+  if(!img || !img.data) return;
+  var rec={data:String(img.data), mediaType:String(img.mediaType || 'image/jpeg'), at:Date.now(), src:src==='share' ? 'share' : 'pick'};
+  _photoTx('readwrite', function(st){ st.put(rec, 'pending'); }).then(function(r){
+    _wchLog(r.ok ? 'photo: kept' : 'photo: not kept ('+r.why+')');
+  });
+}
+// The pending photo is gone (what: 'sent' or 'removed'; '' when there was none): so is its kept copy.
+function _photoDrop(what){
+  if(what) _wchLog('photo: '+what);
+  _photoTx('readwrite', function(st){ st.delete('pending'); }).then(function(r){
+    if(!r.ok && what && r.why!=='no IndexedDB') _wchLog('photo: kept copy not deleted ('+r.why+')');
+  });
+}
+// At boot, after the first paint: the photo an earlier document kept comes back as the pending one while this document
+// has none, when it is younger than 24 h (an older or unreadable record is deleted in the read's own transaction). A
+// share younger than 30 minutes opens the chat as a fresh share does, through the one reader (_photoBack), which
+// reads the App Group first: a share waiting there (the parked link's, the boot check's, a return's) wins, and a place
+// asked for since the boot (_photoAsked) keeps the chat shut.
+function _photoRestore(){
+  var seq=_photoSeq;
+  _photoTx('readwrite', function(st, set){
+    var rq=st.get('pending');
+    rq.onsuccess=function(){
+      var rec=rq.result;
+      if(rec===undefined) return;
+      var age=_photoGood(rec) ? Date.now()-rec.at : NaN;
+      if(!(age>-60000 && age<24*3600000)){ st.delete('pending'); set({gone:true, age:age}); return; }   // NaN too
+      set({rec:rec, age:Math.max(0, age)});
+    };
+  }).then(function(r){
+    if(!r.ok){ if(r.why!=='no IndexedDB') _wchLog('photo: kept copy not read ('+r.why+')'); return; }
+    var v=r.val;
+    if(!v) return;   // nothing kept
+    if(v.gone){ _wchLog('photo: kept copy dropped ('+(v.age>=24*3600000 ? Math.floor(v.age/3600000)+' h old' : 'unreadable')+')'); return; }
+    if(_photoSeq!==seq || pendingImage){ _wchLog('photo: kept copy not put back ('+(pendingImage ? 'a newer photo' : 'removed meanwhile')+')'); return; }
+    var rec=v.rec, mins=Math.floor(v.age/60000);
+    pendingImage={data:rec.data, mediaType:rec.mediaType, previewUrl:'data:'+rec.mediaType+';base64,'+rec.data};
+    if(currentTab==='coach') render();   // a chat on screen shows it now (a native one taken over, with its next model)
+    if(rec.src==='share' && v.age<30*60000){
+      // the reader's turn once the parked link has had its own (a share it reads wins, the widget's Start keeps the chat
+      // shut: _photoAsked), 2 s at most
+      _photoBack={img:pendingImage, mins:mins};
+      var went=false, go=function(){ if(went) return; went=true; checkPendingShare(); };
+      _linkDone.then(go, go); setTimeout(go, 2000);
+      return;
+    }
+    _wchLog('photo: back from '+mins+' min');
+  });
+}
+// The kept share's chat, at the end of the reader's turn (took: it found a new share, whose chat is open instead).
+function _photoBackOpen(b, took){
+  try{
+    var why=took ? 'a new share' : !pendingImage ? 'sent or removed' : pendingImage!==b.img ? 'another photo' : _photoAsked ? 'asked elsewhere' : '';
+    if(why){ _wchLog('photo: back from '+b.mins+' min, chat not opened ('+why+')'); return; }
     _fp.taking=true;
     try { switchTab('coach',{intent:'chat'}); } finally { _fp.taking=false; }
-    coachView = 'chat';
+    coachView='chat';
     render();
-    if(r.comment){
-      setTimeout(function(){ coachPrefill(r.comment); }, 200);
-    }
-  } catch(e){} finally { _shareBusy=false; }
+    _wchLog('photo: back from '+b.mins+' min, chat opened');
+  }catch(e){}
+}
+// An empty read comes at every boot and every return: a run of them is one line (the newest line already says it).
+function _shareLog(msg){
+  try{ var a=JSON.parse(localStorage.getItem('kt_wch_log') || '[]'); if(a.length && String(a[0]).slice(15)===msg) return; }catch(e){}
+  _wchLog(msg);
+}
+// The one reader (above): the App Group's share when the shell has TrovoShare, then the kept share's chat (_photoBack)
+// when it found none.
+async function checkPendingShare(){
+  var TS = isNativeIOS() && window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.TrovoShare;
+  if(TS && typeof TS.getPendingShare!=='function') TS=null;
+  if(_shareBusy || (!TS && !_photoBack)) return;
+  _shareBusy=true;
+  var took=false;
+  try {
+    await _fpAfterHello(3000);
+    var r = TS ? await TS.getPendingShare() : null;
+    if(r && r.imageBase64){
+      took=true;
+      var b64=String(r.imageBase64), words=r.comment ? String(r.comment) : '';
+      _wchLog('share: read '+Math.round(b64.length*3/4/1024)+' KB, words '+_chars(words).length+' chars, page '+(document.visibilityState==='hidden' ? 'hidden' : 'visible'));
+      pendingImage = {data: b64, mediaType: 'image/jpeg', previewUrl: 'data:image/jpeg;base64,'+b64};
+      _photoSeq++; _photoKeep('share');
+      // Through the tab switch: it leaves COMPARE and closes the day sheet (either sat over the
+      // chat, with its Delete buttons mid-screen) and lights the Coach tab. Then the chat itself.
+      // The switch's own paint (the Coach tab opens on its hub) presents and dismisses nothing, so a
+      // native chat already up stays up and takes the photo with its next model.
+      _fp.taking=true;
+      try { switchTab('coach',{intent:'chat'}); } finally { _fp.taking=false; }
+      coachView = 'chat';
+      // the words before the chat's paint: the model it opens on has them (no second model 200 ms on)
+      if(words) coachPrefill(words);
+      render();
+    } else if(TS) _shareLog('share: nothing waiting');
+  } catch(e){} finally {
+    _shareBusy=false;
+    var b=_photoBack; _photoBack=null;
+    if(b) _photoBackOpen(b, took);
+  }
 }
 // The set that follows this rest: the same exercise, or a superset's first
 // half when the pair returns to it.
@@ -20915,6 +21088,7 @@ function triggerImagePicker(){
       _downscaleImage(ev.target.result, function(dataUrl, mediaType){
         var comma=dataUrl.indexOf(',');
         pendingImage={data:dataUrl.slice(comma+1),mediaType:mediaType,previewUrl:dataUrl};
+        _photoSeq++; _photoKeep('pick');   // kept on the device until it is sent or removed
         render();scrollChatBottom();
       });
     };
@@ -20954,7 +21128,8 @@ function _cachedCoachTools(){
   }
   return t;
 }
-function clearPendingImage(){pendingImage=null;render();}
+// The web composer's remove button, and the native one's (coach.clearImage): the photo and its kept copy go.
+function clearPendingImage(){ var had=!!pendingImage; pendingImage=null; _photoSeq++; _photoDrop(had ? 'removed' : ''); render(); }
 
 // coachSend(text, o): the one way a message reaches the coach, and it needs no DOM. The web composer's
 // Send (sendCoachMessage), the chat's chips and %% actions, Today's card and Ask box, the plateau,
@@ -20999,7 +21174,7 @@ function coachSend(text, o){
       {type:'text',text:msg||'Please look at this image and give me relevant training or nutrition feedback.'}
     ];
     preview=img.previewUrl||('data:'+img.mediaType+';base64,'+img.data);
-    if(img===pendingImage) pendingImage=null;
+    if(img===pendingImage){ pendingImage=null; _photoSeq++; _photoDrop('sent'); }   // sent: its kept copy goes too
   }else{
     content=msg;
   }
@@ -24189,6 +24364,11 @@ setTimeout(refreshReadiness, 1100);
 if(localStorage.getItem('kt_autolog_runs')==='1') setTimeout(checkRecentHealthRun, 1200);
 setTimeout(checkForLiveUpdate, 2000);
 setTimeout(checkPendingShare, 2500);
+// The photo an earlier document kept (_photoRestore): after this script, so it never stands between the boot and the
+// first paint; a share younger than 30 minutes then opens the chat through the reader above, after hello, unless the
+// owner has touched or typed on the page by then (_photoAsked).
+try{ ['pointerdown','keydown'].forEach(function(t){ document.addEventListener(t, function(){ _photoAsked++; }, true); }); }catch(e){}
+setTimeout(_photoRestore, 0);
 // iOS PWA zombie recovery: when the WKWebView is evicted from memory and
 // restored, the static HTML (tab bar) survives but JS state is gone and the
 // screen div is empty. Force a reload to reinitialise.
@@ -25136,7 +25316,7 @@ var _FP_INTENTS={
     if(FP_TAB_IDS.indexOf(a.tab)<0 || !_fpUint(a.seq) || (a.again!=null && typeof a.again!=='boolean')) return _FP_BAD;
     var T=_fp.tabs;
     if(!T.mode) return {ok:false, error:'off'};
-    if(a.seq>T.seq){ T.seq=a.seq; if(a.tab!==currentTab || a.again===true) _switchTabLocal(a.tab); }
+    if(a.seq>T.seq){ T.seq=a.seq; _photoAsked++; if(a.tab!==currentTab || a.again===true) _switchTabLocal(a.tab); }   // a tap or a link's place
     return {ok:true, tab:currentTab};
   },
   // A geometry change the shell made on its own (a trait change; a return to a web tab with a sheet open): newer only.
@@ -26649,6 +26829,7 @@ function _handleDeepLink(url){
     return true;
   }
   if(/^trovo:\/\/start/.test(url)){
+    _photoAsked++;   // the widget's Start is where the owner asked to go: a kept share's chat stays shut (_photoBackOpen)
     // "Start" means today's session, whatever kind it is: a run day opens
     // the run log, a sport day its tab. Only lift days (and a session in
     // progress) open the runner; a Run day used to land on a red error toast.
@@ -26665,9 +26846,13 @@ function _handleDeepLink(url){
   return false;
 }
 window._trovoOpen=_handleDeepLink;
+// The parked link's check (+400 ms). _linkDone settles once it has been taken and handled (at once with no plugin to
+// ask), so a kept share's chat (_photoRestore) opens only after a link's own destination has had its turn.
+var _linkDone=Promise.resolve();
 (function(){
   var TW=_plug('TrovoWidget'); if(!TW || !TW.consumeDeepLink) return;
-  setTimeout(function(){ try{ TW.consumeDeepLink().then(function(r){ if(r && r.url) _handleDeepLink(r.url); }).catch(function(){}); }catch(e){} }, 400);
+  var done=null; _linkDone=new Promise(function(r){ done=r; });
+  setTimeout(function(){ try{ TW.consumeDeepLink().then(function(r){ if(r && r.url) _handleDeepLink(r.url); }).catch(function(){}).then(done); }catch(e){ done(); } }, 400);
 })();
 
 // Dev-nav hook — reads kt_dev_nav at boot and routes to a target screen so
@@ -26699,6 +26884,7 @@ function _devNavOnce(route){
     if(nav) localStorage.removeItem('kt_dev_nav');
     else { var _fdn=_fpDev('nav'); if(_fdn && _devNavOnce(_fdn)) nav=_fdn; }
     if(!nav) return;
+    _photoAsked++;   // a tool's route is where this launch goes: a kept share's chat stays shut (_photoBackOpen)
     setTimeout(function(){
       try {
         var parts = String(nav).split('/');
