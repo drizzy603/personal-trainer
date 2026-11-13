@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20261113-1"/>
+<meta name="build" content="20261113-2"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -6354,6 +6354,7 @@ function _tabEnterMotion(screen, routeChanged){
 }
 function render() {
   _todayActMemo=null;
+  _photoWatch();   // a kept photo's chat on screen, or left (its marker's left: no chat of its own at the next launch)
   // Leaving the chat: #screen scrolls again, and the keyboard binding lets #app go.
   if(currentTab!=='coach' && document.documentElement.classList.contains('kt-chat')){ document.documentElement.classList.remove('kt-chat'); if(window._vvChatSync) _vvChatSync(); }
   // Sync the inline run-log form into module state before rebuilding the
@@ -9850,16 +9851,25 @@ function _fpAfterHello(ms){
 // it and the native store never sees it. Fire-and-forget: any failure (no IndexedDB, a throw, an open blocked or slower
 // than 4 s, a quota) leaves the photo in memory as it always was, and nothing waits on IndexedDB. Steps run in the
 // order asked (one open, then one transaction each), and the boot's read and its deletion of an old record are one
-// transaction, so neither undoes a newer write. At boot (_photoRestore, after the first paint) a record younger than
-// 24 h comes back as the pending photo while the page has none (an older one is deleted), and a share younger than 30
-// minutes opens the chat as a fresh share does, once the parked link has been taken (_linkDone), through the one reader
-// (checkPendingShare, _photoBack): it reads the App Group first, so a share waiting there wins and opens the chat in
-// its place, and the two never both open it; a place the owner or a link asked for meanwhile keeps it shut (_photoAsked).
+// transaction, so neither undoes a newer write. Which record is the page's photo is said by a marker in localStorage
+// (kt_photo_kept, a few bytes: the photo's stamp, and whether the owner left its chat), written synchronously before
+// IndexedDB is asked and removed the moment the photo is sent or removed: a keep or a deletion IndexedDB failed leaves
+// a record no marker names, and the boot drops it, so a photo the owner replaced, sent or removed never comes back.
+// At boot (_photoRestore, after the first paint) the record the marker names comes back as the pending photo while the
+// page has none, when it is younger than 24 h (any other record is deleted). A share younger than 30 minutes opens the
+// chat as a fresh share does, once the parked link has been taken (_linkDone), through the one reader
+// (checkPendingShare, _photoBack): it reads the App Group first, so a share waiting there wins and opens the chat in its
+// place, and the two never both open it. It stays shut once the owner has left that chat (another tab, Back, the hub:
+// the marker's left, _photoWatch), when a place was asked for since the boot (_photoAsked), and on a page nobody sees
+// (a background launch: the chat waits for the page to show, the 30 minutes counted then). A photo put back with its
+// chat shut (back) has not been in front of the owner: the app's own prompts (_coachAsk) never take it along.
 var _photoSeq=0;      // the page set or cleared its pending photo (a share, a pick, a send, a removal): a restore stands down
-var _photoBack=null;  // {img, mins}: the kept share whose chat the reader opens when it finds no new share waiting
+var _photoBack=null;  // {img, at}: the kept share whose chat the reader opens when it finds no new share waiting
+var _photoAt=0;       // the newest stamp a kept photo took: each one's is its own
 // The owner, or a link, asked for a place since this document booted (a touch or a key on the page, the native bar's
 // tabs.select, trovo://start, a dev route): the kept share comes back but its chat stays shut, so a launch from the
-// widget's Start, or a tap made while hello was still out, is never pulled over to the chat.
+// widget's Start, or a tap made while hello was still out, is never pulled over to the chat (and, the chat not on
+// screen, that counts as leaving it: _photoLeave).
 var _photoAsked=0;
 var _photoOpen=null;  // the database's open (a promise of {db, why}); a failed or lost one is forgotten: the next step opens again
 function _photoWhy(e, dflt){
@@ -9928,27 +9938,79 @@ function _photoGood(rec){
     && typeof rec.data==='string' && /^[A-Za-z0-9+\/]+={0,2}$/.test(rec.data) && typeof rec.at==='number' && isFinite(rec.at)
     && (rec.src==='share' || rec.src==='pick');
 }
-// The pending photo as it is now, kept (src 'share' or 'pick').
+// The marker (kt_photo_kept, raw JSON {at, left?}): the stamp of the kept photo that is the page's pending one, and
+// left:1 once the owner has left its chat. Device-only: in FP_BOOKKEEPING, in no backup (mirrored as every key is).
+function _photoMarkRead(){
+  try{
+    var m=JSON.parse(localStorage.getItem('kt_photo_kept') || 'null');
+    return (m && typeof m==='object' && typeof m.at==='number') ? m : null;
+  }catch(e){ return null; }
+}
+// Writes the marker (null removes it): '' once it reads back as written, else why not.
+function _photoMark(m){
+  try{
+    if(!m){ localStorage.removeItem('kt_photo_kept'); return ''; }
+    var v=JSON.stringify(m);
+    localStorage.setItem('kt_photo_kept', v);
+    return localStorage.getItem('kt_photo_kept')===v ? '' : 'marker not written';
+  }catch(e){ return _photoWhy(e, 'marker not written'); }
+}
+// The pending photo as it is now, kept (src 'share' or 'pick'): its stamp in the marker first, then the record. With no
+// marker written nothing is asked of IndexedDB (and an older marker goes: its record is not the page's photo any more);
+// a record not written takes its marker with it, so the boot never puts back the photo this one replaced.
 function _photoKeep(src){
   var img=pendingImage;
   if(!img || !img.data) return;
-  var rec={data:String(img.data), mediaType:String(img.mediaType || 'image/jpeg'), at:Date.now(), src:src==='share' ? 'share' : 'pick'};
+  var at=Math.max(Date.now(), _photoAt+1);
+  _photoAt=at; img.at=at;
+  var no=_photoMark({at:at});
+  if(no){ _photoMark(null); _wchLog('photo: not kept ('+no+')'); return; }
+  var rec={data:String(img.data), mediaType:String(img.mediaType || 'image/jpeg'), at:at, src:src==='share' ? 'share' : 'pick'};
   _photoTx('readwrite', function(st){ st.put(rec, 'pending'); }).then(function(r){
+    if(!r.ok){ var m=_photoMarkRead(); if(m && m.at===at) _photoMark(null); }
     _wchLog(r.ok ? 'photo: kept' : 'photo: not kept ('+r.why+')');
   });
 }
-// The pending photo is gone (what: 'sent' or 'removed'; '' when there was none): so is its kept copy.
+// The pending photo is gone (what: 'sent' or 'removed'; '' when there was none): so is its kept copy. The marker goes at
+// once, so a deletion IndexedDB fails leaves a record the boot drops.
 function _photoDrop(what){
+  _photoMark(null);
   if(what) _wchLog('photo: '+what);
   _photoTx('readwrite', function(st){ st.delete('pending'); }).then(function(r){
     if(!r.ok && what && r.why!=='no IndexedDB') _wchLog('photo: kept copy not deleted ('+r.why+')');
   });
 }
+// The owner left the kept photo's chat (another tab, Back, the hub), or the launch asked for somewhere else while it
+// was shut: the marker says so, and that chat no longer opens on its own at a later launch (the photo still comes back).
+function _photoLeave(img){
+  var m=_photoMarkRead();
+  if(!img || !img.at || !m || m.at!==img.at || m.left) return;
+  if(!_photoMark({at:m.at, left:1})) _wchLog('photo: chat left');
+}
+// render() calls it. Once the task's paints are done (a way into the chat passes the hub in the same task), the chat on
+// screen with a kept photo marks it there (on: the marker's left goes, the chat is the owner's place again), and a
+// later paint off the chat is the owner leaving it. The page going to the background changes no route: leaving the
+// app with the chat up keeps it the place to come back to.
+var _photoWatchT=null;
+function _photoWatch(){
+  if(_photoWatchT || !pendingImage || !pendingImage.at) return;
+  _photoWatchT=setTimeout(function(){
+    _photoWatchT=null;
+    var img=pendingImage;
+    if(!img || !img.at) return;
+    if(currentTab==='coach' && coachView==='chat'){
+      if(!img.on){ img.on=1; var m=_photoMarkRead(); if(m && m.at===img.at && m.left) _photoMark({at:m.at}); }
+      return;
+    }
+    if(img.on){ img.on=0; _photoLeave(img); }
+  }, 0);
+}
 // At boot, after the first paint: the photo an earlier document kept comes back as the pending one while this document
-// has none, when it is younger than 24 h (an older or unreadable record is deleted in the read's own transaction). A
-// share younger than 30 minutes opens the chat as a fresh share does, through the one reader (_photoBack), which
-// reads the App Group first: a share waiting there (the parked link's, the boot check's, a return's) wins, and a place
-// asked for since the boot (_photoAsked) keeps the chat shut.
+// has none, when the marker names it and it is younger than 24 h (any other record is deleted in the read's own
+// transaction, and its marker goes). A share younger than 30 minutes whose chat the owner had not left opens the chat
+// as a fresh share does, through the one reader (_photoBack), which reads the App Group first: a share waiting there
+// (the parked link's, the boot check's, a return's) wins, and a place asked for since the boot (_photoAsked) or a page
+// nobody sees holds the chat back (_photoBackOpen). The photo comes back marked back: not yet in front of the owner.
 function _photoRestore(){
   var seq=_photoSeq;
   _photoTx('readwrite', function(st, set){
@@ -9956,40 +10018,59 @@ function _photoRestore(){
     rq.onsuccess=function(){
       var rec=rq.result;
       if(rec===undefined) return;
-      var age=_photoGood(rec) ? Date.now()-rec.at : NaN;
-      if(!(age>-60000 && age<24*3600000)){ st.delete('pending'); set({gone:true, age:age}); return; }   // NaN too
-      set({rec:rec, age:Math.max(0, age)});
+      if(_photoSeq!==seq){ set({moved:true}); return; }   // the page set or cleared its photo meanwhile: its own step settles the record
+      var m=_photoMarkRead(), good=_photoGood(rec), age=good ? Date.now()-rec.at : NaN;
+      var why=!good ? 'unreadable' : (!m || m.at!==rec.at) ? 'no longer pending' : age<=-60000 ? 'dated ahead of the clock'
+        : age>=24*3600000 ? Math.floor(age/3600000)+' h old' : '';
+      if(why){ st.delete('pending'); set({gone:why}); return; }
+      set({rec:rec, age:Math.max(0, age), left:!!m.left});
     };
   }).then(function(r){
     if(!r.ok){ if(r.why!=='no IndexedDB') _wchLog('photo: kept copy not read ('+r.why+')'); return; }
     var v=r.val;
-    if(!v) return;   // nothing kept
-    if(v.gone){ _wchLog('photo: kept copy dropped ('+(v.age>=24*3600000 ? Math.floor(v.age/3600000)+' h old' : 'unreadable')+')'); return; }
-    if(_photoSeq!==seq || pendingImage){ _wchLog('photo: kept copy not put back ('+(pendingImage ? 'a newer photo' : 'removed meanwhile')+')'); return; }
-    var rec=v.rec, mins=Math.floor(v.age/60000);
-    pendingImage={data:rec.data, mediaType:rec.mediaType, previewUrl:'data:'+rec.mediaType+';base64,'+rec.data};
-    if(currentTab==='coach') render();   // a chat on screen shows it now (a native one taken over, with its next model)
-    if(rec.src==='share' && v.age<30*60000){
-      // the reader's turn once the parked link has had its own (a share it reads wins, the widget's Start keeps the chat
-      // shut: _photoAsked), 2 s at most
-      _photoBack={img:pendingImage, mins:mins};
-      var went=false, go=function(){ if(went) return; went=true; checkPendingShare(); };
-      _linkDone.then(go, go); setTimeout(go, 2000);
+    if(!v || v.gone){
+      if(_photoSeq===seq && _photoMarkRead()) _photoMark(null);   // a marker with no record of its own says nothing
+      if(v) _wchLog('photo: kept copy dropped ('+v.gone+')');
       return;
     }
-    _wchLog('photo: back from '+mins+' min');
+    if(v.moved || _photoSeq!==seq || pendingImage){ _wchLog('photo: kept copy not put back ('+(pendingImage ? 'a newer photo' : 'removed meanwhile')+')'); return; }
+    var rec=v.rec, mins=Math.floor(v.age/60000);
+    pendingImage={data:rec.data, mediaType:rec.mediaType, previewUrl:'data:'+rec.mediaType+';base64,'+rec.data, at:rec.at, back:1};
+    if(currentTab==='coach') render();   // a chat on screen shows it now (a native one taken over, with its next model)
+    if(rec.src!=='share' || v.age>=30*60000){ _wchLog('photo: back from '+mins+' min'); return; }
+    if(v.left){ _wchLog('photo: back from '+mins+' min, chat not opened (left earlier)'); return; }
+    // the reader's turn once the parked link has had its own (a share it reads wins, the widget's Start keeps the chat
+    // shut: _photoAsked), 2 s at most
+    _photoBack={img:pendingImage, at:rec.at};
+    var went=false, go=function(){ if(went) return; went=true; checkPendingShare(); };
+    _linkDone.then(go, go); setTimeout(go, 2000);
   });
 }
-// The kept share's chat, at the end of the reader's turn (took: it found a new share, whose chat is open instead).
+// The kept share's chat, at the end of the reader's turn (took: it found a new share, whose chat is open instead). On a
+// page nobody sees (a background launch, or the owner gone again) it waits: the next reader (the return's check, 0.6 s
+// after the page shows) asks again, the 30 minutes counted then. A launch asked for somewhere else, with the chat not
+// on screen, counts as leaving it (_photoLeave).
 function _photoBackOpen(b, took){
   try{
-    var why=took ? 'a new share' : !pendingImage ? 'sent or removed' : pendingImage!==b.img ? 'another photo' : _photoAsked ? 'asked elsewhere' : '';
-    if(why){ _wchLog('photo: back from '+b.mins+' min, chat not opened ('+why+')'); return; }
+    var m=_photoMarkRead(), age=Date.now()-b.at, mins=Math.floor(Math.max(0, age)/60000);
+    var why=took ? 'a new share' : !pendingImage ? 'sent or removed' : pendingImage!==b.img ? 'another photo'
+      : _photoAsked ? 'asked elsewhere' : (m && m.at===b.at && m.left) ? 'left earlier' : age>=30*60000 ? 'over 30 min' : '';
+    if(!why && document.visibilityState==='hidden'){
+      _photoBack=b;
+      if(!b.waits){ b.waits=1; _wchLog('photo: back from '+mins+' min, chat waits for the page to show'); }
+      return;
+    }
+    if(why){
+      if(why==='asked elsewhere' && !(currentTab==='coach' && coachView==='chat')) _photoLeave(b.img);
+      _wchLog('photo: back from '+mins+' min, chat not opened ('+why+')');
+      return;
+    }
     _fp.taking=true;
     try { switchTab('coach',{intent:'chat'}); } finally { _fp.taking=false; }
     coachView='chat';
+    pendingImage.back=0;   // the owner lands on it: from here it is the composer's photo as any other
     render();
-    _wchLog('photo: back from '+b.mins+' min, chat opened');
+    _wchLog('photo: back from '+mins+' min, chat opened');
   }catch(e){}
 }
 // An empty read comes at every boot and every return: a run of them is one line (the newest line already says it).
@@ -21237,7 +21318,8 @@ function _coachTurnRun(errNote){
     return true;
   });
 }
-// The web composer's Send: what the box holds (and the photo it shows), through coachSend.
+// The web composer's Send: what the box holds (and the photo it shows), through coachSend. o.keepPhoto (the app's own
+// prompt, _coachAsk, over a photo put back with its chat shut): the words go and the photo stays in the composer.
 async function sendCoachMessage(o){
   var inp=document.getElementById('coach-input');
   if(!inp)return;
@@ -21246,11 +21328,12 @@ async function sendCoachMessage(o){
   // touch screen with a focused box, no keys and no tab bar, and the composer on the home indicator.
   // A chip send, or focus moved on to the model pill, stays where it is.
   var _ae=document.activeElement, _hadFocus=_ae===inp||!!(_ae&&_ae.classList&&_ae.classList.contains('coach-send-btn'));
+  var keep=!!(o && typeof o==='object' && o.keepPhoto);
   var msg=inp.value.trim();
-  if((!msg&&!pendingImage)||coachLoading)return;
+  if((!msg&&(!pendingImage||keep))||coachLoading)return;
   inp.value='';inp.style.height='';
   window._coachKeyAt=0;   // what was typed is sent: a render mid-reply no longer counts as typing (_restoreCoachDraft)
-  var r=coachSend(msg, {seed:(o && typeof o==='object') ? o.seed : null, usePending:true});
+  var r=coachSend(msg, {seed:(o && typeof o==='object') ? o.seed : null, usePending:!keep});
   if(!r.ok || !(await r.done)) return;
   if(_hadFocus&&!intakeMode&&!_coarsePointer()) setTimeout(function(){var i=document.getElementById('coach-input');if(i)i.focus();},80);
 }
@@ -21275,14 +21358,17 @@ function sendCoachChip(txt){
 // While the box holds words the native composer handed over (_fpBoxHeld) the prompt never goes
 // through it: sent as Send would send it (the photo it shows included), or during a reply put in
 // front of those words as a native composer takes a page draft (coachPrefill).
+// A photo put back from an earlier launch with its chat left shut (pendingImage.back, _photoRestore) has not been in
+// front of the owner: the prompt goes without it, and it stays in the composer for the owner's own Send.
 // {ok}: whether the question went now.
 var _coachWaiting=null;   // {text, seed, stamp}: the app's prompt the next send of exactly those words takes up
 function _coachAsk(text, o){
   o=(o && typeof o==='object') ? o : {};
   var t=String(text==null?'':text), inp=document.getElementById('coach-input'), n0=_coachSentN;
+  var unseen=!!(pendingImage && pendingImage.back);
   _coachWaiting={text:t.trim(), seed:o.seed ? String(o.seed) : null, stamp:Array.isArray(o.stamp) ? o.stamp : null};
-  if(inp && _fpBoxHeld(inp, t)){ if(!coachLoading) coachSend(t, {seed:o.seed, usePending:true}); else coachPrefill(t); }
-  else if(inp){ inp.value=t; sendCoachMessage(o); }
+  if(inp && _fpBoxHeld(inp, t)){ if(!coachLoading) coachSend(t, {seed:o.seed, usePending:!unseen}); else coachPrefill(t); }
+  else if(inp){ inp.value=t; sendCoachMessage({seed:o.seed, keepPhoto:unseen}); }
   else if(!coachLoading) coachSend(t, o);
   else coachPrefill(t);
   return {ok:_coachSentN>n0};
@@ -22710,7 +22796,8 @@ var FP_LOG_KEYS={kt_sessions:1, kt_runs:1, kt_sports:1, kt_bw:1, kt_measurements
 var FP_BOOKKEEPING={kt_last_open:1, kt_err_log:1, kt_wch_log:1, kt_hk_last_sync:1, kt_ota_staged:1, kt_ota_attempt:1, kt_ota_rejected:1,
   kt_cached_html:1, kt_cached_build:1, kt_cached_err:1, kt_last_seen_build:1, kt_dev_nav:1, kt_wrist_closed:1, kt_ids_unique:1,
   kt_streak_seeded:1, kt_demo_w_swept:1, kt_last_autobackup:1, kt_last_autobackup_hash:1, kt_coach_card:1,
-  kt_coach_handover:1};   // the native composer's handed-over words: a stale copy is never offered back
+  kt_coach_handover:1,    // the native composer's handed-over words: a stale copy is never offered back
+  kt_photo_kept:1};       // which kept photo is the pending one (_photoKeep): a stale marker would name a photo gone
 function _fpBookkeeping(k){ k=String(k||''); return FP_BOOKKEEPING.hasOwnProperty(k) || k.indexOf('kt_coach_card_')===0; }
 function _fpStorePlug(){ if(!_fpShellFlag()) return null; var P=_plug('TrovoStore'); return (P && typeof P.status==='function') ? P : null; }
 // Reads the status again (at most every 1.5 s unless forced) and repaints the row and an open sheet.

@@ -726,8 +726,8 @@ serial('the page\'s own text never writes over the handed-over words (I16, P-D15
       Object.assign(r.noKey, { chipInput: __screen().input, chipSent: lastUser().content, key: __key() });
       r.took = await FPScreens.call('screens.off', { screen: 'coach', why: 'failures', draft: WORDS }); await __w(40);
       r.handed = where();
-      // Build day's "Ask the coach" and a share's comment (coachPrefill): the draft in front of the words, the key
-      // following
+      // Build day's "Ask the coach" (coachPrefill with the box on screen): the draft in front of the words, the key
+      // following (a share's words go in before the chat is drawn: beside a page draft, spec 132)
       r.prefill = { ta: coachPrefill(P) === box(), input: __screen().input };
       render(); await __w(20);
       Object.assign(r.prefill, where());
