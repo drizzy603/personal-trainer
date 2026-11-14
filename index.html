@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20261114-5"/>
+<meta name="build" content="20261114-6"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -969,7 +969,9 @@ select.kt-sport-well-input{appearance:none;-webkit-appearance:none;}
 .kt-bars{display:flex;align-items:flex-end;gap:7px;height:86px;}
 .kt-bars .bar{flex:1;background:color-mix(in srgb,var(--text) 13%,transparent);border-radius:5px 5px 2px 2px;position:relative;min-height:3px;}
 .kt-bars .bar.cur{background:var(--accent);}
-.kt-bars .bar.empty{background:none;min-height:0;height:0!important;border-top:1px dashed color-mix(in srgb,var(--text) 22%,transparent);border-radius:0;}
+/* A week with no lifts: a dashed line on the baseline. padding:0 because the page's empty-state rule (.empty, 52px 20px)
+   matches this bar too: from it the bar was a box 104px tall and 40px wider than the others (spec 133). */
+.kt-bars .bar.empty{background:none;min-height:0;height:0!important;padding:0;border-top:1px dashed color-mix(in srgb,var(--text) 22%,transparent);border-radius:0;}
 .kt-bars .bar .pr-dot{position:absolute;top:-12px;left:50%;transform:translateX(-50%);width:5px;height:5px;border-radius:50%;background:var(--yellow);}
 .kt-bars .bar .val{position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-family:'JetBrains Mono',ui-monospace,monospace;font-size:8px;font-weight:800;color:var(--accent-ink);white-space:nowrap;}
 .kt-streak-chip{display:inline-flex;align-items:center;gap:8px;padding:7px 12px;border-radius:12px;background:var(--card);border:1px solid var(--border);flex-shrink:0;}
@@ -2089,8 +2091,9 @@ html[data-room="heavyweight"] .kt-r-card.dark .kt-rest-bar-fill{background:var(-
 html[data-room="heavyweight"] .field input,html[data-room="heavyweight"] .field select,html[data-room="heavyweight"] .field textarea,
 html[data-room="heavyweight"] .coach-textarea,html[data-room="heavyweight"] .kt-coach-input{background:var(--card);border-color:var(--border);border-radius:10px;}
 /* Lime is the earned state */
-html[data-room="heavyweight"] .kt-bars .bar{background:var(--earned);}
-html[data-room="heavyweight"] .kt-bars .bar.cur{background:var(--accent);}
+/* :not(.empty) as Lime's rule has it: the room's fill (0,3,1) outranks .bar.empty's none (0,3,0). */
+html[data-room="heavyweight"] .kt-bars .bar:not(.empty){background:var(--earned);}
+html[data-room="heavyweight"] .kt-bars .bar.cur:not(.empty){background:var(--accent);}
 html[data-room="heavyweight"] .kt-bars .bar .pr-dot{background:var(--earned-ink);}
 html[data-room="heavyweight"] .kt-lr.gold .kt-lr-idx,html[data-room="heavyweight"] .kt-lr.gold .kt-lr-val,
 html[data-room="heavyweight"] .kt-pr-eyebrow,html[data-room="heavyweight"] .kt-pr-hero{color:var(--earned-ink);}
