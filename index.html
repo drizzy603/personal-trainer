@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20261114-1"/>
+<meta name="build" content="20261114-2"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -21666,9 +21666,10 @@ function _escT(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</
 // md() takes at the line's start gone (a heading's #, a bullet, a quote's >), a table row its cells, a rule or a
 // table's separator row nothing, and the inline marks read by md()'s own tokens (_mdTokens: **bold**, *em*, `code`,
 // a link's URL), so the hub's line shows a mark only where the chat shows it too. A numbered line keeps its number
-// (the chat draws it as the list's marker). The line rules are _mdModel's, restated in its order: change them there
-// and here together (spec 126 reads every golden text both ways). Read alone, a line cannot know that it ends its
-// run, which md() trims first: an empty bullet there is the text "-" in the chat and nothing here.
+// as written; the chat numbers the list itself, counting on from its first number (a second "1." reads 2. there).
+// The line rules are _mdModel's, restated in its order: change them there and here together (spec 126 reads every
+// golden text both ways). Read alone, a line cannot know that it ends its run, which the chat trims before md() (the
+// whole reply, or each run between %% markers): an empty bullet there is the text "-" in the chat and nothing here.
 function _coachPlainLine(l){
   var raw=String(l==null ? '' : l).replace(/\r/g,''), t=raw.trim(), m;
   var words=function(x){ return _mdTokens(_mdEsc(x)).filter(function(k){ return typeof k==='string'; }).join('').trim(); };
@@ -21684,10 +21685,11 @@ function _coachPlainLine(l){
 }
 // The hub's line for the newest message: its text (a photo alone reads [Image]), %% marker lines dropped (a structured
 // reply's grammar is not prose), a coach reply's markdown read as the chat reads it (_coachPlainLine; the owner's words
-// and the app's own notes stay as written, as their bubble and note draw them), cut at 65 characters with an ellipsis.
-// Whole characters: an emoji is never split (the 65-unit slice before build 61 could leave half of one), and ASCII text
-// is cut where that slice cut it. The string is plain text: the web row escapes it once (_escT) and the native row
-// draws it verbatim.
+// and the app's own notes keep their marks, as their bubble and note draw them, though their %% lines go as a reply's
+// do), cut at 65 characters with an ellipsis. Whole code points: a surrogate pair is never split (the 65-unit
+// slice before build 61 could leave half of one), but a sequence of several (a ZWJ emoji, a flag, a letter and its
+// combining mark) can be cut inside, and ASCII text is cut where that slice cut it. The string is plain text: the web
+// row escapes it once (_escT) and the native row draws it verbatim.
 function _coachHomePreview(msg){
   var s='', reply=!!msg && msg.role==='assistant' && !msg._local;
   if(msg && typeof msg.content==='string') s=msg.content;
@@ -22069,7 +22071,7 @@ function _syncAppIcon(){
 function applyTheme(name) {
   if(!THEMES[name]) return;   // no such look: nothing changes (_paintTheme's own test)
   // Saved and set before the paint: _paintTheme renders, and that render draws Settings' Theme row and the open
-  // sheet's tick from currentTheme (painted first, 20260909-1 to 20261111-1, both named the look just left). A save
+  // sheet's tick from currentTheme (painted first, 20260909-1 to 20261113-5, both named the look just left). A save
   // that throws (a full store) now paints nothing: the look, the row and the tick stay with the store (spec 131).
   localStorage.setItem('kt_theme',name);
   currentTheme=name;
@@ -25198,7 +25200,7 @@ function _fpPushModel(s, force){
 // One deferred check per task, from _fpSync: the bar's model while tabs mode is live, the Coach tab's while the page
 // has handed it to the shell (whether or not Coach shows, so a tap opens on a current hub). Deferred so a task's
 // renders make one check, after all the task changes (a render can come before the value it shows is set, as
-// applyTheme's did until 20261111-1). No timer when neither can go (classic mode: build 60's chat and 61's classic
+// applyTheme's did until 20261113-5). No timer when neither can go (classic mode: build 60's chat and 61's classic
 // root run as before).
 function _fpModelsSoon(){
   if(_fp.modelsT || !(_fpTabsLive() || _fp.shown.coachHome)) return;

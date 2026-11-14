@@ -1,9 +1,9 @@
-// 131: a look picked in Settings › About › Theme shows at once (web 20261114-1).
+// 131: a look picked in Settings › About › Theme shows at once (web 20261114-2).
 // applyTheme() let _paintTheme() render before it saved kt_theme and set currentTheme, so the pick's own render drew
 // Settings' Theme row (its line "Lime · two looks" and its pill, which are the row's VoiceOver name too) and the open
 // sheet's tick and filled card from the look just left: after a tap on Lime the room, currentTheme and kt_theme were
 // Lime while the row and the tick still said Heavyweight, until some later render reached them (web 20260909-1 to
-// 20261111-1, on every shell). The pick is on record before the paint now.
+// 20261113-5, on every shell). The pick is on record before the paint now.
 // - The sheet's own swatch is clicked and everything is read inside the click's task, so no render but the pick's own
 //   can have put the row or the tick right; a pick is still one render.
 // - A name that is no look changes nothing and paints nothing. A pick that cannot be saved (a full store) changes
