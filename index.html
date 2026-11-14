@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20261114-2"/>
+<meta name="build" content="20261114-3"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -21689,7 +21689,11 @@ function _coachPlainLine(l){
 // do), cut at 65 characters with an ellipsis. Whole code points: a surrogate pair is never split (the 65-unit
 // slice before build 61 could leave half of one), but a sequence of several (a ZWJ emoji, a flag, a letter and its
 // combining mark) can be cut inside, and ASCII text is cut where that slice cut it. The string is plain text: the web
-// row escapes it once (_escT) and the native row draws it verbatim.
+// row escapes it once (_escT) and the native row draws it verbatim. Only the lines the 65 characters reach are read
+// (n is the joined line's length so far, so the line is the one every line would give), and a reply's line only up to
+// its first 2000 code units, never half a surrogate pair: md()'s link rule rescans the rest of a line for every
+// unclosed [, and under the native bar the Coach home model is built at every render, whatever tab shows. A mark
+// open across a reply line's 2000th unit (a link of 2000 characters and more) reads as typed.
 function _coachHomePreview(msg){
   var s='', reply=!!msg && msg.role==='assistant' && !msg._local;
   if(msg && typeof msg.content==='string') s=msg.content;
@@ -21697,9 +21701,16 @@ function _coachHomePreview(msg){
     var tb=msg.content.find(function(b){ return b && b.type==='text'; });
     s=tb ? String(tb.text==null ? '' : tb.text) : '[Image]';
   }
-  var ch=_chars(s.split('\n').filter(function(l){
-    return l.trim() && !/^%%(type|metric|takeaway|action):/.test(l.trim());
-  }).map(function(l){ return reply ? _coachPlainLine(l) : l; }).filter(Boolean).join(' '));
+  var kept=[], n=-1;
+  s.split('\n').some(function(l){
+    var lt=l.trim(), w;
+    if(!lt || /^%%(type|metric|takeaway|action):/.test(lt)) return false;
+    if(reply && l.length>2000) l=l.slice(0, /[\ud800-\udbff]/.test(l.charAt(1999)) ? 1999 : 2000);
+    w=reply ? _coachPlainLine(l) : l;
+    if(w){ kept.push(w); n+=1+_chars(w).length; }
+    return n>65;
+  });
+  var ch=_chars(kept.join(' '));
   return ch.length>65 ? ch.slice(0,65).join('')+'…' : ch.join('');
 }
 // What the Coach tab's root shows, the content of the Coach home model below: the connect screen with no key (even

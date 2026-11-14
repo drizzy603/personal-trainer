@@ -27,7 +27,7 @@
 //   the narrow screen's 41 px (view geometry) and wider screens are over 47 px.
 // - The preview cuts in whole characters: a 65th character that is an emoji stays whole in the model and the HTML,
 //   with no lone surrogate in either; ASCII is cut where the old 65-unit slice cut it.
-// - Open Chat's line reads a coach reply as the chat reads it (web 20261114-2; until then it showed the reply's raw
+// - Open Chat's line reads a coach reply as the chat reads it (web 20261114-3; until then it showed the reply's raw
 //   marks, "**Bench: 170 lb.** Hold…"): the words md() shows for the reply's prose with the marks gone (a bold lead-in
 //   after the %% lines, a heading's #, a bullet, a quote's >, a table's pipes and its separator row, a rule, a link's
 //   URL, code, italics), counted and cut after the marks are gone (a bold pair open across the 65th character leaves
@@ -35,11 +35,18 @@
 //   for text), and no \r from \r\n line ends. The owner's words and the app's own notes keep their marks, as their
 //   bubble and note draw them. In every case the model's sub is the web row's text and the string in the JSON the
 //   shell is handed (the native row draws it verbatim), with no shell and under the native bar. Parity: for every
-//   golden text (tests/golden/coach-cases.js's TEXTS), and two separator rows at the edges of md()'s rule that no
-//   golden text holds (two dashes, a colon first), as a reply, the lines the preview keeps, read by _coachPlainLine,
-//   are the words the web chat draws in the reply's md sections (whitespace aside, and a numbered line's own number:
-//   the chat numbers the list with its markers, which are not text), so a change to md()'s grammar that the hub's
-//   line does not follow fails here. A stored reply reads the same at the boot's first paint on the Coach tab.
+//   golden text (tests/golden/coach-cases.js's TEXTS), and four texts at edges of md()'s rules that no golden text
+//   holds (a separator row of two dashes, one with a colon first, a table indented before its pipes, a tab after a
+//   heading's #), as a reply, the lines the preview keeps, read by _coachPlainLine, are the words the web chat draws
+//   in the reply's md sections (whitespace aside, and a numbered line's own number: the chat numbers the list with
+//   its markers, which are not text), so a change to md()'s grammar at an edge these texts reach that the hub's line
+//   does not follow fails here. A stored reply reads the same at the boot's first paint on the Coach tab.
+// - The line reads only what it can show (web 20261114-3): a reply whose first line is 61440 unclosed [ (md()'s link
+//   rule rescans the rest of a line for each, and the model is built at every render under the native bar) is read
+//   one line, cut to its first 2000 code units, and reads 65 [ and an ellipsis; a cut that would fall inside a
+//   surrogate pair ends before it; short lines are read until the line passes 65 characters and no further; and for
+//   every golden and EXTRA text as a reply, as the owner's words and as the app's note, and every LINES message, the
+//   line is the one reading every line whole gives.
 // - Escaping (plan P-D4): a name and a block name holding a quote, & and markup draw as text (no <b> element) equal to
 //   the model's, which is raw; the model never holds the key (saved, or typed and unsaved) nor its masked form.
 // - TabsModel v1 (_tabsModel) per room: tint and idle are the web bar's selected and idle colours (Heavyweight
@@ -424,11 +431,15 @@ const LINES = {
     msgs: [ASKED, REPLY('Stopped. Changes made **before** the stop are kept:', { _local: true })],
     sub: '1 exchange · Stopped. Changes made **before** the stop are kept:' },
 };
-// Beside the golden texts, the parity reads the edges of a rule both readers hold that no golden text reaches: md()
-// drops a table's separator row from two dashes on, and with a colon first (a column aligned left).
+// Beside the golden texts, the parity reads edges of rules both readers hold that no golden text reaches: md() drops a
+// table's separator row from two dashes on, and with a colon first (a column aligned left); it reads a table row by
+// its first character after the spaces before it (both readers trim first), and a heading's # followed by any
+// whitespace, a tab too.
 const EXTRA = [
   ['a two-dash separator row', '| a | b |\n|--|--|\n| 1 | 2 |'],
   ['a separator row aligned left first', '| a | b |\n|:--|--:|\n| 1 | 2 |'],
+  ['a table indented before its pipes', '  | a | b |\n  |---|---|\n  | 1 | 2 |'],
+  ['a tab after a heading\'s #', '#\tWeek 7'],
 ];
 
 // One boot per shell. Every case's line is read from the model, from the JSON the shell is handed, from the web row
@@ -436,7 +447,7 @@ const EXTRA = [
 // failure names each line that reads otherwise. The golden texts and EXTRA (once, with no shell): as a reply each is
 // drawn by the web chat, and the words of its md sections are held against the lines the preview keeps, read by
 // _coachPlainLine.
-serial('Open Chat\'s line reads a coach reply\'s Markdown as the chat reads it, in the model, its JSON and the web row, with no shell and under the native bar; the owner\'s words and the app\'s notes keep their marks; every golden text and two separator rows read as the web chat draws them', async () => {
+serial('Open Chat\'s line reads a coach reply\'s Markdown as the chat reads it, in the model, its JSON and the web row, with no shell and under the native bar; the owner\'s words and the app\'s notes keep their marks; every golden text and the four EXTRA edges read as the web chat draws them', async () => {
   const bad = [], hold = (cond, msg) => { if (!cond) bad.push(msg); };
   const drawn = { none: {}, tabsWeb: {} };
   for (const shell of ['none', 'tabsWeb']) {
@@ -505,6 +516,73 @@ serial('Open Chat\'s line reads a coach reply\'s Markdown as the chat reads it, 
     hold(J(drawn.none[name]) === J(drawn.tabsWeb[name]), name + ': the same screen with no shell and under the native bar');
   }
   assert(bad.length === 0, bad.length + ' check(s) failed: ' + bad.join(' || '));
+});
+
+// The line reads only what it can show (web 20261114-3). Under the native bar the Coach home model is built at every
+// render, whatever tab shows, and md()'s link rule rescans the rest of a line for every unclosed [: a first line of
+// 61440 of them took 1.5 s a build while every line was read whole. _coachPlainLine is wrapped to count its reads;
+// whole() is the reading before, every kept line read whole and then the cut, and the line must be the one it gives.
+serial('the hub\'s line reads only the lines its 65 characters reach, a reply\'s each up to 2000 code units, and is the line reading every line whole gives', async () => {
+  const app = await boot({ native: true, shell: 'none', page: { timezoneId: 'UTC' }, seed: DUMP_SEED });
+  try {
+    const out = await app.page.evaluate(({ texts, msgs }) => {
+      const real = window._coachPlainLine, calls = [];
+      if (typeof real !== 'function' || typeof _coachHomePreview !== 'function') return { reader: false };
+      const whole = (msg) => {
+        let s = '';
+        const reply = !!msg && msg.role === 'assistant' && !msg._local;
+        if (msg && typeof msg.content === 'string') s = msg.content;
+        else if (msg && Array.isArray(msg.content)) {
+          const tb = msg.content.find((b) => b && b.type === 'text');
+          s = tb ? String(tb.text == null ? '' : tb.text) : '[Image]';
+        }
+        const ch = _chars(s.split('\n').filter((l) => l.trim() && !/^%%(type|metric|takeaway|action):/.test(l.trim()))
+          .map((l) => (reply ? real(l) : l)).filter(Boolean).join(' '));
+        return ch.length > 65 ? ch.slice(0, 65).join('') + '…' : ch.join('');
+      };
+      window._coachPlainLine = (l) => { calls.push(String(l).length); return real(l); };
+      try {
+        const read = (msg) => { calls.length = 0; const line = _coachHomePreview(msg); return { line, calls: calls.slice(0, 50), reads: calls.length }; };
+        const words = Array.from({ length: 40 }, (_, i) => 'Line ' + (i + 1) + ' of the plan, in words.').join('\n');
+        const res = {
+          // 61440 unclosed [ on the first line, then 40 lines of words
+          brackets: read({ role: 'assistant', content: '['.repeat(61440) + '\n' + words }),
+          // 1999 [ and an emoji across the 2000th code unit: the cut ends before the pair
+          pair: read({ role: 'assistant', content: '['.repeat(1999) + '😀' + 'x'.repeat(3000) }),
+          // lines of 29 characters: the line passes 65 at the third (29, 59, 89 with the spaces between)
+          short: read({ role: 'assistant', content: words }),
+        };
+        const off = [];
+        let n = 0;
+        for (const [name, text] of JSON.parse(texts)) {
+          for (const role of ['reply', 'owner', 'note']) {
+            const msg = role === 'owner' ? { role: 'user', content: text } : Object.assign({ role: 'assistant', content: text }, role === 'note' ? { _local: true } : {});
+            const a = _coachHomePreview(msg), b = whole(msg);
+            n++;
+            if (a !== b) off.push(role + ' ' + name + ' ' + JSON.stringify([a, b]));
+          }
+        }
+        for (const m of JSON.parse(msgs)) {
+          const a = _coachHomePreview(m), b = whole(m);
+          n++;
+          if (a !== b) off.push('LINES ' + JSON.stringify([a, b]));
+        }
+        return { reader: true, res, n, off };
+      } finally { window._coachPlainLine = real; }
+    }, { texts: asciiJSON(TEXTS.concat(EXTRA)), msgs: asciiJSON([].concat(...Object.values(LINES).map((c) => c.msgs))) });
+    assert(out.reader, 'the page reads a reply\'s lines for the hub through _coachPlainLine and _coachHomePreview: this page has neither');
+    const { brackets, pair, short } = out.res;
+    const bad = [], hold = (cond, msg) => { if (!cond) bad.push(msg); };
+    hold(brackets.line === '['.repeat(65) + '…', 'a first line of 61440 unclosed [ reads 65 of them and an ellipsis: ' + J(brackets.line.slice(0, 80)));
+    hold(brackets.reads === 1 && brackets.calls[0] === 2000, 'that reply is read one line, cut to its first 2000 code units: ' + brackets.reads + ' read(s), ' + J(brackets.calls.slice(0, 5)));
+    hold(pair.reads === 1 && pair.calls[0] === 1999 && pair.line === '['.repeat(65) + '…', 'a cut that would fall inside a surrogate pair ends before it: ' + pair.reads + ' read(s), ' + J(pair.calls.slice(0, 5)) + ' ' + J(pair.line.slice(0, 80)));
+    hold(J(short.calls) === J([29, 29, 29]), 'short lines are read until the line passes 65 characters, and no further: ' + short.reads + ' read(s), ' + J(short.calls));
+    hold(short.line === 'Line 1 of the plan, in words. Line 2 of the plan, in words. Line …', 'and the line is cut at 65 characters: ' + J(short.line));
+    const want = (TEXTS.length + EXTRA.length) * 3 + [].concat(...Object.values(LINES).map((c) => c.msgs)).length;
+    hold(out.n === want && TEXTS.length >= 40, 'every golden and EXTRA text in three roles and every LINES message was read: ' + out.n + ' of ' + want);
+    hold(out.off.length === 0, 'the line is the one reading every line whole gives: ' + out.off.length + ' differ: ' + out.off.slice(0, 6).join(' | '));
+    assert(bad.length === 0, bad.length + ' check(s) failed: ' + bad.join(' || '));
+  } finally { await app.close(); }
 });
 
 // The native hub draws the model's sizes, so each must be the size the web draws (delta 14.9: the contract's table had
