@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20261113-3"/>
+<meta name="build" content="20261113-4"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -9858,8 +9858,9 @@ function _fpAfterHello(ms){
 // or removed, or one IndexedDB could not keep, marks it gone (the marker is never removed). localStorage reaches the
 // disk in batches (WebKit's, about half a second apart) while IndexedDB commits at once, so the page ending just after
 // a keep can lose the marker and keep the record: at boot a record numbered above the marker is that newest photo (put
-// back, its marker written again), and one below it, or the marker's own marked gone, is a photo replaced, sent or
-// removed (deleted), so neither a lost marker nor a deletion IndexedDB failed brings back the wrong photo. At boot
+// back, its marker written again), and one below it or at its number under another stamp (a newer keep took the
+// number before a boot could read the record), or the marker's own marked gone, is a photo replaced, sent or removed
+// (deleted), so neither a lost marker nor a deletion IndexedDB failed brings back the wrong photo. At boot
 // (_photoRestore, after the first paint) the record comes back as the pending photo while the page has none, when it is
 // younger than 24 h (any other record is deleted). A share younger than 30 minutes opens the chat as a fresh share
 // does, once the parked link has been taken (_linkDone), through the one reader (checkPendingShare, _photoBack): it
@@ -9994,7 +9995,8 @@ function _photoDrop(what){
 }
 // The owner left the kept photo's chat (another tab, Back, the hub), or the launch asked for somewhere else while it
 // was shut: the marker says so, and that chat no longer opens on its own at a later launch (the photo still comes back).
-// Only a photo's first leave adds a line (quiet: the caller's own line says so); whether it marked it.
+// Only a photo's first leave can add a line (through _shareLog; quiet: the caller's own line says so); whether it
+// marked it.
 function _photoLeave(img, quiet){
   var m=_photoMarkRead();
   if(!img || !img.at || !m || m.at!==img.at || m.left || m.gone) return false;
@@ -10023,13 +10025,15 @@ function _photoWatch(){
   }, 0);
 }
 // At boot, after the first paint: the photo an earlier document kept comes back as the pending one while this document
-// has none, when it is younger than 24 h and neither replaced nor sent or removed (its number below the marker's, or
-// the marker's own marked gone): any other record is deleted in the read's own transaction. A record numbered above the
-// marker is the newest photo, whose marker the page ended before saving: it comes back and the marker is written again.
-// A share younger than 30 minutes whose chat the owner had not left opens the chat as a fresh share does, through the
-// one reader (_photoBack), which reads the App Group first: a share waiting there (the parked link's, the boot check's,
-// a return's) wins, and a place asked for since the boot (_photoAsked) or a page nobody sees holds the chat back
-// (_photoBackOpen). The photo comes back marked back: not yet in front of the owner.
+// has none, when it is younger than 24 h and neither replaced nor sent or removed (its number below the marker's or at
+// it under another stamp, or the marker's own marked gone): any other record is deleted in the read's own transaction.
+// A record numbered above the marker is the newest photo, whose marker the page ended before saving: it comes back and
+// the marker is written again. One at the marker's number under another stamp lost its marker too, and a newer photo
+// kept before a boot could read it took the number: the photo that one replaced. A share younger than 30 minutes
+// whose chat the owner had not left opens the chat as a fresh share does, through the one reader (_photoBack), which
+// reads the App Group first: a share waiting there (the parked link's, the boot check's, a return's) wins, and a place
+// asked for since the boot (_photoAsked) or a page nobody sees holds the chat back (_photoBackOpen). The photo comes
+// back marked back: not yet in front of the owner.
 function _photoRestore(){
   var seq=_photoSeq;
   _photoTx('readwrite', function(st, set){
@@ -10039,7 +10043,7 @@ function _photoRestore(){
       if(rec===undefined) return;
       if(_photoSeq!==seq){ set({moved:true}); return; }   // the page set or cleared its photo meanwhile: its own step settles the record
       var m=_photoMarkRead(), mn=m ? m.n : 0, good=_photoGood(rec), age=good ? Date.now()-rec.at : NaN;
-      var why=!good ? 'unreadable' : rec.n<mn ? 'replaced' : (rec.n===mn && m.gone) ? 'sent or removed'
+      var why=!good ? 'unreadable' : (rec.n<mn || (rec.n===mn && rec.at!==m.at)) ? 'replaced' : (rec.n===mn && m.gone) ? 'sent or removed'
         : age<=-60000 ? 'dated ahead of the clock' : age>=24*3600000 ? Math.floor(age/3600000)+' h old' : '';
       if(why){ st.delete('pending'); set({gone:why}); return; }
       set({rec:rec, age:Math.max(0, age), left:rec.n===mn && !!m.left, lost:rec.n>mn});
@@ -10067,7 +10071,8 @@ function _photoRestore(){
 // page nobody sees (a background launch, or the owner gone again) it waits: the next reader (the return's check, 0.6 s
 // after the page shows) asks again, the 30 minutes counted then. A chat already on screen (one taken over) is the
 // owner's: nothing to open. A launch asked for somewhere else counts as leaving it (_photoLeave). Under the web chat
-// the share's words go back in before the chat is drawn, as a fresh share's do.
+// the share's words go back in before the chat is drawn, as a fresh share's do, unless the composer it opens on holds
+// them already.
 function _photoBackOpen(b, took){
   try{
     var m=_photoMarkRead(), age=Date.now()-b.at, mins=Math.floor(Math.max(0, age)/60000), head='photo: back from '+mins+' min'+(b.how || '');
@@ -10092,7 +10097,9 @@ function _photoBackOpen(b, took){
     _fp.taking=true;
     try { switchTab('coach',{intent:'chat'}); } finally { _fp.taking=false; }
     coachView='chat';
-    if(b.words && !_fpWant('coach')) coachPrefill(b.words);
+    // handed-over words that took the share's in come back at boot (the key follows the box): the draft would go in
+    // beside them a second time (_restoreCoachDraft), so the composer the chat opens on is asked first
+    if(b.words && !_fpWant('coach') && _fpPutBack(_coachDraft && _coachDraft.v, _fpHandover()).indexOf(String(b.words).trim())<0) coachPrefill(b.words);
     pendingImage.back=0;   // the owner lands on it: from here it is the composer's photo as any other
     render();
     _wchLog(head+', chat opened');

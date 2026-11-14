@@ -11,7 +11,8 @@
 //   opens after hello (a share under 30 minutes old): the web chat's preview (none, with a photo of a real size),
 //   build 61's overlay chat (coach61) and the native Coach tab's pushed chat (tabs), whose composer.image fetches the
 //   photo; the record is the share's {data, mediaType, at, src, n, words} and the marker names its number and stamp.
-//   Under the web chat (none, tabsWeb) the share's words come back with its chat; under the native chat the page drafts
+//   Under the web chat (none, tabsWeb) the share's words come back with its chat, once at every launch beside words a
+//   native composer handed over that took them in (the key follows the box); under the native chat the page drafts
 //   none (the native composer keeps its own). A reload under the native chat (WebContent ended, the scene keeps the
 //   chat up) takes the chat over with the photo and presents nothing again. A share kept over 30 minutes, or a photo
 //   picked in the web composer, comes back with the chat left shut, and is there when it opens; so does a share under
@@ -35,7 +36,8 @@
 // - (e) IndexedDB missing, its open throwing or never answering, its write refused for the quota, or the marker refused:
 //   the share lands at once as it always did (photo, chat, words), the boot is untouched, nothing throws, nothing comes
 //   back after a relaunch. A newer photo IndexedDB could not keep (the quota, an aborted transaction, a lost
-//   connection) never brings back the photo it replaced (replaced).
+//   connection) never brings back the photo it replaced (replaced), nor one whose marker was refused (the record it
+//   replaced deleted at once).
 // - (f) The words are in the first chat model pushed (coach61, tabs) and in the web composer (none) with the page's
 //   clock paused: no timer runs between the read and the words. They are a page draft written before the chat is
 //   drawn: beside words a native composer handed over, the web composer shows those first and the share's after them,
@@ -46,11 +48,13 @@
 //   never shown over it.
 // - (h) No breadcrumb carries the words or the photo: sizes and states only, in the read line's own shape. A step that
 //   repeats is one line for its run, whatever the watch bridge logs between (an empty read at each launch, a boot that
-//   cannot read IndexedDB), and only a photo's first leave of its chat is a line: a launch that brings it back again
-//   adds only its back line.
+//   cannot read IndexedDB), and a photo's later leaves of its chat are never a line: a launch that brings it back
+//   again adds only its back line.
 // - (i) A marker that never reached the disk (localStorage commits in batches, IndexedDB at once: the page ended
 //   between them) loses nothing: the record numbered above the marker comes back with its chat, the marker written
-//   again, whether nothing was kept before it or it replaced a kept photo.
+//   again, whether nothing was kept before it or it replaced a kept photo, one sent or one whose chat was left. A newer
+//   share kept before a boot could read such a record takes its number under its own stamp: the record is the photo
+//   that share replaced, and never comes back.
 // Every native boot names its shell (the mark above): FP_SHELL_INERT runs skip this spec.
 const { boot, assert, run } = require('../lib/harness');
 
@@ -185,9 +189,10 @@ const NO_IDB = {
 };
 // IndexedDB failing under a page that has kept a photo, in the page (each once where it says so): a put refused for the
 // quota, a put whose transaction aborts, a delete whose transaction aborts, the connection lost (db.transaction throws
-// InvalidStateError, as WebKit does for a closing connection).
+// InvalidStateError, as WebKit does for a closing connection); or the marker refused for the quota.
 const FAIL = {
   quota: () => { IDBObjectStore.prototype.put = function () { throw new DOMException('full', 'QuotaExceededError'); }; },
+  marker: () => { const si = Storage.prototype.setItem; Storage.prototype.setItem = function (k) { if (String(k) === 'kt_photo_kept') throw new DOMException('full', 'QuotaExceededError'); return si.apply(this, arguments); }; },
   abortPut: () => { const put = IDBObjectStore.prototype.put; IDBObjectStore.prototype.put = function () { const r = put.apply(this, arguments); this.transaction.abort(); return r; }; },
   abortDelete: () => { const del = IDBObjectStore.prototype.delete; let once = true; IDBObjectStore.prototype.delete = function () { const r = del.apply(this, arguments); if (once) { once = false; this.transaction.abort(); } return r; }; },
   lost: () => { const tr = IDBDatabase.prototype.transaction; let once = true; IDBDatabase.prototype.transaction = function () { if (once) { once = false; throw new DOMException('The database connection is closing.', 'InvalidStateError'); } return tr.apply(this, arguments); }; },
@@ -627,6 +632,32 @@ serial('(a) under the web chat a kept share\'s words come back with its chat, be
   }
 });
 
+serial('(a) under the web chat a kept share\'s words come back once beside words a native composer handed over that took them in (kt_coach_handover follows the box): two launches after a share over a hand-over (none, tabsWeb)', async () => {
+  const HW = HANDED + '\n' + WORDS;
+  for (const shell of ['none', 'tabsWeb']) {
+    const app = await pageBoot(shell);
+    try {
+      await ready(app, shell !== 'none');
+      // a hand-over the page took, written here: the harness writes its seed again at every load
+      await ev(app, (h) => localStorage.setItem('kt_coach_handover', h), HANDED);
+      const s = await share(app, PHOTO, WORDS);
+      const k = await ev(app, async () => { render(); await __w(20); return localStorage.getItem('kt_coach_handover'); });
+      assert(s.box === HW && k === HW, shell + ': the handed-over words, then the share\'s, in the box and the key: ' + J({ box: s.box, key: k }));
+      for (let n = 1; n <= 2; n++) {
+        await relaunch(app);
+        await app.page.waitForFunction((n) => __log().filter((l) => l === 'photo: back from 0 min, chat opened').length >= n, n, { timeout: 15000 });
+        await settle(app, 150);
+        const m = await look(app);
+        const key = await ev(app, async () => { render(); await __w(20); return localStorage.getItem('kt_coach_handover'); });
+        assert(m.view === 'chat' && m.photo && m.box === HW && key === HW,
+          shell + ', launch ' + n + ': the photo, and the share\'s words once beside the handed-over ones: ' + J({ view: m.view, photo: m.photo, box: m.box, key }));
+      }
+      clean(await lines(app));
+      noErrors(app);
+    } finally { await app.close(); }
+  }
+});
+
 // ── (b) sent, (c) removed ─────────────────────────────────────────────────────────────────────────────────────────
 serial('(b) sending the photo deletes its record and its marker says gone (the web Send under none, coach.send usePending under tabs): the API got it, and the next launch has no photo', async () => {
   for (const shell of ['none', 'tabs']) {
@@ -790,8 +821,8 @@ serial('(e) IndexedDB missing, its open throwing or never answering, its write r
   }
 });
 
-serial('(e) a newer photo IndexedDB could not keep (its put refused for the quota, its transaction aborted, the connection lost) never brings back the photo it replaced: the marker took the newer one\'s number and says gone, so the next launch drops the older record (replaced) (none, tabs)', async () => {
-  for (const [shell, how, why] of [['none', 'quota', 'quota'], ['tabs', 'quota', 'quota'], ['tabs', 'abortPut', 'aborted'], ['tabs', 'lost', 'InvalidStateError']]) {
+serial('(e) a newer photo IndexedDB could not keep (its put refused for the quota, its transaction aborted, the connection lost) never brings back the photo it replaced: the marker took the newer one\'s number and says gone, so the next launch drops the older record (replaced) (none, tabs); with its marker refused, nothing is put and the older record is deleted at once (none)', async () => {
+  for (const [shell, how, why] of [['none', 'quota', 'quota'], ['tabs', 'quota', 'quota'], ['tabs', 'abortPut', 'aborted'], ['tabs', 'lost', 'InvalidStateError'], ['none', 'marker', 'quota']]) {
     const tag = shell + ', ' + how + ': ';
     const app = await pageBoot(shell);
     try {
@@ -801,6 +832,19 @@ serial('(e) a newer photo IndexedDB could not keep (its put refused for the quot
       await ev(app, '(' + FAIL[how].toString() + ')()');
       const b = await share(app, PHOTO2, '');
       const bl = await lines(app);
+      if (how === 'marker') {
+        assert(b.img === PHOTO2 && b.kept === null && names(b.mark, a.kept) && bl.indexOf('photo: not kept (quota)') >= 0,
+          tag + 'the second share pending, its marker refused: nothing put, the first record deleted, the marker still the first\'s: ' + J(Object.assign({}, b, { kept: b.kept && b.kept.data === PHOTO ? 'first' : b.kept, log: bl.slice(0, 3) })));
+        await relaunch(app);
+        await ready(app, shell !== 'none');
+        await settle(app, 200);
+        const m = await look(app);
+        assert(m.img === null && m.kept === null && shut(m) && !m.log.some((l) => /^photo: (back from|kept copy)/.test(l)),
+          tag + 'the replaced photo never comes back: ' + J(Object.assign({}, m, { log: m.log.slice(0, 5) })));
+        clean(m.log);
+        noErrors(app);
+        continue;
+      }
       assert(b.img === PHOTO2 && b.kept && b.kept.data === PHOTO && gone(b.mark) && b.mark.n === a.kept.n + 1 && bl.indexOf('photo: not kept (' + why + ')') >= 0,
         tag + 'the second share pending, its keep failed, the marker its number marked gone, the record still the first: ' + J(Object.assign({}, b, { kept: b.kept && b.kept.data === PHOTO ? 'first' : b.kept, log: bl.slice(0, 3) })));
       await relaunch(app);
@@ -996,13 +1040,16 @@ serial('(h) a step that repeats is one line for its run, whatever the watch brid
 });
 
 // ── (i) the marker lost on its way to the disk ────────────────────────────────────────────────────────────────────
-serial('(i) a kept photo whose marker never reached the disk (localStorage commits in batches, IndexedDB at once: the page ended between them) comes back at the next launch with its chat and its marker written again: a share with nothing kept before it (tabs, none), one that replaced a kept photo (none: the record the newer one, the marker still the older one\'s)', async () => {
-  for (const [shell, over] of [['tabs', false], ['none', false], ['none', true]]) {
-    const tag = shell + (over ? ', over a kept photo' : '') + ': ';
+serial('(i) a kept photo whose marker never reached the disk (localStorage commits in batches, IndexedDB at once: the page ended between them) comes back at the next launch with its chat and its marker written again: a share with nothing kept before it (tabs, none), one that replaced a kept photo, one sent or one whose chat was left (none: the record the newer one, the marker still the older one\'s)', async () => {
+  for (const [shell, over] of [['tabs', false], ['none', false], ['none', 'kept'], ['none', 'sent'], ['none', 'left']]) {
+    const tag = shell + (over ? ', over a ' + over + ' photo' : '') + ': ';
     const app = await pageBoot(shell);
     try {
       await ready(app, shell !== 'none');
       if (over) await share(app, PHOTO2, '');
+      if (over === 'sent') await ev(app, async () => { document.getElementById('coach-send').click(); for (let i = 0; i < 150 && coachLoading; i++) await __w(20); await __w(80); });
+      if (over === 'left') await ev(app, async () => { switchTab('log'); await __w(60); });
+      if (over === 'sent' || over === 'left') { const o = await ev(app, () => __mark()); assert(o && (over === 'sent' ? o.gone === 1 : o.left === 1), tag + 'the older photo\'s marker says so: ' + J(o)); }
       const before = await ev(app, () => localStorage.getItem('kt_photo_kept'));
       const s = await share(app, PHOTO, WORDS);
       assert(s.kept && s.kept.data === PHOTO && s.mark && s.mark.at === s.kept.at, tag + 'the share kept, its marker: ' + J(s.mark));
@@ -1019,4 +1066,29 @@ serial('(i) a kept photo whose marker never reached the disk (localStorage commi
       noErrors(app);
     } finally { await app.close(); }
   }
+});
+
+serial('(i) a newer share kept before a boot could read a record whose marker never reached the disk takes that record\'s number under its own stamp (a cold share read while the boot\'s read waits on IndexedDB): the app ending before the share\'s put leaves the older record, which the launch after drops as the photo the share replaced (none)', async () => {
+  const app = await pageBoot('none');
+  try {
+    await ready(app, false);
+    const a = await share(app, PHOTO, WORDS);
+    assert(a.kept && a.kept.data === PHOTO && names(a.mark, a.kept), 'the first share kept: ' + J(a.mark));
+    // its marker never reached the disk; the next launch reads a cold share while its IndexedDB opens are held
+    await ev(app, () => localStorage.removeItem('kt_photo_kept'));
+    await relaunch(app, { held: { imageBase64: PHOTO2, comment: '' }, parked: 'trovo://share', gate: true });
+    await app.page.waitForFunction(() => __reads.some((r) => r) && !_shareBusy, null, { timeout: 15000 });
+    const b = await ev(app, () => ({ img: pendingImage ? pendingImage.data : null, mark: __mark() }));
+    assert(b.img === PHOTO2 && b.mark && b.mark.n === a.kept.n && b.mark.at !== a.kept.at, 'the share took the record\'s number under its own stamp: ' + J({ b, a: a.mark }));
+    // the app ends while the share's put waits on the held open: the older record stays, under the share's marker
+    await relaunch(app);
+    await waitLine(app, 'l === "photo: kept copy dropped (replaced)"', 'replaced');
+    await ready(app, false);
+    await settle(app, 200);
+    const m = await look(app);
+    assert(m.img === null && m.kept === null && shut(m) && !m.log.some((l) => /^photo: back from/.test(l)),
+      'the photo the share replaced never comes back: ' + J(Object.assign({}, m, { log: m.log.slice(0, 6) })));
+    clean(m.log);
+    noErrors(app);
+  } finally { await app.close(); }
 });
