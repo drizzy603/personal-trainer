@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20261114-4"/>
+<meta name="build" content="20261114-5"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -21645,8 +21645,9 @@ function _coachDayMeta(){
 }
 // ── The Coach tab's models (build 61, contract 6.1-6.2): the page builds them, the native bar and the native Coach
 // tab draw them, and the web hub and connect screen are drawn from the same content (_coachHomeHTML), as the chat's
-// HTML is drawn from _cmbModel, so web and native cannot disagree. Both builders are top-level with no side effects:
-// boot is this document's, rev the caller's (a push takes ++_fp.rev; the golden dump fixes both, contract 3.7).
+// HTML is drawn from _cmbModel, so web and native cannot disagree. Both builders are top-level with no side effects
+// beside the hub line's memo (_hubLineMemo, a cache of the line built last, which changes no result): boot is this
+// document's, rev the caller's (a push takes ++_fp.rev; the golden dump fixes both, contract 3.7).
 // The hub's type sizes (contract 6.2, D33): 16 flat home* sizes per room, at the large text size, from the room CSS.
 // CoachHomeModel's tokens.type carries them beside the chat's sizes, in a copy: _COACH_TOKENS and every CoachModel stay
 // as they are. FPCore compiles the same values (Tokens.swift), and spec 126 holds each one to the computed font-size of
@@ -21695,7 +21696,8 @@ function _coachPlainLine(l){
 // every task that renders (_fpModelsSoon), whatever tab shows, and md()'s link rule rescans the rest of a line for
 // every unclosed [, so the newest message is read once, not at every paint. The line is a function of the text and
 // the role alone (_coachPlainLine and md()'s tokens read nothing else), so the kept one is the line a build gives.
-// Read guarded: a paint before this line has run (none does today: the first is under Start) finds no memo.
+// Read guarded: a paint before this line has run (none does today: the boot's first render() is far below, after
+// Start) finds no memo.
 var _hubLineMemo=null;
 function _coachHomePreview(msg){
   var s='', reply=!!msg && msg.role==='assistant' && !msg._local;
@@ -21724,7 +21726,7 @@ function _coachHomePreview(msg){
 // the Coach tab threw). resume: the page will push the chat when Coach is next selected (setup with a key, or a reply
 // in flight on the chat view: switchTab keeps the view then and _fpWant('coach') wants the chat), so the shell holds
 // the hub off screen for that tap (contract 8.1). Text is raw (the web builder escapes) and never the key or its
-// masked form. No side effects.
+// masked form. No side effects beside the hub line's memo (_hubLineMemo).
 function _coachHomeScreen(){
   var key=!!getApiKey();
   // getWkData()'s week, without its write (it clamps currentWeek to the programme; renderCoach still calls it)
@@ -21754,8 +21756,8 @@ function _coachHomeScreen(){
   return s;
 }
 // Coach home model v1 (contract 6.2; FPCore CoachHomeModel.swift reads it): the screen above in the room's colours and
-// type (tokens.type: the chat's sizes and the hub's, in a copy). Top-level with no side effects: boot is this
-// document's, rev the caller's.
+// type (tokens.type: the chat's sizes and the hub's, in a copy). Top-level with no side effects beside the hub line's
+// memo (_hubLineMemo): boot is this document's, rev the caller's.
 function _coachHomeModel(rev){
   var room=THEMES[currentTheme] ? currentTheme : 'heavyweight', s=_coachHomeScreen(), k;
   var dyn=true; try{ dyn=localStorage.getItem('kt_dyn_type')!=='0'; }catch(e){}

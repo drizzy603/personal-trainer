@@ -1,4 +1,4 @@
-// 131: a look picked in Settings › About › Theme shows at once (web 20261114-4).
+// 131: a look picked in Settings › About › Theme shows at once (web 20261114-5).
 // applyTheme() let _paintTheme() render before it saved kt_theme and set currentTheme, so the pick's own render drew
 // Settings' Theme row (its line "Lime · two looks" and its pill, which are the row's VoiceOver name too) and the open
 // sheet's tick and filled card from the look just left: after a tap on Lime the room, currentTheme and kt_theme were

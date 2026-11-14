@@ -242,7 +242,8 @@ function run(name, fn) {
 // installable shell speaks:
 //   'none'     no flag and no TrovoShell: every shell up to 59, the PWA, the browser (the default);
 //   'inert'    build 60's flag with no native screen on: window.__FP_SHELL {v:1, screens:[], binary:['coach']}
-//              and the mock (the published policy file keeps the chat off: Settings > About says so);
+//              and the mock (its status says the policy file keeps the chat off, as the published one did until
+//              3836ede, 2026-10-13: Settings > About says so);
 //   'coach'    build 60: contract v1 with the native Coach chat;
 //   'inert61'  build 61, classic root, nothing native;
 //   'coach61'  build 61, classic root with build 60's overlay chat;

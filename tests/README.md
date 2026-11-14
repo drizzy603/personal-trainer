@@ -77,14 +77,15 @@ SHARD=1/2 ./tests/run.sh; SHARD=2/2 ./tests/run.sh                              
 Shell contracts (plan tasks C3 and P1): `boot({shell})` runs a boot under one contract an installable
 shell speaks. Build 60's, byte for byte (a build 60 phone keeps getting OTA pages): `'none'` (no flag,
 every shell up to 59 and the PWA; the default), `'inert'` (60's `window.__FP_SHELL` with no native
-screen on: its binary has the chat, which the policy file keeps off, so Settings › About shows the row
-saying so) and `'coach'` (60's native Coach chat). Build 61's, each `JSON.parse` of contract 2.1's
-canonical string (the strings FPCore's ContractTests hold): `'inert61'` (classic root, nothing native),
-`'coach61'` (classic root, 60's overlay chat), `'tabs'` (tab root, everything on) and `'tabsWeb'` (tab
-root, the native Coach tab off). A flag object works too. `SHELL_METHODS` (exported) is what each
-binary registers on TrovoShell: `'60'` the 11 of today, `'61'` contract 3.1's 14 (its first 11 are
-60's); a flag whose `binary` names `tabs` gets the 61 list, any other the 60 list, and
-`opts.shellMethods` overrides either (a 60 TrovoShell under a 61 flag).
+screen on: its binary has the chat, which the mock's policy keeps off, as the published file did until
+3836ede (2026-10-13), so Settings › About shows the row saying so) and `'coach'` (60's native Coach
+chat). Build 61's, each `JSON.parse` of contract 2.1's canonical string (the strings FPCore's
+ContractTests hold): `'inert61'` (classic root, nothing native), `'coach61'` (classic root, 60's
+overlay chat), `'tabs'` (tab root, everything on) and `'tabsWeb'` (tab root, the native Coach tab
+off). A flag object works too. `SHELL_METHODS` (exported) is what each binary registers on TrovoShell:
+`'60'` the 11 of today, `'61'` contract 3.1's 14 (its first 11 are 60's); a flag whose `binary` names
+`tabs` gets the 61 list, any other the 60 list, and `opts.shellMethods` overrides either (a 60
+TrovoShell under a 61 flag).
 
 **The five modes.** `FP_SHELL_INERT` runs every native boot that names no shell under an inert flag:
 `1` is `'inert61'` (the newest installable one), `60` is build 60's `'inert'`; `''` or `0` none;
