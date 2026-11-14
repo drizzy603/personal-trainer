@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20261113-4"/>
+<meta name="build" content="20261113-5"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -9856,11 +9856,16 @@ function _fpAfterHello(ms){
 // localStorage (kt_photo_kept, a few bytes {n, at, left?, gone?}), the device's high-water mark: each kept photo takes
 // the next number n (the marker's and its record's), written synchronously before IndexedDB is asked, and a photo sent
 // or removed, or one IndexedDB could not keep, marks it gone (the marker is never removed). localStorage reaches the
-// disk in batches (WebKit's, about half a second apart) while IndexedDB commits at once, so the page ending just after
-// a keep can lose the marker and keep the record: at boot a record numbered above the marker is that newest photo (put
-// back, its marker written again), and one below it or at its number under another stamp (a newer keep took the
-// number before a boot could read the record), or the marker's own marked gone, is a photo replaced, sent or removed
-// (deleted), so neither a lost marker nor a deletion IndexedDB failed brings back the wrong photo. At boot
+// disk in batches (WebKit's, about half a second apart) while IndexedDB commits tens of milliseconds after the marker
+// (once the step's own task, the chat's paint, has ended), so the page ending just after a keep can lose the marker and
+// keep the record: at boot a record numbered above the marker is that newest photo (put back, its marker written
+// again), and one below it or at its number under another stamp (a newer keep took the number before a boot could
+// read the record), or the marker's own marked gone, is a photo replaced, sent or removed (deleted). So one lost marker
+// write, or one deletion IndexedDB failed, never brings back the wrong photo. What can: a whole-app kill inside those
+// tens of milliseconds, which leaves the step before on the disk (the photo pending before it comes back: one a new
+// share or pick replaced, or one whose send was lost with its message); and two marker writes missing in a row (the
+// record then sits two above the marker, a newer keep that raced the boot's read takes the number between, and if the
+// page ends before that keep's put the record comes back as the newest). At boot
 // (_photoRestore, after the first paint) the record comes back as the pending photo while the page has none, when it is
 // younger than 24 h (any other record is deleted). A share younger than 30 minutes opens the chat as a fresh share
 // does, once the parked link has been taken (_linkDone), through the one reader (checkPendingShare, _photoBack): it

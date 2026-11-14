@@ -632,7 +632,7 @@ serial('(a) under the web chat a kept share\'s words come back with its chat, be
   }
 });
 
-serial('(a) under the web chat a kept share\'s words come back once beside words a native composer handed over that took them in (kt_coach_handover follows the box): two launches after a share over a hand-over (none, tabsWeb)', async () => {
+serial('(a) under the web chat a kept share\'s words come back once beside words a native composer handed over, whether the key took them in (kt_coach_handover follows the box: two launches after a share over a hand-over) or not (the key holds the handed-over words alone, as a page that ended before it followed the box leaves it) (none, tabsWeb)', async () => {
   const HW = HANDED + '\n' + WORDS;
   for (const shell of ['none', 'tabsWeb']) {
     const app = await pageBoot(shell);
@@ -653,6 +653,24 @@ serial('(a) under the web chat a kept share\'s words come back once beside words
           shell + ', launch ' + n + ': the photo, and the share\'s words once beside the handed-over ones: ' + J({ view: m.view, photo: m.photo, box: m.box, key }));
       }
       clean(await lines(app));
+      noErrors(app);
+    } finally { await app.close(); }
+  }
+  // The key holding the handed-over words alone (the seed's, written again at every load: a page that ended before the
+  // key followed the box leaves it so): the share's words come back once, after the handed-over ones.
+  for (const shell of ['none', 'tabsWeb']) {
+    const app = await pageBoot(shell, { seed: { kt_coach_handover: HANDED } });
+    try {
+      await ready(app, shell !== 'none');
+      const s = await share(app, PHOTO, WORDS);
+      assert(s.box === HW, shell + ', a key without the share\'s words: both in the box after the share: ' + J({ box: s.box }));
+      await relaunch(app);
+      await waitLine(app, 'l === "photo: back from 0 min, chat opened"', 'chat opened');
+      await settle(app, 150);
+      const m = await look(app);
+      assert(m.view === 'chat' && m.photo && m.box === HW,
+        shell + ', a key without the share\'s words: the photo, and the share\'s words once after the handed-over ones: ' + J({ view: m.view, photo: m.photo, box: m.box }));
+      clean(m.log);
       noErrors(app);
     } finally { await app.close(); }
   }
