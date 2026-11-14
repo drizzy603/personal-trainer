@@ -1,10 +1,10 @@
 // fp-spec: self-shelled
 // 128: the differential smoke (plan task T13; contract 12, I7, I8, D35): the same everyday flows under the five shells
 // an OTA page meets, on one seed, in UTC, on the golden clock (CLOCK_INIT), the coach API answered in the page (as
-// 118's): none (no flag: every shell up to 59), coach (build 60 with its native chat on, what the owner's phone runs),
-// coach61 (a 61 binary under the classic root, as 61's first launches are), tabs and tabsWeb (the tab root, with and
-// without the native Coach tab). The seed is the suite's with today made a Push day and an easy run logged today, and
-// Math.random seeded too (the Progress hero's pick of the day is stored).
+// 118's): none (no flag: every shell up to 59), coach (build 60 with its native chat on), coach61 (a 61 binary under
+// the classic root, as 61's first launches were while the policy kept the bar off), tabs and tabsWeb (the tab root,
+// with and without the native Coach tab). The seed is the suite's with today made a Push day and an easy run logged
+// today, and Math.random seeded too (the Progress hero's pick of the day is stored).
 // - The flows, in one document per shell: (1) Log: today's overview, Begin, three sets, Finish (Save & finish early),
 //   COMPLETE closed; (2) Progress: today's day sheet, its run moved a day back in the run editor and the toast's Undo;
 //   (3) Settings: Theme to Lime and back, then Routines: one lift's sets +1 from this week on; (4) Coach: one question

@@ -33,8 +33,8 @@ both sides share: FPCore's pieces and the tabs and coach home models (see
 around the page in code, see [In the app](#in-the-app)), the bridge's tabs half, the shell's short-section markers and
 its tab bar switch (see [The screen bridge](#the-screen-bridge-in-the-app)); and the Coach tab's view and store (see
 [The native Coach tab](#the-native-coach-tab-coachhomeview-and-coachhomestore)), which ScreenHost hosts at the Coach
-stack's root from H10, so the page's `present coachHome` turns the Coach tab native. The published policy file keeps
-`screens.coachHome` and `screens.tabs` off until build 61 is checked. The simulator tools run a build of this tree
+stack's root from H10, so the page's `present coachHome` turns the Coach tab native. The published policy file has had
+`screens.coachHome` and `screens.tabs` on since d4d5127 (2026-11-12). The simulator tools run a build of this tree
 under both roots: tests/native-shell.sh's scenarios on the tab root (iOS 26.x and 27.x) and on the classic root (iOS
 27.x), and test-native.sh's live chat on the tab root, where the chat is pushed in the Coach tab's stack (see
 [tests/native-shell.sh](#testsnative-shellsh) and tests/README.md).

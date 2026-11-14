@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20261114-3"/>
+<meta name="build" content="20261114-4"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -21690,10 +21690,13 @@ function _coachPlainLine(l){
 // slice before build 61 could leave half of one), but a sequence of several (a ZWJ emoji, a flag, a letter and its
 // combining mark) can be cut inside, and ASCII text is cut where that slice cut it. The string is plain text: the web
 // row escapes it once (_escT) and the native row draws it verbatim. Only the lines the 65 characters reach are read
-// (n is the joined line's length so far, so the line is the one every line would give), and a reply's line only up to
-// its first 2000 code units, never half a surrogate pair: md()'s link rule rescans the rest of a line for every
-// unclosed [, and under the native bar the Coach home model is built at every render, whatever tab shows. A mark
-// open across a reply line's 2000th unit (a link of 2000 characters and more) reads as typed.
+// (n is the joined line's length in characters so far, so the line is the one every line would give), and the line
+// built last is kept with its text and role (_hubLineMemo): while the Coach tab is native its model is built after
+// every task that renders (_fpModelsSoon), whatever tab shows, and md()'s link rule rescans the rest of a line for
+// every unclosed [, so the newest message is read once, not at every paint. The line is a function of the text and
+// the role alone (_coachPlainLine and md()'s tokens read nothing else), so the kept one is the line a build gives.
+// Read guarded: a paint before this line has run (none does today: the first is under Start) finds no memo.
+var _hubLineMemo=null;
 function _coachHomePreview(msg){
   var s='', reply=!!msg && msg.role==='assistant' && !msg._local;
   if(msg && typeof msg.content==='string') s=msg.content;
@@ -21701,17 +21704,18 @@ function _coachHomePreview(msg){
     var tb=msg.content.find(function(b){ return b && b.type==='text'; });
     s=tb ? String(tb.text==null ? '' : tb.text) : '[Image]';
   }
+  var m=_hubLineMemo;
+  if(m && m.s===s && m.r===reply) return m.v;
   var kept=[], n=-1;
   s.split('\n').some(function(l){
-    var lt=l.trim(), w;
-    if(!lt || /^%%(type|metric|takeaway|action):/.test(lt)) return false;
-    if(reply && l.length>2000) l=l.slice(0, /[\ud800-\udbff]/.test(l.charAt(1999)) ? 1999 : 2000);
-    w=reply ? _coachPlainLine(l) : l;
+    if(!l.trim() || /^%%(type|metric|takeaway|action):/.test(l.trim())) return false;
+    var w=reply ? _coachPlainLine(l) : l;
     if(w){ kept.push(w); n+=1+_chars(w).length; }
     return n>65;
   });
-  var ch=_chars(kept.join(' '));
-  return ch.length>65 ? ch.slice(0,65).join('')+'…' : ch.join('');
+  var ch=_chars(kept.join(' ')), v=ch.length>65 ? ch.slice(0,65).join('')+'…' : ch.join('');
+  _hubLineMemo={s:s, r:reply, v:v};
+  return v;
 }
 // What the Coach tab's root shows, the content of the Coach home model below: the connect screen with no key (even
 // during setup), else the hub. renderCoach() draws the web hub and connect screen from it (_coachHomeHTML) and the

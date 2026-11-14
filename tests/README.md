@@ -236,13 +236,15 @@ says (plan D-T5: the owner's OS), writes the policy offs (`coachHome` and `tabs`
 off, plan 13-tests-release.md section 6) into the container as
 `fp-policy-offs.json` and adds `-fpPolicyFile fp-policy-offs.json
 -fpPolicyEvery 0` to every launch, which gives build 60's look on 61's binary
-(the page's own bar, the chat presented over the page): what the owner's first
-launches show. `--os` takes any installed major; on iOS 17 or 18 the root is
-classic by the OS. Each pass starts from a fresh container (the app uninstalled
-and installed, so no decline, verdict, switch or stored policy an earlier run
-left decides the root; `--keep-data` installs over it), seeds the probe's key, a
-starter programme and a short conversation, and checks the root its launches
-build before any scenario runs.
+(the page's own bar, the chat presented over the page): what 61's first launches
+showed while policy.json had `coachHome` and `tabs` off (until d4d5127,
+2026-11-12), and what a phone gets whenever `tabs` is off for it. `--os` takes
+any installed major; on iOS 17 or 18 the root is classic by the OS. Each pass
+starts from a fresh container (the app uninstalled and installed, so no decline,
+verdict, switch or stored policy an earlier run left decides the root;
+`--keep-data` installs over it), seeds the probe's key, a starter programme and
+a short conversation, and checks the root its launches build before any scenario
+runs.
 
 **Build 60's nine and `teardown`, under both roots**: `smoke` (`-fpSmoke` logging
 `fp: ping ok v1` in that launch's process, the root, hello's negotiation, the
