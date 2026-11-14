@@ -3,33 +3,39 @@
 // first paint (the owner's iPhone, 13 Nov 2026, build 61: a cold share with words, the app closed before Send, and the
 // words came back in the native composer while the photo was gone: getPendingShare deletes the App Group's copy as it
 // answers, and the photo lived only in the page's memory). Every boot names its shell; the coach API answers at once.
-// The record is IndexedDB's (fp-photo); which record is the page's photo is said by the marker kt_photo_kept ({at},
-// left:1 once the owner left its chat), written before IndexedDB is asked and removed the moment the photo goes.
+// The record is IndexedDB's (fp-photo); which record is the page's photo is said by the marker kt_photo_kept ({n, at},
+// left:1 once the owner left its chat and 0 once they came back, gone:1 once the photo was sent or removed or could not
+// be kept), the device's high-water mark: each kept photo takes the next n, the marker is written before IndexedDB is
+// asked and never removed.
 // - (a) A share, then the app closed and opened again (a new scene): the photo is back in the composer and the chat
 //   opens after hello (a share under 30 minutes old): the web chat's preview (none, with a photo of a real size),
 //   build 61's overlay chat (coach61) and the native Coach tab's pushed chat (tabs), whose composer.image fetches the
-//   photo; the record is the share's {data, mediaType, at, src} and the marker names its stamp. A reload under the
-//   native chat (WebContent ended, the scene keeps the chat up) takes the chat over with the photo and presents nothing
-//   again. A share kept over 30 minutes, or a photo picked in the web composer, comes back with the chat left shut, and
-//   is there when it opens; so does a share under 30 minutes when the launch was asked for somewhere else (the widget's
-//   Start parked, a touch on the page while hello was still out), which then counts as leaving it (the next launch
-//   leaves it shut too), and a chat taken over before such a touch shows the photo (a touch on the chat itself is not
-//   leaving it). A chat the owner left (Log on the bar, Back to the hub, Back then Log, Log in the web chat) stays shut
-//   at a reload in the same scene and at a relaunch, the photo back where the owner was. At a boot nobody sees (a
+//   photo; the record is the share's {data, mediaType, at, src, n, words} and the marker names its number and stamp.
+//   Under the web chat (none, tabsWeb) the share's words come back with its chat; under the native chat the page drafts
+//   none (the native composer keeps its own). A reload under the native chat (WebContent ended, the scene keeps the
+//   chat up) takes the chat over with the photo and presents nothing again. A share kept over 30 minutes, or a photo
+//   picked in the web composer, comes back with the chat left shut, and is there when it opens; so does a share under
+//   30 minutes when the launch was asked for somewhere else (the widget's Start parked, a touch on the page while hello
+//   was still out), which then counts as leaving it, in the same line (the next launch leaves it shut too), and a chat
+//   taken over before such a touch shows the photo and says it was already on screen (a touch on the chat itself is
+//   not leaving it). A chat the owner left (Log on the bar, Back to the hub, Back then Log, Log in the web chat) stays
+//   shut at a reload in the same scene and at a relaunch, the photo back where the owner was. At a boot nobody sees (a
 //   background launch) the photo comes back and its chat waits for the page to show: it opens then, or stays shut
 //   once the 30 minutes have run out meanwhile. A photo put back with its chat shut stays out of the app's own prompts
 //   in the web chat (the weekly review, a Today card's action, a seeded prompt, one beside handed-over words) and goes
-//   with the owner's own Send (none, inert61, tabsWeb); a kept share whose chat opened goes along as any photo does.
-// - (b) Sent (the web Send, coach.send usePending): the record and the marker go, and the next launch has no photo.
-// - (c) Removed (the web composer's remove button, coach.clearImage): the record and the marker go, and the next
-//   launch has none. A send or a removal whose deletion IndexedDB failed (its transaction aborted, the connection lost)
-//   never comes back: the marker went with the photo, so the next launch drops the record (no longer pending).
-// - (d) A record older than 24 h, one the page cannot read, one no marker names, or one dated ahead of the clock is
-//   deleted at boot (with its marker), says why, and never comes back.
+//   with the owner's own Send (none, inert61, tabsWeb); once the chat has shown it (reopened by itself, or opened by
+//   the owner's hand) it goes along with a prompt as any photo does.
+// - (b) Sent (the web Send, coach.send usePending): the record goes and the marker says gone; the next launch has no
+//   photo.
+// - (c) Removed (the web composer's remove button, coach.clearImage): the same. A send or a removal whose deletion
+//   IndexedDB failed (its transaction aborted, the connection lost) never comes back: the marker says gone, so the next
+//   launch drops the record (sent or removed).
+// - (d) A record older than 24 h, one the page cannot read, one a newer photo replaced, one sent or removed, or one
+//   dated ahead of the clock is deleted at boot, says why, and never comes back.
 // - (e) IndexedDB missing, its open throwing or never answering, its write refused for the quota, or the marker refused:
 //   the share lands at once as it always did (photo, chat, words), the boot is untouched, nothing throws, nothing comes
 //   back after a relaunch. A newer photo IndexedDB could not keep (the quota, an aborted transaction, a lost
-//   connection) never brings back the photo it replaced.
+//   connection) never brings back the photo it replaced (replaced).
 // - (f) The words are in the first chat model pushed (coach61, tabs) and in the web composer (none) with the page's
 //   clock paused: no timer runs between the read and the words. They are a page draft written before the chat is
 //   drawn: beside words a native composer handed over, the web composer shows those first and the share's after them,
@@ -38,17 +44,26 @@
 // - (g) A new share replaces the kept photo; a share waiting in the App Group when a kept share comes back at boot
 //   wins whichever is read first: its photo, one chat opened (one selectTab with the chat's intent), the kept one
 //   never shown over it.
-// - (h) No breadcrumb carries the words or the photo: sizes and states only, in the read line's own shape.
+// - (h) No breadcrumb carries the words or the photo: sizes and states only, in the read line's own shape. A step that
+//   repeats is one line for its run, whatever the watch bridge logs between (an empty read at each launch, a boot that
+//   cannot read IndexedDB), and only a photo's first leave of its chat is a line: a launch that brings it back again
+//   adds only its back line.
+// - (i) A marker that never reached the disk (localStorage commits in batches, IndexedDB at once: the page ended
+//   between them) loses nothing: the record numbered above the marker comes back with its chat, the marker written
+//   again, whether nothing was kept before it or it replaced a kept photo.
 // Every native boot names its shell (the mark above): FP_SHELL_INERT runs skip this spec.
 const { boot, assert, run } = require('../lib/harness');
 
-// One case at a time: each starts its own browser.
-let _chain = Promise.resolve();
+// Three cases at a time, each in its own browser: the spec waits on the page's own timers far more than it computes
+// (one at a time it took five minutes of a CI job's fifteen). The cases share nothing but the machine.
+const LANES = 3;
+let _free = LANES;
+const _queue = [];
 function serial(name, fn) {
-  const prev = _chain;
-  let done;
-  _chain = new Promise((r) => { done = r; });
-  run(name, async () => { await prev; try { await fn(); } finally { done(); } });
+  run(name, async () => {
+    if (_free > 0) _free--; else await new Promise((r) => _queue.push(r));
+    try { await fn(); } finally { const next = _queue.shift(); if (next) next(); else _free++; }
+  });
 }
 const ev = (app, fn, arg) => app.page.evaluate(fn, arg);
 const J = (x) => JSON.stringify(x);
@@ -72,9 +87,9 @@ const MIN = 60000, HOUR = 3600000;
 //   IndexedDB opens held until __idbRelease()) and hidden (the page boots unseen: document.visibilityState reads
 //   __vis, 'visible' unless so);
 // - __idb(op, rec): the kept record through IndexedDB's own API ('get', 'put', 'delete'), taken before an init can
-//   take IndexedDB away; __mark(): the marker kt_photo_kept as JSON; __plant(rec, o): a record and the marker naming it
-//   (o.mark false: none; o.markAt: another stamp; o.left: left:1), as a document before this one kept it; __log():
-//   kt_wch_log's lines without their time;
+//   take IndexedDB away; __mark(): the marker kt_photo_kept as JSON; __plant(rec, o): a record (its n 1 unless it has
+//   one) and the marker naming it (o.mark false: none; o.markN: another number; o.left: left:1; o.gone: gone:1), as a
+//   document before this one kept it; __log(): kt_wch_log's lines without their time;
 // - TrovoShell's hello and selectTab wrapped as the mock installs them (as spec 130's): __tap records each call with the
 //   page's time and the time its answer came (seen).
 const INIT = `(() => {
@@ -135,7 +150,8 @@ const INIT = `(() => {
   window.__mark = () => { try { return JSON.parse(localStorage.getItem('kt_photo_kept') || 'null'); } catch (e) { return 'unreadable'; } };
   window.__plant = (rec, o) => {
     o = o || {};
-    if (o.mark !== false) localStorage.setItem('kt_photo_kept', JSON.stringify(Object.assign({ at: o.markAt !== undefined ? o.markAt : rec.at }, o.left ? { left: 1 } : {})));
+    rec = Object.assign({ n: 1 }, rec);
+    if (o.mark !== false) localStorage.setItem('kt_photo_kept', JSON.stringify(Object.assign({ n: o.markN !== undefined ? o.markN : rec.n, at: rec.at }, o.left ? { left: 1 } : {}, o.gone ? { gone: 1 } : {})));
     return window.__idb('put', rec);
   };
   window.__log = () => { try { return JSON.parse(localStorage.getItem('kt_wch_log') || '[]').map((l) => String(l).slice(15)); } catch (e) { return []; } };
@@ -216,7 +232,7 @@ const relaunch = async (app, next) => {
 const look = (app) => ev(app, () => {
   const box = document.getElementById('coach-input'), S = window.__fpShell;
   const models = S ? S.calls.filter((c) => c[0] === 'model' && c[1].screen === 'coach').map((c) => JSON.parse(c[1].json)) : [];
-  return { img: pendingImage ? pendingImage.data : null, type: pendingImage ? pendingImage.mediaType : null, key: pendingImage ? pendingImage.key || null : null,
+  return { img: pendingImage ? pendingImage.data : null, type: pendingImage ? pendingImage.mediaType : null, key: pendingImage ? pendingImage.key || null : null, back: pendingImage ? pendingImage.back : null,
     tab: currentTab, view: coachView, photo: !!document.querySelector('#screen img[alt="Photo to send"]'), box: box ? box.value : null,
     comp: models.length ? models[models.length - 1].composer : null, shown: !!(window._fp && _fp.shown.coach),
     ops: S ? S.calls.filter((c) => c[0] === 'present' || c[0] === 'dismiss').map((c) => c[0] + ' ' + c[1].screen) : [],
@@ -225,6 +241,9 @@ const look = (app) => ev(app, () => {
 }).then(async (m) => { m.kept = await ev(app, () => __idb('get')); return m; });
 // The chat is not on screen and was not asked for in this document.
 const shut = (m) => !(m.tab === 'coach' && m.view === 'chat') && m.chats === 0 && !m.ops.some((o) => o === 'present coach');
+// The marker names the record (its number and stamp, nothing else); the marker says its photo is gone.
+const names = (mark, kept) => !!mark && !!kept && typeof kept.n === 'number' && J(mark) === J({ n: kept.n, at: kept.at });
+const gone = (mark) => !!mark && typeof mark.n === 'number' && mark.gone === 1;
 // (h) sizes and states only: no line carries the words, any stretch of a photo, or a data URL.
 const NEEDLES = [WORDS, WORDS.slice(0, 12), HANDED.slice(0, 12), PHOTO.slice(0, 12), PHOTO2.slice(0, 12), BIG.slice(0, 12), 'base64', 'data:'];
 const clean = (log, more) => {
@@ -253,9 +272,10 @@ serial('(a) a share, then the app closed and opened again: the photo is back in 
       const s = await share(app, photo, WORDS);
       const now = Date.now();
       assert(s.img === photo && s.tab === 'coach' && s.view === 'chat' && s.kept && s.kept.data === photo && s.kept.mediaType === 'image/jpeg'
-        && s.kept.src === 'share' && Math.abs(s.kept.at - now) < MIN && J(Object.keys(s.kept).sort()) === J(['at', 'data', 'mediaType', 'src']),
-        shell + ': the share read, its record {data, mediaType, at, src} kept: ' + J(Object.assign({}, s, { img: !!s.img, kept: s.kept && { src: s.kept.src, at: s.kept.at, n: String(s.kept.data).length } })));
-      assert(J(s.mark) === J({ at: s.kept.at }), shell + ': the marker names the record\'s stamp: ' + J(s.mark));
+        && s.kept.src === 'share' && Math.abs(s.kept.at - now) < MIN && s.kept.n >= 1 && s.kept.words === WORDS
+        && J(Object.keys(s.kept).sort()) === J(['at', 'data', 'mediaType', 'n', 'src', 'words']),
+        shell + ': the share read, its record {data, mediaType, at, src, n, words} kept: ' + J(Object.assign({}, s, { img: !!s.img, kept: s.kept && { src: s.kept.src, at: s.kept.at, n: String(s.kept.data).length } })));
+      assert(names(s.mark, s.kept), shell + ': the marker names the record\'s number and stamp: ' + J(s.mark));
       if (shell === 'none') assert(s.box === WORDS, 'none: the words in the web composer: ' + J(s.box));
       // the next launch, hello 600 ms late under the flags: the photo back, the chat opened after hello's answer
       await relaunch(app, shell === 'none' ? null : { helloDelay: 600 });
@@ -265,7 +285,7 @@ serial('(a) a share, then the app closed and opened again: the photo is back in 
       const m = await look(app);
       assert(m.img === photo && m.type === 'image/jpeg' && m.tab === 'coach' && m.view === 'chat' && m.log.indexOf('photo: back from 0 min, chat opened') >= 0,
         shell + ': the photo back and the chat opened: ' + J(Object.assign({}, m, { img: !!m.img, kept: !!m.kept })));
-      assert(m.kept && m.kept.data === photo && m.kept.src === 'share' && J(m.mark) === J({ at: s.kept.at }), shell + ': the record and the marker stay until the photo is sent or removed: ' + J(m.mark));
+      assert(m.kept && m.kept.data === photo && m.kept.src === 'share' && names(m.mark, s.kept), shell + ': the record and the marker stay until the photo is sent or removed: ' + J(m.mark));
       assert(m.reads.length >= 1 && m.reads[0] === false, shell + ': the reader looked in the App Group first and found nothing: ' + J(m.reads));
       if (shell === 'none') {
         assert(m.photo && m.ops.length === 0, 'none: the web chat shows the photo: ' + J({ photo: m.photo, ops: m.ops }));
@@ -340,7 +360,7 @@ serial('(a) a share kept over 30 minutes, and a photo picked in the web composer
     await fc.setFiles({ name: 'photo.png', mimeType: 'image/png', buffer: PNG });
     await waitLine(app, 'l === "photo: kept"', 'photo: kept');
     const k = await ev(app, async () => ({ img: pendingImage && pendingImage.data, type: pendingImage && pendingImage.mediaType, kept: await __idb('get'), mark: __mark() }));
-    assert(k.img && k.kept && k.kept.data === k.img && k.kept.src === 'pick' && k.kept.mediaType === k.type && /^image\//.test(k.type) && J(k.mark) === J({ at: k.kept.at }),
+    assert(k.img && k.kept && k.kept.data === k.img && k.kept.src === 'pick' && k.kept.mediaType === k.type && /^image\//.test(k.type) && names(k.mark, k.kept) && k.kept.words === undefined,
       'none: the picked photo kept as a pick: ' + J({ type: k.type, src: k.kept && k.kept.src, mark: k.mark }));
     await relaunch(app);
     await waitLine(app, '/^photo: back from/.test(l)', 'photo: back from');
@@ -355,7 +375,7 @@ serial('(a) a share kept over 30 minutes, and a photo picked in the web composer
   } finally { await app.close(); }
 });
 
-serial('(a) a share under 30 minutes comes back with the chat left shut when the launch was asked for somewhere else: the widget\'s Start parked (tabs, none), a touch on the page while hello was still out (tabs), and that counts as leaving it (the next launch leaves it shut too); a reload under the native chat touched before the open keeps the chat it took over, with the photo, and a touch on the chat itself is not leaving it (tabs)', async () => {
+serial('(a) a share under 30 minutes comes back with the chat left shut when the launch was asked for somewhere else: the widget\'s Start parked (tabs, none), a touch on the page while hello was still out (tabs), and that counts as leaving it, in the same line (the next launch leaves it shut too); a reload under the native chat touched before the open keeps the chat it took over, with the photo in front of the owner, says the chat was already on screen, and a touch on the chat itself is not leaving it (tabs)', async () => {
   for (const [shell, how] of [['tabs', 'start'], ['none', 'start'], ['tabs', 'touch'], ['tabs', 'takeover']]) {
     const tag = shell + ', ' + how + ': ';
     const app = await pageBoot(shell);
@@ -371,12 +391,13 @@ serial('(a) a share under 30 minutes comes back with the chat left shut when the
         await app.page.waitForFunction(() => window._fp && _fp.shown.coach && !!pendingImage, null, { timeout: 15000 });
         const t = await ev(app, () => { const r = { log: __log().filter((l) => /^photo: back from/.test(l)) }; document.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); return r; });
         assert(t.log.length === 0, tag + 'touched before the kept share\'s turn: ' + J(t));
-        await waitLine(app, 'l === "photo: back from 0 min, chat not opened (asked elsewhere)"', 'asked elsewhere');
+        await waitLine(app, 'l === "photo: back from 0 min, chat already on screen"', 'chat already on screen');
         await settle(app, 100);
         const m = await look(app);
         const img = await ev(app, (key) => __fpShell.call('coach.image', { key }), m.key);
-        assert(m.shown && m.tab === 'coach' && m.view === 'chat' && m.ops.length === 0 && m.comp && m.comp.image && m.comp.image.key === m.key && img.ok && img.data === PHOTO,
-          tag + 'the chat it took over shows the photo: ' + J({ shown: m.shown, tab: m.tab, view: m.view, ops: m.ops, comp: m.comp, ok: img.ok }));
+        assert(m.shown && m.tab === 'coach' && m.view === 'chat' && m.ops.length === 0 && m.comp && m.comp.image && m.comp.image.key === m.key && img.ok && img.data === PHOTO && m.back === 0,
+          tag + 'the chat it took over shows the photo, in front of the owner: ' + J({ shown: m.shown, tab: m.tab, view: m.view, ops: m.ops, comp: m.comp, ok: img.ok, back: m.back }));
+        assert(!m.log.some((l) => /chat not opened/.test(l)), tag + 'no line says the chat was not opened: ' + J(m.log.slice(0, 4)));
         assert(m.mark && !m.mark.left && m.log.indexOf('photo: chat left') < 0, tag + 'a touch on the chat on screen is not leaving it: ' + J({ mark: m.mark, log: m.log.slice(0, 4) }));
         // so the next launch opens it again
         await relaunch(app);
@@ -396,9 +417,9 @@ serial('(a) a share under 30 minutes comes back with the chat left shut when the
       await settle(app, 200);
       const m = await look(app);
       assert(m.img === PHOTO && m.tab === 'log' && m.view !== 'chat' && m.chats === 0 && !m.ops.some((o) => o === 'present coach')
-        && m.log.indexOf('photo: back from 2 min, chat not opened (asked elsewhere)') >= 0,
+        && m.log.indexOf('photo: back from 2 min, chat not opened (asked elsewhere), counted as left') >= 0,
         tag + 'the photo back, the chat shut, on Log: ' + J(Object.assign({}, m, { log: m.log.slice(0, 6), kept: !!m.kept })));
-      assert(m.mark && m.mark.left === 1 && m.log.indexOf('photo: chat left') >= 0, tag + 'the launch asked elsewhere counts as leaving the chat: ' + J(m.mark));
+      assert(m.mark && m.mark.left === 1 && m.log.indexOf('photo: chat left') < 0, tag + 'the launch asked elsewhere counts as leaving the chat, said in the back line: ' + J({ mark: m.mark, log: m.log.slice(0, 4) }));
       // the next launch, asked for nowhere: the chat stays shut, the photo back
       await relaunch(app);
       await waitLine(app, '/^photo: back from [23] min, chat not opened \\(left earlier\\)$/.test(l)', 'left earlier');
@@ -412,8 +433,8 @@ serial('(a) a share under 30 minutes comes back with the chat left shut when the
       if (shell === 'tabs') await app.page.waitForFunction(() => window.__fpShell.calls.some((c) => c[0] === 'present' && c[1].screen === 'coach'), null, { timeout: 15000 });
       await settle(app, 60);
       const n = await look(app);
-      assert((shell === 'none' ? n.photo : (n.comp && n.comp.image && n.comp.image.key === n.key)) && J(n.mark) === J({ at: n.mark && n.mark.at }) && !n.mark.left,
-        tag + 'the chat opened later has the photo, and the marker no left: ' + J({ comp: n.comp, photo: n.photo, mark: n.mark }));
+      assert((shell === 'none' ? n.photo : (n.comp && n.comp.image && n.comp.image.key === n.key)) && !!n.mark && J(n.mark) === J({ n: n.mark.n, at: n.mark.at, left: 0 }),
+        tag + 'the chat opened later has the photo, and the marker\'s left 0 (came back): ' + J({ comp: n.comp, photo: n.photo, mark: n.mark }));
       await relaunch(app);
       await waitLine(app, '/^photo: back from [23] min, chat opened$/.test(l)', 'chat opened again');
       clean(m.log);
@@ -429,7 +450,7 @@ serial('(a) a chat the owner left stays shut: after a share the owner went to Lo
     try {
       await ready(app, shell !== 'none');
       const s = await share(app, PHOTO, WORDS);
-      assert(s.view === 'chat' && J(s.mark) === J({ at: s.kept.at }), tag + 'the share\'s chat, its marker: ' + J(s.mark));
+      assert(s.view === 'chat' && names(s.mark, s.kept), tag + 'the share\'s chat, its marker: ' + J(s.mark));
       await ev(app, async (how) => {
         if (how === 'bar-log') await __fpShell.tap('log');
         else if (how === 'back-hub') await __fpShell.call('coach.back', {});
@@ -504,8 +525,10 @@ serial('(a) a photo put back with its chat shut (a pick kept 3 h) stays out of t
       await waitLine(app, 'l === "photo: back from 180 min"', 'photo: back from 180 min');
       await ready(app, shell !== 'none');
       const r = await ev(app, async (PHOTO) => {
+        // each prompt meets the photo as the boot put it back (back: no chat has shown it since), in the prompt's own
+        // task: the chat the prompt before it opened has shown it, and from then it is the composer's photo (below)
         const turn = async (f) => {
-          const n = __turns.length; f();
+          const n = __turns.length; if (pendingImage) pendingImage.back = 1; f();
           for (let i = 0; i < 200 && (coachLoading || __turns.length === n); i++) await __w(20);
           await __w(60);
           const t = __turns[__turns.length - 1] || '';
@@ -529,7 +552,7 @@ serial('(a) a photo put back with its chat shut (a pick kept 3 h) stays out of t
       const app2 = [r.review, r.card, r.seeded, r.held];
       assert(r.before.tab === 'log' && r.before.back && app2.every((x) => x.sent && !x.image && x.pending) && r.preview && r.kept && r.mark && typeof r.mark.at === 'number',
         shell + ': the app\'s prompts went without the photo, which stays in the composer and kept: ' + J(r));
-      assert(r.own.sent && r.own.image && !r.own.pending && r.after.kept === null && r.after.mark === null && r.after.log.indexOf('photo: sent') >= 0,
+      assert(r.own.sent && r.own.image && !r.own.pending && r.after.kept === null && gone(r.after.mark) && r.after.log.indexOf('photo: sent') >= 0,
         shell + ': the owner\'s own Send takes it: ' + J({ own: r.own, after: r.after }));
       noErrors(app);
     } finally { await app.close(); }
@@ -549,13 +572,63 @@ serial('(a) a photo put back with its chat shut (a pick kept 3 h) stays out of t
       const t = __turns[__turns.length - 1] || '';
       return { sent: __turns.length > n, image: t.indexOf('"type":"image"') >= 0, pending: !!pendingImage, mark: __mark(), log: __log().slice(0, 2) };
     });
-    assert(r.sent && r.image && !r.pending && r.mark === null && r.log.indexOf('photo: sent') >= 0, 'none: the opened share went with the review: ' + J(r));
+    assert(r.sent && r.image && !r.pending && gone(r.mark) && r.log.indexOf('photo: sent') >= 0, 'none: the opened share went with the review: ' + J(r));
     noErrors(app);
   } finally { await app.close(); }
 });
 
+serial('(a) a photo put back with its chat shut is the composer\'s photo as any other once the chat has shown it: the owner opens the chat by hand and sees it, goes to Log, and a Today card\'s action takes it along, as for one whose chat reopened by itself (none, tabsWeb)', async () => {
+  for (const shell of ['none', 'tabsWeb']) {
+    const app = await pageBoot(shell);
+    try {
+      await ready(app, shell !== 'none');
+      await ev(app, (r) => __plant(r, { left: true }), { data: PHOTO, mediaType: 'image/jpeg', at: Date.now() - 2 * MIN, src: 'share' });
+      await relaunch(app);
+      await waitLine(app, 'l === "photo: back from 2 min, chat not opened (left earlier)"', 'left earlier');
+      await ready(app, shell !== 'none');
+      const r = await ev(app, async () => {
+        const out = { shut: { back: pendingImage && pendingImage.back, tab: currentTab, view: coachView } };
+        switchTab('coach', { intent: 'chat' }); openCoachChat();
+        await __w(60);
+        out.seen = { back: pendingImage && pendingImage.back, preview: !!document.querySelector('#screen img[alt="Photo to send"]') };
+        switchTab('log'); await __w(40);
+        const n = __turns.length; coachCardAction('Swap in dips');
+        for (let i = 0; i < 200 && (coachLoading || __turns.length === n); i++) await __w(20);
+        await __w(60);
+        const t = __turns[__turns.length - 1] || '';
+        Object.assign(out, { sent: __turns.length > n, image: t.indexOf('"type":"image"') >= 0, pending: !!pendingImage });
+        return out;
+      });
+      assert(r.shut.back === 1 && r.shut.view !== 'chat' && r.seen.preview && r.seen.back === 0, shell + ': back until the chat the owner opened showed it: ' + J(r));
+      assert(r.sent && r.image && !r.pending, shell + ': the card\'s action took the photo the owner had seen: ' + J(r));
+      noErrors(app);
+    } finally { await app.close(); }
+  }
+});
+
+serial('(a) under the web chat a kept share\'s words come back with its chat, before it is drawn, as a fresh share\'s do (none, tabsWeb); under the native chat the page drafts none, the native composer keeping its own (tabs)', async () => {
+  for (const shell of ['none', 'tabsWeb', 'tabs']) {
+    const app = await pageBoot(shell);
+    try {
+      await ready(app, shell !== 'none');
+      const s = await share(app, PHOTO, WORDS);
+      assert(s.kept && s.kept.data === PHOTO && (shell === 'tabs' || s.box === WORDS), shell + ': the share kept, its words in the web composer: ' + J({ box: s.box }));
+      await relaunch(app);
+      await waitLine(app, 'l === "photo: back from 0 min, chat opened"', 'chat opened');
+      if (shell === 'tabs') await app.page.waitForFunction(() => window.__fpShell.calls.some((c) => c[0] === 'present' && c[1].screen === 'coach'), null, { timeout: 15000 });
+      await settle(app, 150);
+      const m = await look(app);
+      if (shell === 'tabs') {
+        assert(m.view === 'chat' && m.comp && m.comp.image && m.comp.image.key === m.key && !m.comp.draft, 'tabs: the native chat on the photo, no page draft over the native composer\'s own words: ' + J(m.comp));
+      } else assert(m.view === 'chat' && m.photo && m.box === WORDS, shell + ': the web chat with the photo and the share\'s words: ' + J({ view: m.view, photo: m.photo, box: m.box }));
+      clean(m.log);
+      noErrors(app);
+    } finally { await app.close(); }
+  }
+});
+
 // ── (b) sent, (c) removed ─────────────────────────────────────────────────────────────────────────────────────────
-serial('(b) sending the photo deletes its record and its marker (the web Send under none, coach.send usePending under tabs): the API got it, and the next launch has no photo', async () => {
+serial('(b) sending the photo deletes its record and its marker says gone (the web Send under none, coach.send usePending under tabs): the API got it, and the next launch has no photo', async () => {
   for (const shell of ['none', 'tabs']) {
     const app = await pageBoot(shell);
     try {
@@ -570,19 +643,19 @@ serial('(b) sending the photo deletes its record and its marker (the web Send un
         await __w(80);
         return { a, pending: !!pendingImage, api: __turns.some((t) => t.indexOf(x.photo) >= 0), kept: await __idb('get'), mark: __mark(), log: __log() };
       }, { shell, photo: PHOTO });
-      assert((shell === 'none' || (r.a && r.a.ok)) && !r.pending && r.api && r.kept === null && r.mark === null && r.log.indexOf('photo: sent') >= 0,
-        shell + ': sent with the photo, the record and the marker gone, "photo: sent": ' + J(Object.assign({}, r, { log: r.log.slice(0, 5) })));
+      assert((shell === 'none' || (r.a && r.a.ok)) && !r.pending && r.api && r.kept === null && gone(r.mark) && r.mark.at === s.kept.at && r.log.indexOf('photo: sent') >= 0,
+        shell + ': sent with the photo, the record gone and the marker saying so, "photo: sent": ' + J(Object.assign({}, r, { log: r.log.slice(0, 5) })));
       await relaunch(app);
       await ready(app, shell !== 'none');
       const m = await look(app);
-      assert(m.img === null && m.kept === null && m.mark === null && !m.log.some((l) => /^photo: back from/.test(l)), shell + ': the next launch has no photo: ' + J(Object.assign({}, m, { log: m.log.slice(0, 5) })));
+      assert(m.img === null && m.kept === null && gone(m.mark) && !m.log.some((l) => /^photo: back from/.test(l)), shell + ': the next launch has no photo: ' + J(Object.assign({}, m, { log: m.log.slice(0, 5) })));
       clean(m.log);
       noErrors(app);
     } finally { await app.close(); }
   }
 });
 
-serial('(c) removing the photo deletes its record and its marker (the web composer\'s remove button under none, coach.clearImage under tabs), and the next launch has none', async () => {
+serial('(c) removing the photo deletes its record and its marker says gone (the web composer\'s remove button under none, coach.clearImage under tabs), and the next launch has none', async () => {
   for (const shell of ['none', 'tabs']) {
     const app = await pageBoot(shell);
     try {
@@ -595,7 +668,7 @@ serial('(c) removing the photo deletes its record and its marker (the web compos
       }
       await waitLine(app, 'l === "photo: removed"', 'photo: removed');
       const r = await ev(app, async () => { await __w(80); return { pending: !!pendingImage, preview: !!document.querySelector('#screen img[alt="Photo to send"]'), kept: await __idb('get'), mark: __mark() }; });
-      assert(!r.pending && !r.preview && r.kept === null && r.mark === null, shell + ': the photo, its record and its marker gone: ' + J(r));
+      assert(!r.pending && !r.preview && r.kept === null && gone(r.mark), shell + ': the photo and its record gone, the marker saying so: ' + J(r));
       if (shell === 'tabs') {
         await settle(app, 60);
         const c = (await look(app)).comp;
@@ -611,7 +684,7 @@ serial('(c) removing the photo deletes its record and its marker (the web compos
   }
 });
 
-serial('(c) a photo sent or removed whose kept copy IndexedDB could not delete (the transaction aborted, the connection lost) never comes back: the marker went with the photo, so the next launch drops the record (none, tabs)', async () => {
+serial('(c) a photo sent or removed whose kept copy IndexedDB could not delete (the transaction aborted, the connection lost) never comes back: the marker says gone, so the next launch drops the record (none, tabs)', async () => {
   for (const [shell, what, how] of [['none', 'remove', 'abortDelete'], ['tabs', 'clearImage', 'abortDelete'], ['tabs', 'send', 'abortDelete'], ['tabs', 'clearImage', 'lost'], ['none', 'send', 'lost']]) {
     const tag = shell + ', ' + what + ', ' + how + ': ';
     const app = await pageBoot(shell);
@@ -628,14 +701,14 @@ serial('(c) a photo sent or removed whose kept copy IndexedDB could not delete (
         for (let i = 0; i < 100 && !__log().some((l) => l.indexOf('photo: kept copy not deleted') === 0); i++) await __w(20);
         return { pending: !!pendingImage, kept: await __idb('get'), mark: __mark(), log: __log().slice(0, 4) };
       }, what);
-      assert(!r.pending && r.kept && r.kept.data === PHOTO && r.mark === null && r.log.some((l) => /^photo: kept copy not deleted \((aborted|InvalidStateError)\)$/.test(l)),
-        tag + 'the photo gone and its marker, the record still there: ' + J(Object.assign({}, r, { kept: !!r.kept })));
+      assert(!r.pending && r.kept && r.kept.data === PHOTO && gone(r.mark) && r.mark.n === r.kept.n && r.log.some((l) => /^photo: kept copy not deleted \((aborted|InvalidStateError)\)$/.test(l)),
+        tag + 'the photo gone, its marker saying so, the record still there: ' + J(Object.assign({}, r, { kept: !!r.kept })));
       await relaunch(app);
-      await waitLine(app, 'l === "photo: kept copy dropped (no longer pending)"', 'no longer pending');
+      await waitLine(app, 'l === "photo: kept copy dropped (sent or removed)"', 'sent or removed');
       await ready(app, shell !== 'none');
       await settle(app, 200);
       const m = await look(app);
-      assert(m.img === null && m.kept === null && m.mark === null && shut(m) && !m.log.some((l) => /^photo: back from/.test(l)),
+      assert(m.img === null && m.kept === null && gone(m.mark) && shut(m) && !m.log.some((l) => /^photo: back from/.test(l)),
         tag + 'the next launch drops it: nothing back, no chat: ' + J(Object.assign({}, m, { log: m.log.slice(0, 5) })));
       clean(m.log);
       noErrors(app);
@@ -643,28 +716,29 @@ serial('(c) a photo sent or removed whose kept copy IndexedDB could not delete (
   }
 });
 
-// ── (d) old, unreadable, no longer pending, dated ahead ───────────────────────────────────────────────────────────
-serial('(d) a record older than 24 h, one the page cannot read, one no marker names, or one dated ahead of the clock is deleted at boot with its marker, says why, and never comes back (tabs, none)', async () => {
+// ── (d) old, unreadable, replaced, sent or removed, dated ahead ───────────────────────────────────────────────────
+serial('(d) a record older than 24 h, one the page cannot read, one a newer photo replaced (numbered below the marker), one sent or removed (the marker\'s own, marked gone), or one dated ahead of the clock is deleted at boot, says why, and never comes back (tabs, none)', async () => {
   const now = Date.now();
   for (const [shell, rec, line, o] of [
     ['tabs', { data: PHOTO, mediaType: 'image/jpeg', at: now - 25 * HOUR, src: 'share' }, 'photo: kept copy dropped (25 h old)'],
     ['none', { data: PHOTO, mediaType: 'image/jpeg', at: now - 24 * HOUR - MIN, src: 'pick' }, 'photo: kept copy dropped (24 h old)'],
     ['none', { data: 'not base64!', mediaType: 'image/jpeg', at: now, src: 'share' }, 'photo: kept copy dropped (unreadable)'],
     ['none', { data: PHOTO, mediaType: 'text/html', at: now, src: 'share' }, 'photo: kept copy dropped (unreadable)'],
-    ['tabs', { data: PHOTO, mediaType: 'image/jpeg', at: now - 2 * MIN, src: 'share' }, 'photo: kept copy dropped (no longer pending)', { mark: false }],
-    ['none', { data: PHOTO, mediaType: 'image/jpeg', at: now - 2 * MIN, src: 'share' }, 'photo: kept copy dropped (no longer pending)', { markAt: now - 3 * MIN }],
+    ['none', { data: PHOTO, mediaType: 'image/jpeg', at: now - 2 * MIN, src: 'share' }, 'photo: kept copy dropped (unreadable)', { n: 'one' }],
+    ['tabs', { data: PHOTO, mediaType: 'image/jpeg', at: now - 2 * MIN, src: 'share', n: 3 }, 'photo: kept copy dropped (replaced)', { markN: 4 }],
+    ['none', { data: PHOTO, mediaType: 'image/jpeg', at: now - 2 * MIN, src: 'share', n: 3 }, 'photo: kept copy dropped (sent or removed)', { gone: true }],
     ['tabs', { data: PHOTO, mediaType: 'image/jpeg', at: now + 2 * HOUR, src: 'share' }, 'photo: kept copy dropped (dated ahead of the clock)'],
   ]) {
     const app = await pageBoot(shell);
     try {
       await ready(app, shell !== 'none');
-      await ev(app, (a) => __plant(a.rec, a.o), { rec, o: o || {} });
+      await ev(app, (a) => __plant(a.o.n !== undefined ? Object.assign({}, a.rec, { n: a.o.n }) : a.rec, a.o), { rec, o: o || {} });
       await relaunch(app);
       await waitLine(app, 'l === ' + J(line), line);
       await ready(app, shell !== 'none');
       const m = await look(app);
-      assert(m.img === null && m.kept === null && m.mark === null && m.tab === 'log' && m.chats === 0 && !m.ops.some((o) => o === 'present coach') && !m.log.some((l) => /^photo: back from/.test(l)),
-        shell + ', ' + line + ': deleted at boot with its marker, nothing back, no chat: ' + J(Object.assign({}, m, { log: m.log.slice(0, 5) })));
+      assert(m.img === null && m.kept === null && m.tab === 'log' && m.chats === 0 && !m.ops.some((o) => o === 'present coach') && !m.log.some((l) => /^photo: back from/.test(l)),
+        shell + ', ' + line + ': deleted at boot, nothing back, no chat: ' + J(Object.assign({}, m, { log: m.log.slice(0, 5) })));
       noErrors(app);
     } finally { await app.close(); }
   }
@@ -702,7 +776,7 @@ serial('(e) IndexedDB missing, its open throwing or never answering, its write r
       }
       await waitLine(app, 'l === ' + J(line), line);
       const k = await ev(app, async () => ({ mark: __mark(), kept: window.indexedDB ? await __idb('get') : 'none' }));
-      assert(k.mark === null && (how !== 'marker' || k.kept === null), tag + 'no marker left (and with the marker refused, IndexedDB never asked): ' + J(k));
+      assert(how === 'marker' ? k.mark === null && k.kept === null : gone(k.mark), tag + 'the marker says the photo was not kept (with the marker refused: none, and nothing put): ' + J(k));
       await relaunch(app);
       await ready(app, shell !== 'none');
       await settle(app, how === 'silent' ? 4300 : 200);   // a silent open's 4 s run out at boot too
@@ -716,25 +790,25 @@ serial('(e) IndexedDB missing, its open throwing or never answering, its write r
   }
 });
 
-serial('(e) a newer photo IndexedDB could not keep (its put refused for the quota, its transaction aborted, the connection lost) never brings back the photo it replaced: the marker named the newer one and went with its failed write, so the next launch drops the older record (none, tabs)', async () => {
+serial('(e) a newer photo IndexedDB could not keep (its put refused for the quota, its transaction aborted, the connection lost) never brings back the photo it replaced: the marker took the newer one\'s number and says gone, so the next launch drops the older record (replaced) (none, tabs)', async () => {
   for (const [shell, how, why] of [['none', 'quota', 'quota'], ['tabs', 'quota', 'quota'], ['tabs', 'abortPut', 'aborted'], ['tabs', 'lost', 'InvalidStateError']]) {
     const tag = shell + ', ' + how + ': ';
     const app = await pageBoot(shell);
     try {
       await ready(app, shell !== 'none');
       const a = await share(app, PHOTO, WORDS);
-      assert(a.kept && a.kept.data === PHOTO && a.mark && a.mark.at === a.kept.at, tag + 'the first share kept');
+      assert(a.kept && a.kept.data === PHOTO && names(a.mark, a.kept), tag + 'the first share kept');
       await ev(app, '(' + FAIL[how].toString() + ')()');
       const b = await share(app, PHOTO2, '');
       const bl = await lines(app);
-      assert(b.img === PHOTO2 && b.kept && b.kept.data === PHOTO && b.mark === null && bl.indexOf('photo: not kept (' + why + ')') >= 0,
-        tag + 'the second share pending, its keep failed, no marker, the record still the first: ' + J(Object.assign({}, b, { kept: b.kept && b.kept.data === PHOTO ? 'first' : b.kept, log: bl.slice(0, 3) })));
+      assert(b.img === PHOTO2 && b.kept && b.kept.data === PHOTO && gone(b.mark) && b.mark.n === a.kept.n + 1 && bl.indexOf('photo: not kept (' + why + ')') >= 0,
+        tag + 'the second share pending, its keep failed, the marker its number marked gone, the record still the first: ' + J(Object.assign({}, b, { kept: b.kept && b.kept.data === PHOTO ? 'first' : b.kept, log: bl.slice(0, 3) })));
       await relaunch(app);
-      await waitLine(app, 'l === "photo: kept copy dropped (no longer pending)"', 'no longer pending');
+      await waitLine(app, 'l === "photo: kept copy dropped (replaced)"', 'replaced');
       await ready(app, shell !== 'none');
       await settle(app, 200);
       const m = await look(app);
-      assert(m.img === null && m.kept === null && m.mark === null && shut(m) && !m.log.some((l) => /^photo: back from/.test(l)),
+      assert(m.img === null && m.kept === null && gone(m.mark) && shut(m) && !m.log.some((l) => /^photo: back from/.test(l)),
         tag + 'the replaced photo never comes back: ' + J(Object.assign({}, m, { log: m.log.slice(0, 5) })));
       clean(m.log);
       noErrors(app);
@@ -883,4 +957,66 @@ serial('(h) the breadcrumbs say sizes and states only: the read (KB, the words\'
     clean(b);
     noErrors(app);
   } finally { await app.close(); }
+});
+
+serial('(h) a step that repeats is one line for its run, whatever the watch bridge logs between: an empty read at three launches (none, tabs), the owner leaving the kept photo\'s chat five times, and again at two launches that bring it back (none: one line for the leaves, each later launch only its back line), a boot that cannot read IndexedDB at three launches, its empty reads between (none)', async () => {
+  for (const [shell, init] of [['none', ''], ['tabs', ''], ['none', NO_IDB.throws]]) {
+    const tag = shell + (init ? ', IndexedDB throws' : '') + ': ';
+    const app = await pageBoot(shell, { init });
+    try {
+      await ready(app, shell !== 'none');
+      for (let k = 0; k < 2; k++) { await relaunch(app); await ready(app, shell !== 'none'); }
+      const l = await lines(app);
+      const count = (x) => l.filter((y) => y === x).length;
+      assert(count('share: nothing waiting') === 1 && l.some((y) => !/^(share|photo): /.test(y)), tag + 'one empty read line for three launches, the watch bridge\'s lines between: ' + J(l.slice(0, 12)));
+      if (init) assert(count('photo: kept copy not read (SecurityError)') === 1, tag + 'one line for three boots that could not read: ' + J(l.slice(0, 12)));
+      if (shell === 'none' && !init) {
+        await share(app, PHOTO, WORDS);
+        await ev(app, async () => { for (let k = 0; k < 5; k++) { switchTab('log'); await __w(30); switchTab('coach'); coachView = 'chat'; render(); await __w(30); } switchTab('log'); await __w(40); });
+        const n = await lines(app);
+        assert(n.filter((y) => y === 'photo: chat left').length === 1, tag + 'one line for five leaves: ' + J(n.slice(0, 6)));
+        // two launches bring it back (its chat left earlier); the owner looks at it and leaves again each time
+        const per = [];
+        for (let k = 0; k < 2; k++) {
+          const before = (await lines(app)).length;
+          await relaunch(app);
+          await app.page.waitForFunction((k) => __log().filter((l) => l === 'photo: back from 0 min, chat not opened (left earlier)').length > k, k, { timeout: 15000 });
+          await ready(app, false);
+          await ev(app, async () => { switchTab('coach'); coachView = 'chat'; render(); await __w(30); switchTab('log'); await __w(40); });
+          const all = await lines(app);
+          per.push(all.slice(0, all.length - before).filter((y) => /^(share|photo): /.test(y)));
+        }
+        const end = await lines(app);
+        assert(end.filter((y) => y === 'photo: chat left').length === 1 && J(per[1]) === J(['photo: back from 0 min, chat not opened (left earlier)']),
+          tag + 'a photo\'s first leave is its one line, and a later launch adds only its back line: ' + J({ per, end: end.slice(0, 10) }));
+      }
+      noErrors(app);
+    } finally { await app.close(); }
+  }
+});
+
+// ── (i) the marker lost on its way to the disk ────────────────────────────────────────────────────────────────────
+serial('(i) a kept photo whose marker never reached the disk (localStorage commits in batches, IndexedDB at once: the page ended between them) comes back at the next launch with its chat and its marker written again: a share with nothing kept before it (tabs, none), one that replaced a kept photo (none: the record the newer one, the marker still the older one\'s)', async () => {
+  for (const [shell, over] of [['tabs', false], ['none', false], ['none', true]]) {
+    const tag = shell + (over ? ', over a kept photo' : '') + ': ';
+    const app = await pageBoot(shell);
+    try {
+      await ready(app, shell !== 'none');
+      if (over) await share(app, PHOTO2, '');
+      const before = await ev(app, () => localStorage.getItem('kt_photo_kept'));
+      const s = await share(app, PHOTO, WORDS);
+      assert(s.kept && s.kept.data === PHOTO && s.mark && s.mark.at === s.kept.at, tag + 'the share kept, its marker: ' + J(s.mark));
+      // the batch the marker was in never reached the disk: the marker as it stood before the share, the record kept
+      await ev(app, (v) => { if (v === null) localStorage.removeItem('kt_photo_kept'); else localStorage.setItem('kt_photo_kept', v); }, before);
+      await relaunch(app);
+      await waitLine(app, 'l === "photo: back from 0 min (its marker was not saved), chat opened"', 'its marker was not saved');
+      if (shell === 'tabs') await app.page.waitForFunction(() => window.__fpShell.calls.some((c) => c[0] === 'present' && c[1].screen === 'coach'), null, { timeout: 15000 });
+      await settle(app, 150);
+      const m = await look(app);
+      assert(m.img === PHOTO && m.tab === 'coach' && m.view === 'chat' && m.kept && m.kept.data === PHOTO && names(m.mark, s.kept) && (shell === 'none' ? m.photo && m.box === WORDS : m.comp && m.comp.image),
+        tag + 'the photo back with its chat, the marker written again: ' + J(Object.assign({}, m, { log: m.log.slice(0, 5), kept: !!m.kept })));
+      clean(m.log);
+      noErrors(app);
+    } finally { await app.close(); }
+  }
 });
