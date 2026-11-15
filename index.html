@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20261114-8"/>
+<meta name="build" content="20261115-1"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -9883,9 +9883,10 @@ var _photoBack=null;  // {img, at, words, how}: the kept share whose chat the re
 var _photoAt=0;       // the newest stamp a kept photo took: each one's is its own
 var _photoN=0;        // the newest number a kept photo took in this document (the marker holds the device's)
 // The owner, or a link, asked for a place since this document booted (a touch or a key on the page, the native bar's
-// tabs.select, trovo://start, a dev route): the kept share comes back but its chat stays shut, so a launch from the
-// widget's Start, or a tap made while hello was still out, is never pulled over to the chat (and, the chat not on
-// screen, that counts as leaving it: _photoLeave).
+// tabs.select, the native chat's Back and its Open Settings, trovo://start, a dev route): the kept share comes back but
+// its chat stays shut, so a launch from the widget's Start, a tap made while hello was still out, or a native chat the
+// owner left before a later read brought the photo back (_photoRetry), is never pulled over to the chat (and, the chat
+// not on screen, that counts as leaving it: _photoLeave).
 var _photoAsked=0;
 var _photoOpen=null;  // the database's open (a promise of {db, why}); a failed or lost one is forgotten: the next step opens again
 function _photoWhy(e, dflt){
@@ -10068,7 +10069,7 @@ function _photoRestore(n){
     pendingImage={data:rec.data, mediaType:rec.mediaType, previewUrl:'data:'+rec.mediaType+';base64,'+rec.data, at:rec.at, back:1};
     if(currentTab==='coach') render();   // a chat on screen shows it now (a native one taken over, with its next model)
     if(rec.src!=='share' || v.age>=30*60000){ _wchLog('photo: back from '+mins+' min'+how); return; }
-    if(v.left){ _wchLog('photo: back from '+mins+' min, chat not opened (left earlier)'); return; }
+    if(v.left){ _wchLog('photo: back from '+mins+' min'+how+', chat not opened (left earlier)'); return; }
     // the reader's turn once the parked link has had its own (a share it reads wins, the widget's Start keeps the chat
     // shut: _photoAsked), 2 s at most
     _photoBack={img:pendingImage, at:rec.at, words:rec.words || '', how:how};
@@ -10077,22 +10078,30 @@ function _photoRestore(n){
   });
 }
 // A read of the kept copy that failed (its transaction aborted, the open or the transaction timed out, the connection
-// lost; IndexedDB missing is no failure here) reads again: 1.5 s later while the page shows, else when it next shows,
-// three reads a document at most. WebKit aborts IndexedDB transactions under a page it suspends, with no error: the
-// first boot of web 20261113-5 on the owner's iPhone logged "kept copy not read (aborted)" (14 Nov), and a document
-// that a background launch booted (a watch message, a Health delivery) kept the record unread until the next launch.
-// The record stays in IndexedDB whatever a read did, and each read settles it by the rules above at its own time (its
-// own _photoSeq, the marker, the 30 minutes, _photoAsked).
+// lost; IndexedDB missing is no failure here) reads again 0.3 s later while the page shows, else 0.3 s after it next
+// shows, three reads a document at most. WebKit aborts IndexedDB transactions when it suspends the network process (its
+// commit refused, the abort with no error), which it does only once the page's own process is suspended: the first
+// boot of web 20261113-5 on the owner's iPhone logged "kept copy not read (aborted)" (14 Nov), and a document a
+// background launch booted (a watch message, a Health delivery) kept the record unread until the next launch. While the
+// page shows its network process stays awake, so a short wait is enough; the same connection works again after a
+// resume (WebKit's IndexedDBSuspendImminently test), so it is kept. The record stays in IndexedDB whatever a read did,
+// and each read settles it by the rules above at its own time (its own _photoSeq, the marker, the 30 minutes,
+// _photoAsked). The page's visibility is read again when the wait ends: hidden by then, it waits for the next show.
 function _photoRetry(n){
   if(n>=3) return;
-  var go=function(){ _photoRestore(n+1); };
-  if(document.visibilityState!=='hidden'){ setTimeout(go, 1500); return; }
-  var h=function(){
-    if(document.visibilityState==='hidden') return;
-    document.removeEventListener('visibilitychange', h);
-    setTimeout(go, 300);
+  var go=function(){
+    if(document.visibilityState==='hidden'){ whenShown(); return; }
+    _photoRestore(n+1);
   };
-  document.addEventListener('visibilitychange', h);
+  var whenShown=function(){
+    var h=function(){
+      if(document.visibilityState==='hidden') return;
+      document.removeEventListener('visibilitychange', h);
+      setTimeout(go, 300);
+    };
+    document.addEventListener('visibilitychange', h);
+  };
+  if(document.visibilityState==='hidden') whenShown(); else setTimeout(go, 300);
 }
 // The kept share's chat, at the end of the reader's turn (took: it found a new share, whose chat is open instead). On a
 // page nobody sees (a background launch, or the owner gone again) it waits: the next reader (the return's check, 0.6 s
@@ -25575,11 +25584,11 @@ var _FP_INTENTS={
     if(a.model!==COACH_SONNET && a.model!=='claude-haiku-4-5-20251001') return {ok:false, error:'unknown-model'};
     setCoachModel(a.model); return {ok:true};
   },
-  'coach.back':function(){ if(intakeMode) return {ok:false, error:'intake'}; coachView='home'; render(); return {ok:true}; },
+  'coach.back':function(){ if(intakeMode) return {ok:false, error:'intake'}; _photoAsked++; coachView='home'; render(); return {ok:true}; },
   'coach.cancelIntake':function(){ if(!intakeMode) return {ok:false, error:'not-intake'}; _confirmCancelIntake(); return {ok:true}; },
   'coach.restorePrevious':function(){ restoreRoutineBackup(); return {ok:true}; },
   'coach.regenerate':function(){ resetCustomRoutine(); return {ok:true}; },
-  'coach.openSettings':function(){ switchTab('settings'); return {ok:true}; },
+  'coach.openSettings':function(){ _photoAsked++; switchTab('settings'); return {ok:true}; },
   'coach.image':function(a){
     if(!_fpStr(a.key)) return _FP_BAD;
     if(!pendingImage || _fpImgKey()!==a.key) return {ok:false, error:'gone'};
