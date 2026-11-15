@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20261115-3"/>
+<meta name="build" content="20261115-4"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -9883,10 +9883,11 @@ var _photoBack=null;  // {img, at, words, how}: the kept share whose chat the re
 var _photoAt=0;       // the newest stamp a kept photo took: each one's is its own
 var _photoN=0;        // the newest number a kept photo took in this document (the marker holds the device's)
 // The owner, or a link, asked for a place since this document booted (a touch or a key on the page, the native bar's
-// tabs.select, the native chat's Back and its Open Settings, the Coach hub's starter link, setup's Cancel answered
-// yes, trovo://start, a dev route): the kept share comes back but its chat stays shut, so a launch from the widget's
-// Start, a tap made while hello was still out, or a native chat the owner left before a later read brought the photo
-// back (_photoRetry), is never pulled over to the chat (and, the chat not on screen, that counts as leaving it:
+// tabs.select (and a bar tap or the chat's Back the shell took while no document was linked, read at hello), the
+// native chat's Back and its Open Settings, the Coach hub's starter link, setup's Cancel answered yes, trovo://start,
+// a dev route): the kept share comes back but its chat stays shut, so a launch from the widget's Start, a tap made
+// while hello was still out, or a native chat the owner left before a later read brought the photo back
+// (_photoRetry), is never pulled over to the chat (and, the chat not on screen, that counts as leaving it:
 // _photoLeave).
 var _photoAsked=0;
 var _photoOpen=null;  // the database's open (a promise of {db, why}); a failed or lost one is forgotten: the next step opens again
@@ -25109,6 +25110,11 @@ function _fpHello(){
       _fp.v=v;
       _fpLog('hello v'+v+' '+(_fp.hello.screens.join(',') || 'no screens')+(_fp.hello.why ? ' ('+_fp.hello.why+')' : ''));
       var up=(v>=1 && r && Array.isArray(r.up)) ? r.up.filter(function(s){ return typeof s==='string'; }) : [];
+      // the native chat the document before had up (fp_chat) that this reply still offers but no longer names up was
+      // taken down while no document was linked (the owner's Back during a WebContent restart: PageLink ends the intent
+      // unsent): a place asked for, so a kept share's chat stays shut (_photoBackOpen). A reply that no longer offers it
+      // (the policy, a breaker) took it down itself: the kept share's chat opens as the web one
+      try{ if(sessionStorage.getItem('fp_chat') && up.indexOf('coach')<0 && _fp.hello.screens.indexOf('coach')>=0) _photoAsked++; }catch(e){}
       // a page that left tabs mode already reads the reply for its other pieces and ignores its tabs; one that leaves
       // here renders below, after the take-over (classic's) has read up
       var left=false;
@@ -25119,7 +25125,9 @@ function _fpHello(){
         try{
           // a page selection still unanswered was asked after this reply was made: its answer carries the shell's
           // selection, so the page does not bounce to the reply's tab and back (P-D8)
-          if(tabs.seq>T.seq){ T.seq=tabs.seq; if(!T.pend && tabs.selected!==currentTab) _switchTabLocal(tabs.selected); }
+          // a newer selection that moves the page is a bar tap the shell took while no document was linked (a WebContent
+          // restart, or a cold launch before hello answered): a place asked for too
+          if(tabs.seq>T.seq){ T.seq=tabs.seq; if(!T.pend && tabs.selected!==currentTab){ _photoAsked++; _switchTabLocal(tabs.selected); } }
           if(tabs.bar.rev>T.rev) _fpBarSet(tabs.bar, tabs.bar.rev);
           if(up.length) _fpTakeOver(up);
         }finally{ _fp.taking=false; }
@@ -25212,8 +25220,18 @@ function _fpSync(){
         if(P && P.dismiss){ try{ Promise.resolve(P.dismiss({screen:s})).catch(function(){}); }catch(e){} }
       } else if(want) _fpPushSoon();
     });
+    _fpChatMarkSync();
     _fpModelsSoon();
   }catch(e){ _fpLog('sync: '+((e && e.message) || e), 'error'); }   // never in render's way
+}
+// The native chat up or not, kept in the scene's sessionStorage (fp_chat) beside fp_tab, so the next document's hello
+// can tell a chat the owner took down while no document was linked; written on a change only.
+var _fpChatMark=null;
+function _fpChatMarkSync(){
+  var on=_fp.shown.coach ? '1' : '';
+  if(on===_fpChatMark) return;
+  _fpChatMark=on;
+  try{ if(on) sessionStorage.setItem('fp_chat', '1'); else sessionStorage.removeItem('fp_chat'); }catch(e){}
 }
 // The shell would not present it: the page draws its own for the rest of the document. Whatever its code (contract
 // 3.1): build 60's words, not-presentable (no live tab root for coachHome) and not-native (the chat over a Coach tab
