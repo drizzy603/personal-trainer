@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20261115-1"/>
+<meta name="build" content="20261115-2"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -9883,10 +9883,11 @@ var _photoBack=null;  // {img, at, words, how}: the kept share whose chat the re
 var _photoAt=0;       // the newest stamp a kept photo took: each one's is its own
 var _photoN=0;        // the newest number a kept photo took in this document (the marker holds the device's)
 // The owner, or a link, asked for a place since this document booted (a touch or a key on the page, the native bar's
-// tabs.select, the native chat's Back and its Open Settings, trovo://start, a dev route): the kept share comes back but
-// its chat stays shut, so a launch from the widget's Start, a tap made while hello was still out, or a native chat the
-// owner left before a later read brought the photo back (_photoRetry), is never pulled over to the chat (and, the chat
-// not on screen, that counts as leaving it: _photoLeave).
+// tabs.select, the native chat's Back and its Open Settings, the Coach hub's starter link, setup's Cancel answered
+// yes, trovo://start, a dev route): the kept share comes back but its chat stays shut, so a launch from the widget's
+// Start, a tap made while hello was still out, or a native chat the owner left before a later read brought the photo
+// back (_photoRetry), is never pulled over to the chat (and, the chat not on screen, that counts as leaving it:
+// _photoLeave).
 var _photoAsked=0;
 var _photoOpen=null;  // the database's open (a promise of {db, why}); a failed or lost one is forgotten: the next step opens again
 function _photoWhy(e, dflt){
@@ -18655,7 +18656,7 @@ function _confirmClearChat(){
   _ktConfirm({title:'Clear chat history?',body:'Your routine, sessions, and all logged data are kept.',confirmLabel:'Clear',onConfirm:function(){clearCoachHistory();showToast('Chat history cleared');}});
 }
 function _confirmCancelIntake(){
-  _ktConfirm({title:'Stop programme setup?',body:'Your answers so far will be lost.',confirmLabel:'Stop setup',onConfirm:function(){_setIntakeMode(false);clearCoachHistory();render();}});
+  _ktConfirm({title:'Stop programme setup?',body:'Your answers so far will be lost.',confirmLabel:'Stop setup',onConfirm:function(){_photoAsked++;_setIntakeMode(false);clearCoachHistory();render();}});
 }
 
 // md(): the chat's markdown, block by block, on text escaped first (& < >), for what Sonnet writes:
@@ -25709,6 +25710,7 @@ var _FP_INTENTS={
   'coachHome.openStarter':function(){
     if(!_fp.shown.coachHome) return {ok:false, error:'off'};
     if(hasCustomRoutine()) return {ok:false, error:'has-programme'};
+    _photoAsked++;   // the starter on Log is where the owner asked to go (a kept share's chat stays shut)
     switchTab('log');
     openStarterIntake();
     return {ok:true};
