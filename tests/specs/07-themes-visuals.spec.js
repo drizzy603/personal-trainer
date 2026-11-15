@@ -32,9 +32,14 @@ run('share card draws through toBlob', async () => {
     const out = await app.page.evaluate(async () => {
       const sess = getSessions().find(s => (s.exercises || []).length);
       shareSessionCard(sess.id);
-      await new Promise(r => setTimeout(r, 800));
-      const t = document.getElementById('toast');
-      return t ? t.textContent : null;
+      // the draw waits for the card's faces (_shareCardFonts: latin-ext subsets too), which a loaded CI runner took
+      // past a fixed 800 ms (15 Nov, the toast still empty): wait for the toast's words, 8 s at most
+      const t0 = performance.now();
+      for (;;) {
+        const t = document.getElementById('toast');
+        if ((t && t.textContent) || performance.now() - t0 > 8000) return t ? t.textContent : null;
+        await new Promise(r => setTimeout(r, 25));
+      }
     });
     assert(/^Saved as fitness-programmer-|^Sharing not supported here$/.test(out || ''), 'draw path completed (headless: PNG download fallback), got: ' + out);
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
