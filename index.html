@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20261115-2"/>
+<meta name="build" content="20261115-3"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -22877,7 +22877,7 @@ function saveApiKeyFromSettings(){
 // disconnect the Coach.
 function clearApiKeyFromSettings(){ clearApiKey(); }
 
-// ── Settings › About › Storage: the native copy (build 60+, plan task S6) ────
+// ── Settings › About › Native copy (Storage under build 60's binary): the native copy (build 60+, plan task S6) ────
 // From build 60 the shell keeps a native copy of every kt_* value beside WebKit's (FPStore, in shadow: WebKit stays in
 // charge, the copy follows each save and never writes WebKit by itself) and reports on it through the TrovoStore
 // plugin. The row says how the copy stands ("In step · N items · X KB"); its sheet adds what the starts found
@@ -23014,7 +23014,7 @@ function _fpStoreRowHTML(){
         '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>'+
       '</svg>'+
     '</div>'+
-    '<div class="settings-row-body"><div class="settings-row-title">Storage</div><div class="settings-row-sub" id="fp-store-sub">'+_esc(_fpStoreLine(_fpStore.st))+'</div></div>'+
+    '<div class="settings-row-body"><div class="settings-row-title">'+(_fpBinary('coachHome') ? 'Native copy' : 'Storage')+'</div><div class="settings-row-sub" id="fp-store-sub">'+_esc(_fpStoreLine(_fpStore.st))+'</div></div>'+
     '<span class="settings-row-chev">›</span>'+
   '</div>';
 }
@@ -23146,9 +23146,10 @@ function openStorageSheet(){
   overlay.className='kt-sheet-overlay';
   _fpStore.rows=null;
   _fpStore.html=_fpStoreSheetHTML();
-  overlay.innerHTML='<div class="kt-sheet" style="padding:0 0 calc(max(env(safe-area-inset-bottom),16px) + 8px);">'+
+  var b61=_fpBinary('coachHome');
+  overlay.innerHTML='<div class="kt-sheet"'+_fpAboutDialog(b61, 'fpStoreTitle')+' style="padding:0 0 calc(max(env(safe-area-inset-bottom),16px) + 8px);">'+
     '<div class="kt-sheet-head" style="padding:20px 20px 12px;margin-bottom:0;">'+
-      '<div class="kt-sheet-title" id="fpStoreTitle" tabindex="-1">Storage</div>'+
+      '<div class="kt-sheet-title" id="fpStoreTitle" tabindex="-1">'+(b61 ? 'Native copy' : 'Storage')+'</div>'+
       '<button class="kt-sheet-x" onclick="closeStorageSheet()" aria-label="Close">✕</button>'+
     '</div>'+
     '<div style="font-size:12px;color:var(--muted);padding:0 20px 12px;line-height:1.5;">A native copy of your data, kept on this iPhone beside the app\u2019s own storage. It follows every save, never leaves the phone and never changes your data by itself.</div>'+
@@ -23158,6 +23159,7 @@ function openStorageSheet(){
   _sheetDrag(overlay, closeStorageSheet);
   overlay.addEventListener('click', function(e){ if(e.target===overlay) closeStorageSheet(); });
   _a11yPass();
+  _fpAboutFocus(b61, 'fpStoreTitle');
   _fpStoreRefresh(true);
   _fpStoreLoadRows();
 }
@@ -25752,6 +25754,11 @@ if(_fpPlugin()){
 // (binary ['coach']) every row, line, note and counter stays as it was (spec 118's C5).
 // The native screens this binary has, on or off (the flag's binary; an older flag has none).
 function _fpBinary(s){ var f=_fpShellFlag(); return !!(f && Array.isArray(f.binary) && f.binary.indexOf(s)>=0); }
+// An About sheet under build 61's binary is a dialog a screen reader moves into, as Routines is: the sheet named by its
+// title and the title focused once painted (focus stayed on the Settings row under the scrim, found from the owner's
+// frames on 14 Nov). Under build 60's binary About stays byte for byte as it was (spec 127).
+function _fpAboutDialog(on, titleId){ return on ? ' role="dialog" aria-modal="true" aria-labelledby="'+titleId+'"' : ''; }
+function _fpAboutFocus(on, titleId){ if(!on) return; var t=document.getElementById(titleId); if(t){ try{ t.focus({preventScroll:true}); }catch(e){} } }
 function _fpChatOffered(){ return !!(FP_NATIVE && _fpPlugin() && (_fpBinary('coach') || _fpNegotiated('coach') || _fpDeviceOff())); }
 // Reads the shell's status again (at most every 1.5 s unless forced) and repaints the row and an open sheet. Under a 61
 // binary also at once whenever the page's own side changed since the last read (_fpAboutSig: it left tabs mode, a
@@ -25858,7 +25865,7 @@ function openNativeChatSheet(){
   overlay.className='kt-sheet-overlay';
   _fpChat.html=_fpChatSheetHTML();
   var b61=_fpBinary('coachHome');
-  overlay.innerHTML='<div class="kt-sheet" style="padding:0 0 calc(max(env(safe-area-inset-bottom),16px) + 8px);">'+
+  overlay.innerHTML='<div class="kt-sheet"'+_fpAboutDialog(b61, 'fpChatTitle')+' style="padding:0 0 calc(max(env(safe-area-inset-bottom),16px) + 8px);">'+
     '<div class="kt-sheet-head" style="padding:20px 20px 12px;margin-bottom:0;">'+
       '<div class="kt-sheet-title" id="fpChatTitle" tabindex="-1">'+(b61 ? 'Native Coach' : 'Native Coach chat')+'</div>'+
       '<button class="kt-sheet-x" onclick="closeNativeChatSheet()" aria-label="Close">✕</button>'+
@@ -25872,6 +25879,7 @@ function openNativeChatSheet(){
   _sheetDrag(overlay, closeNativeChatSheet);
   overlay.addEventListener('click', function(e){ if(e.target===overlay) closeNativeChatSheet(); });
   _a11yPass();
+  _fpAboutFocus(b61, 'fpChatTitle');
   _fpChatRefresh(true);
 }
 function closeNativeChatSheet(){ var el=document.getElementById('fpChatOverlay'); if(el) el.remove(); }
@@ -26100,7 +26108,7 @@ function openNativeTabsSheet(){
   overlay.id='fpTabsOverlay';
   overlay.className='kt-sheet-overlay';
   _fpChat.thtml=_fpTabsSheetHTML();
-  overlay.innerHTML='<div class="kt-sheet" style="padding-top:0;padding-left:0;padding-right:0;">'+
+  overlay.innerHTML='<div class="kt-sheet"'+_fpAboutDialog(true, 'fpTabsTitle')+' style="padding-top:0;padding-left:0;padding-right:0;">'+
     '<div class="kt-sheet-head" style="padding:20px 20px 12px;margin-bottom:0;">'+
       '<div class="kt-sheet-title" id="fpTabsTitle" tabindex="-1">Native tab bar</div>'+
       '<button class="kt-sheet-x" onclick="closeNativeTabsSheet()" aria-label="Close">✕</button>'+
@@ -26112,6 +26120,7 @@ function openNativeTabsSheet(){
   _sheetDrag(overlay, closeNativeTabsSheet);
   overlay.addEventListener('click', function(e){ if(e.target===overlay) closeNativeTabsSheet(); });
   _a11yPass();
+  _fpAboutFocus(true, 'fpTabsTitle');
   _fpChatRefresh(true);
 }
 function closeNativeTabsSheet(){ var el=document.getElementById('fpTabsOverlay'); if(el) el.remove(); }

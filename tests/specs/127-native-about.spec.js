@@ -602,3 +602,37 @@ serial('P14 fix-1: both 61 sheets list "Left its window in any state" right afte
     } finally { await b.close(); }
   }
 });
+
+// The two Native sheets under build 61's binary are dialogs a screen reader moves into, as Routines is: each named by its
+// title and the title focused once painted (focus stayed on the Settings row under the scrim, found from the owner's
+// frames on 14 Nov; web 20261115-3). Build 60's chat sheet stays as it was (the byte check above).
+serial('under build 61\'s binary the Native Coach and Native tab bar sheets are dialogs named by their titles, the title focused; build 60\'s chat sheet has neither', async () => {
+  // opens a sheet, reads its dialog attributes and where focus went, closes it
+  const look = (app, a) => ev(app, (a) => {
+    window[a.open]();
+    const sheet = document.querySelector('#' + a.overlay + ' .kt-sheet');
+    const r = sheet ? { role: sheet.getAttribute('role'), modal: sheet.getAttribute('aria-modal'), by: sheet.getAttribute('aria-labelledby'),
+      focus: document.activeElement ? document.activeElement.id : null } : null;
+    if (a.close) window[a.close]();
+    return r;
+  }, a);
+  const tabs = await pageBoot('tabs');
+  try {
+    await ready(tabs);
+    await ev(tabs, () => switchTab('settings'));
+    for (const a of [{ open: 'openNativeChatSheet', overlay: 'fpChatOverlay', title: 'fpChatTitle', close: 'closeNativeChatSheet' },
+      { open: 'openNativeTabsSheet', overlay: 'fpTabsOverlay', title: 'fpTabsTitle', close: 'closeNativeTabsSheet' }]) {
+      const s = await look(tabs, a);
+      assert(s && s.role === 'dialog' && s.modal === 'true' && s.by === a.title && s.focus === a.title, '61, ' + a.open + ': a dialog named by its title, the title focused: ' + J(s));
+    }
+    assert(tabs.errors.length === 0, '61: no page errors: ' + tabs.errors.join(' | '));
+  } finally { await tabs.close(); }
+  const init = 'window.__fpShellStatus = ' + J(CRASH60) + ';';
+  const sixty = await pageBoot('inert', { init });
+  try {
+    await ready(sixty);
+    await ev(sixty, () => switchTab('settings'));
+    const s = await look(sixty, { open: 'openNativeChatSheet', overlay: 'fpChatOverlay', title: 'fpChatTitle' });
+    assert(s && s.role === null && s.modal === null && s.by === null && s.focus !== 'fpChatTitle', '60: the chat sheet as it was, no dialog role, focus left where it was: ' + J(s));
+  } finally { await sixty.close(); }
+});

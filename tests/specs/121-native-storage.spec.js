@@ -551,3 +551,29 @@ serial('the privacy copy is true with or without a native copy', async () => {
     assert(!/lives in localStorage on your phone\. We do not/.test(text), 'the old single-copy sentence is gone');
   } finally { await app.close(); }
 });
+
+// Under build 61's binary the native copy's row and sheet are named Native copy (Settings > Data keeps its own Storage
+// row: the owner's answer to q-5, 12 Nov), and the sheet is a dialog a screen reader moves into, its title focused
+// once painted (web 20261115-3); under build 60's binary both stay Storage and the sheet is as it was.
+serial('under build 61\'s binary the row and its sheet are Native copy, a dialog that takes focus; under build 60\'s both stay Storage, as they were', async () => {
+  const FLAG61 = { v: 1, min: 1, shell: '61', screens: [], binary: ['coach', 'coachHome', 'tabs'] };
+  for (const [flag, name] of [[FLAG61, 'Native copy'], [FLAG, 'Storage']]) {
+    const b61 = flag === FLAG61, tag = (b61 ? '61' : '60') + ': ';
+    const app = await boot({ native: true, shell: 'none', init: init({ status: inStep(), flag }) });
+    try {
+      await ev(app, () => switchTab('settings'));
+      await app.page.waitForFunction(() => /In step/.test((document.getElementById('fp-store-sub') || {}).textContent || ''), null, { timeout: 3000 });
+      const out = await ev(app, () => {
+        const title = document.querySelector('#fp-store-row .settings-row-title').textContent;
+        openStorageSheet();
+        const sheet = document.querySelector('#fpStoreOverlay .kt-sheet');
+        return { title, sheetTitle: document.getElementById('fpStoreTitle').textContent, role: sheet.getAttribute('role'), modal: sheet.getAttribute('aria-modal'),
+          by: sheet.getAttribute('aria-labelledby'), focus: document.activeElement ? document.activeElement.id : null };
+      });
+      assert(out.title === name && out.sheetTitle === name, tag + 'the row and the sheet are named ' + name + ': ' + JSON.stringify(out));
+      if (b61) assert(out.role === 'dialog' && out.modal === 'true' && out.by === 'fpStoreTitle' && out.focus === 'fpStoreTitle', tag + 'a dialog named by its title, the title focused: ' + JSON.stringify(out));
+      else assert(out.role === null && out.modal === null && out.by === null && out.focus !== 'fpStoreTitle', tag + 'the sheet as it was: ' + JSON.stringify(out));
+      assert(app.errors.length === 0, tag + 'no page errors: ' + app.errors.join(' | '));
+    } finally { await app.close(); }
+  }
+});
