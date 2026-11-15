@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20261114-7"/>
+<meta name="build" content="20261114-8"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -10041,8 +10041,9 @@ function _photoWatch(){
 // whose chat the owner had not left opens the chat as a fresh share does, through the one reader (_photoBack), which
 // reads the App Group first: a share waiting there (the parked link's, the boot check's, a return's) wins, and a place
 // asked for since the boot (_photoAsked) or a page nobody sees holds the chat back (_photoBackOpen). The photo comes
-// back marked back: not yet in front of the owner.
-function _photoRestore(){
+// back marked back: not yet in front of the owner. A read that failed reads again (_photoRetry), n counting the reads.
+function _photoRestore(n){
+  n=n>1 ? n : 1;
   var seq=_photoSeq;
   _photoTx('readwrite', function(st, set){
     var rq=st.get('pending');
@@ -10057,11 +10058,11 @@ function _photoRestore(){
       set({rec:rec, age:Math.max(0, age), left:rec.n===mn && !!m.left, lost:rec.n>mn});
     };
   }).then(function(r){
-    if(!r.ok){ if(r.why!=='no IndexedDB') _shareLog('photo: kept copy not read ('+r.why+')'); return; }
+    if(!r.ok){ if(r.why!=='no IndexedDB'){ _shareLog('photo: kept copy not read ('+r.why+')'); _photoRetry(n); } return; }
     var v=r.val;
     if(!v || v.gone){ if(v) _wchLog('photo: kept copy dropped ('+v.gone+')'); return; }
     if(v.moved || _photoSeq!==seq || pendingImage){ _wchLog('photo: kept copy not put back ('+(pendingImage ? 'a newer photo' : 'removed meanwhile')+')'); return; }
-    var rec=v.rec, mins=Math.floor(v.age/60000), how=v.lost ? ' (its marker was not saved)' : '';
+    var rec=v.rec, mins=Math.floor(v.age/60000), how=(v.lost ? ' (its marker was not saved)' : '')+(n>1 ? ' (read '+n+')' : '');
     if(v.lost) _photoMark({n:rec.n, at:rec.at});
     _photoN=Math.max(_photoN, rec.n);
     pendingImage={data:rec.data, mediaType:rec.mediaType, previewUrl:'data:'+rec.mediaType+';base64,'+rec.data, at:rec.at, back:1};
@@ -10074,6 +10075,24 @@ function _photoRestore(){
     var went=false, go=function(){ if(went) return; went=true; checkPendingShare(); };
     _linkDone.then(go, go); setTimeout(go, 2000);
   });
+}
+// A read of the kept copy that failed (its transaction aborted, the open or the transaction timed out, the connection
+// lost; IndexedDB missing is no failure here) reads again: 1.5 s later while the page shows, else when it next shows,
+// three reads a document at most. WebKit aborts IndexedDB transactions under a page it suspends, with no error: the
+// first boot of web 20261113-5 on the owner's iPhone logged "kept copy not read (aborted)" (14 Nov), and a document
+// that a background launch booted (a watch message, a Health delivery) kept the record unread until the next launch.
+// The record stays in IndexedDB whatever a read did, and each read settles it by the rules above at its own time (its
+// own _photoSeq, the marker, the 30 minutes, _photoAsked).
+function _photoRetry(n){
+  if(n>=3) return;
+  var go=function(){ _photoRestore(n+1); };
+  if(document.visibilityState!=='hidden'){ setTimeout(go, 1500); return; }
+  var h=function(){
+    if(document.visibilityState==='hidden') return;
+    document.removeEventListener('visibilitychange', h);
+    setTimeout(go, 300);
+  };
+  document.addEventListener('visibilitychange', h);
 }
 // The kept share's chat, at the end of the reader's turn (took: it found a new share, whose chat is open instead). On a
 // page nobody sees (a background launch, or the owner gone again) it waits: the next reader (the return's check, 0.6 s
@@ -24548,7 +24567,7 @@ setTimeout(checkPendingShare, 2500);
 // first paint; a share younger than 30 minutes then opens the chat through the reader above, after hello, unless the
 // owner has touched or typed on the page by then (_photoAsked).
 try{ ['pointerdown','keydown'].forEach(function(t){ document.addEventListener(t, function(){ _photoAsked++; }, true); }); }catch(e){}
-setTimeout(_photoRestore, 0);
+setTimeout(function(){ _photoRestore(1); }, 0);
 // iOS PWA zombie recovery: when the WKWebView is evicted from memory and
 // restored, the static HTML (tab bar) survives but JS state is gone and the
 // screen div is empty. Force a reload to reinitialise.

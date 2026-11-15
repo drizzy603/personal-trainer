@@ -55,6 +55,12 @@
 //   again, whether nothing was kept before it or it replaced a kept photo, one sent or one whose chat was left. A newer
 //   share kept before a boot could read such a record takes its number under its own stamp: the record is the photo
 //   that share replaced, and never comes back.
+// - (j) A read of the kept copy that fails reads again (web 20261114-8; WebKit aborts IndexedDB transactions under a
+//   page it suspends, with no error: the owner's iPhone logged "kept copy not read (aborted)" at the first boot of the
+//   fix): a visible page reads again 1.5 s later and the second read brings the photo back and opens its chat; a page
+//   nobody sees (a background launch) reads nothing more until it shows, then the same; a touch on the page before the
+//   second read leaves the chat shut, counted as left; when every read aborts the page reads three times and no more,
+//   the record and its marker stay, one line says so, and the next launch brings the photo back.
 // Every native boot names its shell (the mark above): FP_SHELL_INERT runs skip this spec.
 const { boot, assert, run } = require('../lib/harness');
 
@@ -111,6 +117,16 @@ const INIT = `(() => {
     const n = JSON.parse(sessionStorage.getItem('__next') || 'null');
     sessionStorage.removeItem('__next');
     if (n) { window.__held = n.held || null; window.__parked = n.parked || ''; if (n.helloDelay) window.__fpShellHelloDelay = n.helloDelay; window.__linkDelay = n.linkDelay || 0; if (n.hidden) window.__vis = 'hidden'; }
+    // abortReads: the first N reads of the photo store this document makes abort their transaction with no error, as
+    // WebKit aborts one under a page it suspends (the owner's iPhone, 14 Nov); __photoGets counts the page's reads, and
+    // __idb's own reads pass by (__inIdb)
+    window.__photoGets = 0; window.__abortedReads = 0;
+    { let left = (n && n.abortReads) || 0; const get = IDBObjectStore.prototype.get;
+      IDBObjectStore.prototype.get = function () {
+        const r = get.apply(this, arguments);
+        if (this.name === 'photo' && !window.__inIdb) { window.__photoGets++; if (left > 0) { left--; window.__abortedReads++; this.transaction.abort(); } }
+        return r;
+      }; }
     // gate: the page's IndexedDB opens answer only once __idbRelease() is called (the boot's read held back)
     if (n && n.gate) {
       let go; const gate = new Promise((r) => { go = r; }); window.__idbRelease = go;
@@ -144,7 +160,7 @@ const INIT = `(() => {
       const db = rq.result;
       let out = null;
       const tx = db.transaction('photo', op === 'get' ? 'readonly' : 'readwrite'), st = tx.objectStore('photo');
-      if (op === 'get') { const g = st.get('pending'); g.onsuccess = () => { out = g.result === undefined ? null : g.result; }; }
+      if (op === 'get') { let g; window.__inIdb = true; try { g = st.get('pending'); } finally { window.__inIdb = false; } g.onsuccess = () => { out = g.result === undefined ? null : g.result; }; }
       else if (op === 'put') st.put(rec, 'pending');
       else st.delete('pending');
       tx.oncomplete = () => { db.close(); res(out); };
@@ -1107,6 +1123,100 @@ serial('(i) a newer share kept before a boot could read a record whose marker ne
     assert(m.img === null && m.kept === null && shut(m) && !m.log.some((l) => /^photo: back from/.test(l)),
       'the photo the share replaced never comes back: ' + J(Object.assign({}, m, { log: m.log.slice(0, 6) })));
     clean(m.log);
+    noErrors(app);
+  } finally { await app.close(); }
+});
+
+// ── (j) a read that fails reads again ───────────────────────────────────────────────────────────────────────────
+const ABORTED = 'l === "photo: kept copy not read (aborted)"';
+const chatUp = (app, shell) => shell === 'none' ? Promise.resolve()
+  : app.page.waitForFunction(() => window.__fpShell.calls.some((c) => c[0] === 'present' && c[1].screen === 'coach'), null, { timeout: 15000 });
+serial('(j) a boot whose read of the kept copy aborts (as WebKit aborts a transaction under a page it suspends, with no error) reads again 1.5 s later while the page shows: the second read brings the photo back and opens its chat (none, tabs)', async () => {
+  for (const shell of ['none', 'tabs']) {
+    const app = await pageBoot(shell);
+    try {
+      await ready(app, shell !== 'none');
+      const s = await share(app, PHOTO, WORDS);
+      assert(s.kept && s.kept.data === PHOTO, shell + ': the share kept: ' + J(!!s.kept));
+      await relaunch(app, { abortReads: 1 });
+      await waitLine(app, ABORTED, 'the aborted read');
+      const first = await ev(app, () => ({ img: !!pendingImage, gets: __photoGets, aborted: __abortedReads }));
+      assert(!first.img && first.gets === 1 && first.aborted === 1, shell + ': the boot read aborted and the photo is not back yet: ' + J(first));
+      await waitLine(app, 'l.indexOf("photo: back from 0 min (read 2)") === 0', 'the second read');
+      await chatUp(app, shell);
+      await settle(app, 150);
+      const m = await look(app);
+      assert(m.img === PHOTO && m.tab === 'coach' && m.view === 'chat' && m.log.indexOf('photo: back from 0 min (read 2), chat opened') >= 0,
+        shell + ': the second read brought the photo back and opened its chat: ' + J(Object.assign({}, m, { img: !!m.img, kept: !!m.kept, log: m.log.slice(0, 6) })));
+      const g = await ev(app, () => ({ gets: __photoGets, aborted: __abortedReads }));
+      assert(g.gets === 2 && g.aborted === 1, shell + ': two reads and no third: ' + J(g));
+      assert(m.kept && m.kept.data === PHOTO && names(m.mark, s.kept), shell + ': the record and its marker stay until the photo is sent or removed: ' + J(m.mark));
+      clean(m.log);
+      noErrors(app);
+    } finally { await app.close(); }
+  }
+});
+serial('(j) at a boot nobody sees (a background launch) whose read aborts, nothing reads again until the page shows: then the second read brings the photo back and opens its chat (none, tabs)', async () => {
+  for (const shell of ['none', 'tabs']) {
+    const app = await pageBoot(shell);
+    try {
+      await ready(app, shell !== 'none');
+      await share(app, PHOTO, WORDS);
+      await relaunch(app, { hidden: true, abortReads: 1 });
+      await waitLine(app, ABORTED, 'the aborted read');
+      await settle(app, 2600);   // longer than a visible page waits for its second read
+      const h = await ev(app, () => ({ img: !!pendingImage, gets: __photoGets, log: __log().filter((l) => /^photo: back from/.test(l)) }));
+      assert(!h.img && h.gets === 1 && h.log.length === 0, shell + ': hidden, no second read: ' + J(h));
+      await show(app);
+      await waitLine(app, 'l.indexOf("photo: back from 0 min (read 2)") === 0', 'the second read after the page showed');
+      await chatUp(app, shell);
+      await settle(app, 150);
+      const m = await look(app);
+      assert(m.img === PHOTO && m.tab === 'coach' && m.view === 'chat' && m.log.indexOf('photo: back from 0 min (read 2), chat opened') >= 0,
+        shell + ': shown, the second read brought the photo back and opened its chat: ' + J(Object.assign({}, m, { img: !!m.img, kept: !!m.kept, log: m.log.slice(0, 6) })));
+      clean(m.log);
+      noErrors(app);
+    } finally { await app.close(); }
+  }
+});
+serial('(j) a touch on the page before the second read: the photo comes back with its chat shut, counted as left (none, tabs)', async () => {
+  for (const shell of ['none', 'tabs']) {
+    const app = await pageBoot(shell);
+    try {
+      await ready(app, shell !== 'none');
+      await share(app, PHOTO, WORDS);
+      await relaunch(app, { abortReads: 1 });
+      await waitLine(app, ABORTED, 'the aborted read');
+      await ev(app, () => document.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })));
+      await waitLine(app, 'l.indexOf("photo: back from 0 min (read 2)") === 0', 'the second read');
+      await settle(app, 300);
+      const m = await look(app);
+      assert(m.img === PHOTO && shut(m) && m.log.indexOf('photo: back from 0 min (read 2), chat not opened (asked elsewhere), counted as left') >= 0,
+        shell + ': the photo back, the chat shut and counted as left: ' + J(Object.assign({}, m, { img: !!m.img, kept: !!m.kept, log: m.log.slice(0, 6) })));
+      clean(m.log);
+      noErrors(app);
+    } finally { await app.close(); }
+  }
+});
+serial('(j) when every read aborts the page reads three times and no more: the record and its marker stay, one line says so, and the next launch brings the photo back (none)', async () => {
+  const app = await pageBoot('none');
+  try {
+    await ready(app, false);
+    const s = await share(app, PHOTO, WORDS);
+    await relaunch(app, { abortReads: 3 });
+    await app.page.waitForFunction(() => window.__abortedReads >= 3, null, { timeout: 15000 });
+    await settle(app, 2600);   // a fourth read would have come 1.5 s after the third
+    const m = await look(app);
+    const g = await ev(app, () => ({ gets: __photoGets, aborted: __abortedReads }));
+    assert(g.gets === 3 && g.aborted === 3 && !m.img, 'three reads, each aborted, none after them, no photo: ' + J(Object.assign({ img: !!m.img }, g)));
+    assert(m.log.filter((l) => l === 'photo: kept copy not read (aborted)').length === 1, 'one line for the three reads: ' + J(m.log.slice(0, 6)));
+    assert(m.kept && m.kept.data === PHOTO && names(m.mark, s.kept), 'the record and its marker stay: ' + J(m.mark));
+    await relaunch(app, null);
+    await waitLine(app, 'l === "photo: back from 0 min, chat opened"', 'the next launch');
+    await settle(app, 150);
+    const n = await look(app);
+    assert(n.img === PHOTO && n.tab === 'coach' && n.view === 'chat', 'the next launch brought the photo back with its chat: ' + J(Object.assign({}, n, { img: !!n.img, kept: !!n.kept, log: n.log.slice(0, 6) })));
+    clean(n.log);
     noErrors(app);
   } finally { await app.close(); }
 });
