@@ -63,7 +63,8 @@
 //   with the third, the last, bringing the photo back, and later shows read nothing more; a share whose chat the owner
 //   left comes back on a later read with the chat shut, its line naming the read; a read failed another way (the
 //   connection lost: InvalidStateError) reads again too; a newer photo that came before the second read (a share read
-//   while hidden) stays the pending one, its record and marker kept; a touch on the page, or the native chat's Back or
+//   while hidden) stays the pending one, its record and marker kept; a touch on the page (also in the owner's order
+//   after a background launch: the page shown, then touched inside the 0.3 s), or the native chat's Back or
 //   Open Settings under a chat taken over at a reload, the Coach hub's starter link, or setup's Cancel answered yes
 //   (its read held, or aborted and read again), before the photo is back leaves the chat shut, counted as left, nothing
 //   presented again; when every read aborts the page reads three times and no more, the record and its marker stay, one
@@ -1290,6 +1291,30 @@ serial('(j) a touch on the page before the second read: the photo comes back wit
       const m = await look(app);
       assert(m.img === PHOTO && shut(m) && m.log.indexOf('photo: back from 0 min (read 2), chat not opened (asked elsewhere), counted as left') >= 0,
         shell + ': the photo back, the chat shut and counted as left: ' + J(Object.assign({}, m, { img: !!m.img, kept: !!m.kept, log: m.log.slice(0, 6) })));
+      clean(m.log);
+      noErrors(app);
+    } finally { await app.close(); }
+  }
+});
+serial('(j) a background launch whose read aborted, then the app opened and touched at once (the page shown, a touch inside the 0.3 s before the second read): the photo comes back with its chat shut, counted as left (none, tabs)', async () => {
+  for (const shell of ['none', 'tabs']) {
+    const app = await pageBoot(shell);
+    try {
+      await ready(app, shell !== 'none');
+      await share(app, PHOTO, WORDS);
+      await relaunch(app, { hidden: true, abortReads: 1 });
+      await waitLine(app, ABORTED, 'the aborted read');
+      // the owner's order: the page shows, then a touch on it, in one task so no read can come between
+      await ev(app, () => {
+        window.__vis = 'visible'; window.__shownAt = performance.now(); document.dispatchEvent(new Event('visibilitychange'));
+        document.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+      });
+      await waitLine(app, 'l.indexOf("photo: back from 0 min (read 2)") === 0', 'the second read');
+      await settle(app, 300);
+      const m = await look(app), g = await ev(app, () => ({ at: __photoGetAt, shown: window.__shownAt }));
+      assert(m.img === PHOTO && shut(m) && m.log.indexOf('photo: back from 0 min (read 2), chat not opened (asked elsewhere), counted as left') >= 0,
+        shell + ': the photo back, the chat shut and counted as left: ' + J(Object.assign({}, m, { img: !!m.img, kept: !!m.kept, log: m.log.slice(0, 6) })));
+      assert(g.at.length === 2 && WAITED(g.at[1] - g.shown), shell + ': the second read came about 0.3 s after the show: ' + J(g));
       clean(m.log);
       noErrors(app);
     } finally { await app.close(); }
