@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20261115-4"/>
+<meta name="build" content="20261115-5"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -24120,11 +24120,13 @@ function deleteCustomEx(name){
 // and a service worker on capacitor:// makes WebKit spin up its web-push
 // machinery, which surfaces a notifications permission prompt at boot.
 if('serviceWorker' in navigator && !(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform())) {
+  // The worker this document started under, read as the script runs: only another one taking over from it means a new
+  // worker replaced it → reload. A document the network served (no worker yet: the first install) never reloads. Read
+  // at load, a first install's clients.claim() landing while the page loaded looked like a worker already in charge, and
+  // its controllerchange, dispatched in a later task, reloaded the page (a test's page, mid-case, on a loaded machine:
+  // spec 108 M26, 15 Nov).
+  var _swFirst = navigator.serviceWorker.controller || null;
   window.addEventListener('load', function(){
-    // Track whether a SW was already controlling this page before registration.
-    // If it was, a controllerchange means a NEW SW just took over → reload.
-    // If not (first install), skip the reload to avoid a pointless bounce.
-    var hadController = !!navigator.serviceWorker.controller;
     // Reload only when nothing would be lost: not mid-workout, not while
     // the coach is answering, not with a half-typed field. Re-checks every
     // 15s until it's safe.
@@ -24136,7 +24138,7 @@ if('serviceWorker' in navigator && !(window.Capacitor && Capacitor.isNativePlatf
       window.location.reload();
     };
     navigator.serviceWorker.addEventListener('controllerchange', function(){
-      if(hadController) _swSafeReload();
+      if(_swFirst && navigator.serviceWorker.controller !== _swFirst) _swSafeReload();
     });
     navigator.serviceWorker.register('sw.js').then(function(reg){
       // Force the browser to check for an updated sw.js on every page load

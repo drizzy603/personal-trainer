@@ -6,7 +6,7 @@
 - `index.html` — the entire web app (HTML + CSS + JS in one file, including the inlined "How It Works" overlay and the inlined privacy section opened from Settings). ~15k lines, ES5-style inline JS; `render()` rebuilds `#screen`, `paintRunner()` the runner overlay.
 - `build.txt` — the current `<meta build>` stamp on its own line. The native shell polls this 12-byte file to learn whether a newer page exists before downloading the whole page. `verify.sh` keeps it in sync with `index.html`; stage it with every `index.html` commit.
 - `assets/fonts/` — bundled web fonts (Inter, JetBrains Mono, Anton, Archivo; latin + latin-ext woff2). `build:web` copies the folder into `www/`; every `@font-face` also carries a network fallback src so an OTA'd page on an old bundle still gets the real face.
-- `sw.js` — service worker for offline/PWA support (precaches the fonts; bump `CACHE` when the list changes)
+- `sw.js` — service worker for offline/PWA support (precaches the fonts; bump `CACHE` when the list changes). Its first install ends in `skipWaiting()` + `clients.claim()`; the page reloads for a new worker only when one takes over from the worker its document started under (`_swFirst`, read as the script runs, never at load: spec 134)
 - `manifest.json` — PWA manifest (paper colours to match the default look)
 - `privacy.html` — standalone privacy policy (linked from App Store; also rendered inline in Settings)
 - `ios/` — Capacitor iOS shell. Custom Swift plugins live in `ios/App/CapApp-SPM/Sources/CapApp-SPM/` (auto-included by SPM; no registration beyond `SuperoViewController.capacitorDidLoad` in `ios/App/App/AppDelegate.swift`):
