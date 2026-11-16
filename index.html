@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20261115-5"/>
+<meta name="build" content="20261115-6"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -10021,13 +10021,16 @@ function _photoLeave(img, quiet){
 // paint off the chat is the owner leaving it. The page going to the background changes no route: leaving the app with
 // the chat up keeps it the place to come back to.
 var _photoWatchT=null;
+// The chat on screen, as renderCoach draws it (and _fpWant asks for the native one): the Coach tab with a key, on the
+// chat or in setup, whose chat shows whatever coachView says (a setup chat taken over at a reload keeps the hub's view).
+function _photoChatOn(){ return currentTab==='coach' && !!getApiKey() && (coachView==='chat' || !!intakeMode); }
 function _photoWatch(){
   if(_photoWatchT || !pendingImage || !pendingImage.at) return;
   _photoWatchT=setTimeout(function(){
     _photoWatchT=null;
     var img=pendingImage;
     if(!img || !img.at) return;
-    if(currentTab==='coach' && coachView==='chat'){
+    if(_photoChatOn()){
       if(document.visibilityState!=='hidden') img.back=0;
       if(!img.on){ img.on=1; var m=_photoMarkRead(); if(m && m.at===img.at && m.left && !m.gone) _photoMark({n:m.n, at:m.at, left:0}); }
       return;
@@ -10115,7 +10118,7 @@ function _photoBackOpen(b, took){
   try{
     var m=_photoMarkRead(), age=Date.now()-b.at, mins=Math.floor(Math.max(0, age)/60000), head='photo: back from '+mins+' min'+(b.how || '');
     var why=took ? 'a new share' : !pendingImage ? 'sent or removed' : pendingImage!==b.img ? 'another photo'
-      : (currentTab==='coach' && coachView==='chat') ? 'on screen' : _photoAsked ? 'asked elsewhere'
+      : _photoChatOn() ? 'on screen' : _photoAsked ? 'asked elsewhere'
       : (m && m.at===b.at && m.left) ? 'left earlier' : age>=30*60000 ? 'over 30 min' : '';
     if(!why && document.visibilityState==='hidden'){
       _photoBack=b;

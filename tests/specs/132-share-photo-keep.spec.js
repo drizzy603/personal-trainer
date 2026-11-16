@@ -74,6 +74,10 @@
 //   and build 60's overlay chat taken down during a restart: the kept share comes back with its chat shut, counted as
 //   left, nothing presented again; with nothing moved (the take-over) nothing counts, and a chat the shell no longer
 //   offers (the policy turned it off during the restart) opens as the web chat.
+// - (l) Setup's chat is the chat on screen whatever coachView says (web 20261115-6; renderCoach draws it so): a setup
+//   chat taken over at a reload has the kept share back in it, already on screen, nothing presented, the view left as
+//   setup keeps it; a photo that came back with its chat shut is the composer's photo once setup's chat shows it, and
+//   leaving that chat counts as leaving it.
 // Every native boot names its shell (the mark above): FP_SHELL_INERT runs skip this spec.
 const { boot, assert, run } = require('../lib/harness');
 
@@ -1595,4 +1599,53 @@ serial('(k) build 60\'s overlay chat taken down while the WebContent restarted (
       noErrors(app);
     } finally { await app.close(); }
   }
+});
+
+// ── (l) setup's chat is the chat on screen ──────────────────────────────────────────────────────────────────────────
+const SETUP = "localStorage.removeItem('kt_routine'); localStorage.setItem('kt_intake','1');";
+serial('(l) a setup chat taken over at a reload is the chat on screen: the kept share comes back into it, already on screen, nothing presented again, the view left as setup keeps it (tabs, coach61)', async () => {
+  for (const shell of ['tabs', 'coach61']) {
+    const app = await pageBoot(shell, { init: SETUP });
+    try {
+      await ready(app, true);
+      await share(app, PHOTO, WORDS);
+      await app.page.waitForFunction(() => window.__fpShell.state().scene.pushed === true, null, { timeout: 15000 });
+      await ev(app, () => sessionStorage.setItem('__next', JSON.stringify({ gate: true })));
+      await app.reload();   // the setup chat taken over, the read held until then
+      await app.page.waitForFunction(() => window._fp && _fp.hello && _fp.shown.coach, null, { timeout: 15000 });
+      const before = await ev(app, () => ({ intake: !!intakeMode, view: coachView }));   // the take-over's (setup keeps the new document's view)
+      await ev(app, () => __idbRelease());
+      await waitLine(app, '/^photo: back from 0 min/.test(l)', 'the photo back');
+      await settle(app, 400);
+      const m = await look(app), opens = await kOpens(app), st = await ev(app, () => ({ intake: !!intakeMode, view: coachView, asked: _photoAsked }));
+      assert(before.intake && st.intake && st.view === before.view && st.asked === 0 && m.img === PHOTO && m.back === 0 && opens === 0 && m.chats === 0
+        && m.log.indexOf('photo: back from 0 min, chat already on screen') >= 0,
+        shell + ': the photo back in the setup chat, already on screen, nothing presented, the view kept: ' + J(Object.assign({ before, st, opens }, m, { img: !!m.img, kept: !!m.kept, log: m.log.slice(0, 6) })));
+      clean(m.log);
+      noErrors(app);
+    } finally { await app.close(); }
+  }
+});
+
+serial('(l) a share kept over 30 minutes comes back with its chat shut; once setup\'s chat shows it, it is the composer\'s photo, and leaving that chat counts as leaving it (none)', async () => {
+  const app = await pageBoot('none', { init: SETUP });
+  try {
+    await ready(app, false);
+    await ev(app, (r) => __plant(r), { data: PHOTO, mediaType: 'image/jpeg', at: Date.now() - 40 * MIN, src: 'share' });
+    await relaunch(app);
+    await waitLine(app, '/^photo: back from 40 min$/.test(l)', 'the photo back');
+    await settle(app, 100);
+    const shut = await look(app);
+    assert(shut.img === PHOTO && shut.back === 1 && shut.tab !== 'coach', 'back with its chat shut, not yet seen: ' + J({ back: shut.back, tab: shut.tab }));
+    await ev(app, () => switchTab('coach'));
+    await settle(app, 150);
+    const seen = await look(app), st = await ev(app, () => ({ intake: !!intakeMode, view: coachView }));
+    assert(st.intake && seen.tab === 'coach' && seen.photo && seen.back === 0, 'setup\'s chat shows the photo: the composer\'s photo now: ' + J(Object.assign({ st }, { back: seen.back, photo: seen.photo, tab: seen.tab, view: seen.view })));
+    await ev(app, () => switchTab('log'));
+    await settle(app, 150);
+    const left = await look(app);
+    assert(left.mark && left.mark.left === 1 && left.img === PHOTO, 'leaving setup\'s chat counts as leaving it: ' + J({ mark: left.mark, img: !!left.img }));
+    clean(left.log);
+    noErrors(app);
+  } finally { await app.close(); }
 });
