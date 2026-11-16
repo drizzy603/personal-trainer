@@ -1072,7 +1072,8 @@ final class CoachHomeViewTests: XCTestCase {
                     "ATHLETE\u{2019}S/RUNNER", "x\u{2013}!y z\u{2014}(w)"]
         let view = WKWebView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
         view.loadHTMLString("<!doctype html><html lang=\"en\"><body></body></html>", baseURL: URL(string: "https://fp.test/"))
-        let deadline = Date().addingTimeInterval(10)
+        // 60 s, as ShellBridgeTests' loadWait: 10 s ran out on a GitHub runner (15 Nov); the wait ends when the page is up
+        let deadline = Date().addingTimeInterval(60)
         while true {
             if !view.isLoading, (try? await view.evaluateJavaScript("document.readyState")) as? String == "complete" { break }
             guard Date() < deadline else { return XCTFail("the probe page did not load") }

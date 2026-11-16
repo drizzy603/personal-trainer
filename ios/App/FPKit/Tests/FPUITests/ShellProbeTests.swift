@@ -420,7 +420,8 @@ final class ShellProbeTests: XCTestCase {
             </script></body></html>
             """
         wv.loadHTMLString(html, baseURL: URL(string: "https://fp.test/"))
-        let deadline = Date().addingTimeInterval(10)
+        // 60 s, as ShellBridgeTests' loadWait: 10 s ran out on a GitHub runner (15 Nov); the wait ends when the page is up
+        let deadline = Date().addingTimeInterval(60)
         while (try? await wv.evaluateJavaScript("window.__ready === true")) as? Bool != true {
             guard Date() < deadline else { return XCTFail("the stand-in page did not load") }
             try await Task.sleep(nanoseconds: 50_000_000)

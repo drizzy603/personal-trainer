@@ -49,12 +49,18 @@ final class PageLinkTests: XCTestCase {
         webView = nil
     }
 
+    /// How long the stand-in page gets to load (ShellBridgeTests' loadWait: 10 s ran out on a loaded Mac and on a
+    /// GitHub runner). The wait ends when the page is up, so the length costs a passing run nothing.
+    private static let loadWait: TimeInterval = 60
+
     /// Loads the stand-in page as a new document (the one before it, if any, is marked, so its FPScreens is not taken for
-    /// the new one's).
-    private func load() async throws {
+    /// the new one's). `started` runs once the load is asked for, before it ends: the new document's start, which
+    /// ShellBridge's document-start script reports, comes long before the page is up.
+    private func load(started: (() -> Void)? = nil) async throws {
         _ = try? await webView.evaluateJavaScript("window.__fpOld = true; 0")
         webView.loadHTMLString(Self.page, baseURL: URL(string: "https://fp.test/"))
-        let deadline = Date().addingTimeInterval(10)
+        started?()
+        let deadline = Date().addingTimeInterval(Self.loadWait)
         while Date() < deadline {
             try await Task.sleep(nanoseconds: 50_000_000)
             let ready = "typeof window.FPScreens === 'object' && typeof window.__fpOld === 'undefined'"
@@ -190,8 +196,9 @@ final class PageLinkTests: XCTestCase {
         try await Task.sleep(nanoseconds: 150_000_000)
         let before = await got()
         XCTAssertEqual(before, ["coach.stop"], "it is in the page")
-        try await load()
-        link.setBoot(nil)   // the new document started (its hello is awaited)
+        // the new document's start ends it, as ShellBridge's document-start script does, before the page is up: told only
+        // once the whole load had ended, a GitHub runner's slow load let the intent's 2 s timeout run first (15 Nov)
+        try await load { self.link.setBoot(nil) }   // the new document started (its hello is awaited)
         XCTAssertEqual(outcomes, [.documentGone], "a reload is no failure of the bridge")
         link.setBoot("b2")
         try await Task.sleep(nanoseconds: 2_500_000_000)   // past the old intent's timeout
