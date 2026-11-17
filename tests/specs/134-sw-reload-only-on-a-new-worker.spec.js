@@ -1,16 +1,22 @@
 // 134: the PWA reloads for a new service worker only when one replaces the worker the document started under
-// (web 20261115-5). The page read "was a worker in charge?" at its load event, and sw.js's first install ends in
-// clients.claim(): a document the network served (no worker yet) that the claim reached while it loaded read as one a
-// worker already controlled, and the claim's controllerchange, dispatched in a later task, then reloaded it. A test's
-// page did that mid-case on a loaded machine (spec 108 M26: "Execution context was destroyed ... navigation", once in
-// publish.sh's run of e0efbcb and once in CI's inert61 shard of eea0161, 15 Nov); an owner's first visit could bounce.
-// The page reads the worker as its script runs and reloads only when another one takes over from it.
-// - The race as it happened: the controller appears as the page loads (an init script's load listener, which runs
-//   before the page's own, stands for the claim) and its controllerchange comes after the page's load handler: no reload.
-// - A document that started under the worker: a late controllerchange that leaves the same worker in charge never
-//   reloads; another worker taking over reloads (the update path, unchanged).
-// - A document the network served sees the first install's real claim (sw.js precaches, skips waiting, claims): no
-//   reload.
+// (web 20261115-5).
+// The page used to read "was a worker in charge?" inside its load handler and reload on any later controllerchange.
+// A first install ends in clients.claim(): when the claim lands between that read and its controllerchange, the old
+// page reloaded itself. Real trials of the old page as a PWA (a first install, then a reload 0 to 1 ms later):
+// WebKit, the iPhone PWA's engine, gave that order in 5 of 252; Chromium in 0 of 120 (there the event comes before
+// the load, or the reloaded document starts under the worker). So the rule protects a first visit in WebKit.
+// What this spec is NOT: the cure for spec 108 M26's random failure, as its first header said. M26 runs in Chromium
+// and fails the same way with service workers blocked: its evaluate lost its result to the inspector of Playwright's
+// Chromium (spec 108, the comment in M26). What the rule says:
+// - a controllerchange that leaves the same worker in charge reloads nothing (the old code reloaded on any such event
+//   once it had seen a worker at load);
+// - another worker taking over from the one the document started under reloads it (the update path);
+// - a document that started with no worker (a first visit, a forced reload) never reloads, whatever claims it later,
+//   a second worker included: it meets the new page at its next start;
+// - the first install's real claim (sw.js precaches, skips waiting, claims) reloads nothing.
+// The first two cases use a stand-in for the worker (a controller defined on the container, a synthetic
+// controllerchange) in Chromium, which does not produce the first case's order by itself: they hold the rule's
+// logic, not a browser's timing.
 const { boot, assert, run } = require('../lib/harness');
 
 // The worker each document started under, read at document start (before the page's scripts), and whether one is in
@@ -36,7 +42,7 @@ async function underTheWorker(app) {
     same: typeof _swFirst === 'undefined' ? null : navigator.serviceWorker.controller === _swFirst }));
 }
 
-run('the first install\'s claim landing as the page loads, its controllerchange after the page\'s load handler: no reload', async () => {
+run('a document that started with no worker (stand-in: a controller there by load, its controllerchange after the page\'s load handler): no reload, and none when a second worker takes over later', async () => {
   // the init script's load listener runs before the page's: the controller is there when the page's handler reads it
   const init = "addEventListener('load', function(){ var w={ scriptURL:'sw.js#claimed' }; Object.defineProperty(navigator.serviceWorker, 'controller', { configurable:true, get:function(){ return w; } }); window.__claimedAtLoad = true; });";
   const app = await boot({ init: START + init });
@@ -50,6 +56,12 @@ run('the first install\'s claim landing as the page loads, its controllerchange 
     await app.page.waitForTimeout(600);
     const still = await app.page.evaluate(() => window.__still === 1);
     assert(n.count === 0 && still, 'the late controllerchange reloads nothing: ' + J({ navs: n.count, still }));
+    // a second worker takes over from the one that claimed this document: still no reload (it started with none)
+    await app.page.evaluate(OTHER);
+    await change(app);
+    await app.page.waitForTimeout(600);
+    const still2 = await app.page.evaluate(() => window.__still === 1);
+    assert(n.count === 0 && still2, 'a second worker later reloads nothing either: ' + J({ navs: n.count, still2 }));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join(' | '));
   } finally { await app.close(); }
 });

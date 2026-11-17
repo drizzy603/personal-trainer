@@ -332,6 +332,19 @@ run('M26: the welcome-back check measures from the last visit, at launch and on 
           setNextRound('today');
           r.round = { cycle: getCustomRoutine().cycle, week: currentWeek, lapse: lapsePending, banner: /WELCOME BACK/.test(txt()) };
         }
+        // A task boundary before the last line. In Playwright 1.61's Chromium 149 the inspector holds an awaited
+        // evaluate's promise only weakly: a garbage collection after that promise is fulfilled and before the
+        // inspector's own handler answers "Promise was collected", which Playwright words "Execution context was
+        // destroyed, most likely because of a navigation". The round swap drops the coach card; the card's
+        // then-callback (fetchCoachCard(...).then(... render()), loadCoachCardForToday) renders again after this
+        // function's last line, and the _fieldFloor observer's callback for that render ran in that gap. This case
+        // lost its result so in 3 of 222 runs (and in three suite runs on 15 Nov 2026: a local gate, publish.sh's,
+        // CI's inert61 shard), the page never navigating and the function at its last line. With the wait, that
+        // render and its observer run before the last line and nothing of the page's is left for the gap (0 of 994
+        // runs lost); a collection put there by other means would still lose the result, so this is a stopgap: fixed
+        // in V8 15.2 (5177b10891, "hold on to promises"), and the line goes with a Playwright whose Chromium is 152 or
+        // later. For a longer chain of microtasks an await alone is no boundary; a timer is.
+        await wait(0);
         return r;
       }, { LOGS, VIS, M, resident });
       const tag = resident ? 'resident' : 'relaunched';

@@ -89,6 +89,13 @@
 //   its place (web 20261117-1; 20261115-6 asked for a key and never counted the leave): the owner who goes to Log has
 //   left it, and the next launches within the 30 minutes leave them on Log (none, coach61, tabs at a relaunch and at a
 //   reload).
+// - (n) A photo is in front of the owner only once a chat has drawn it (web 20261117-2). With no key the connect
+//   screen stands where its chat would be and shows no photo: a photo shared then, or put back then, stays back, so
+//   once a key is connected somewhere else (Settings) the app's own prompt (a Today card's action) goes without it and
+//   past the share's words, which stay in the box beside it; the chat that prompt opens shows it, and from there it is
+//   the composer's photo (none, inert61, tabsWeb; a fresh share and a kept one). Before, the place cleared back by
+//   itself and the prompt carried a photo no frame had shown. The same when the kept share's turn finds its place
+//   already on screen (a tool's route into the chat view): one place clears back, _photoWatch, and only with a key.
 // Every native boot names its shell (the mark above): FP_SHELL_INERT runs skip this spec.
 const { boot, assert, run } = require('../lib/harness');
 
@@ -1833,6 +1840,102 @@ serial('(m) a share with no key lands on the Coach tab\'s connect screen; the ow
         assert(r.img && r.tab === 'log' && r.chats === 0 && r.back === 1 && r.log.indexOf('photo: back from 0 min, chat not opened (left earlier)') >= 0,
           tag + 'launch ' + k + ' leaves the owner on Log, the photo back with its chat shut: ' + J(r));
       }
+      noErrors(app);
+    } finally { await app.close(); }
+  }
+});
+
+// ── (n) a photo is in front of the owner only once a chat has drawn it ─────────────────────────────────────────────
+// Frames in which the composer's photo row was in #screen (what a paint would have shown), counted from document start.
+const N_FRAMES = "window.__photoFrames = 0; (function loop(){ try { if (document.querySelector('#screen img[alt=\"Photo to send\"]')) window.__photoFrames++; } catch (e) {} requestAnimationFrame(loop); })();";
+// The key connected in Settings > AI Coach (the field, Save), away from the Coach tab.
+const nConnect = async (app, shell) => {
+  await mGo(app, shell, 'settings');
+  const ok = await ev(app, () => { const el = document.getElementById('settingsApiKeyInput'); if (!el) return false; el.value = 'sk-ant-connected-in-settings'; saveApiKeyFromSettings(); return !!getApiKey(); });
+  await settle(app, 250);
+  return ok;
+};
+// A Today card's action, as the (a) cases call it: what the API got, and what stands after.
+const nCard = (app) => ev(app, async () => {
+  const n = __turns.length, f0 = window.__photoFrames;
+  coachCardAction('Swap in dips');
+  for (let i = 0; i < 250 && (coachLoading || __turns.length === n); i++) await __w(20);
+  await __w(80);
+  const t = __turns[__turns.length - 1] || '';
+  return { sent: __turns.length > n, image: t.indexOf('"type":"image"') >= 0, pending: !!pendingImage, back: pendingImage ? pendingImage.back : null,
+    framesBefore: f0, preview: !!document.querySelector('#screen img[alt="Photo to send"]'), tab: currentTab, view: coachView, kept: !!(await __idb('get')), mark: __mark(),
+    box: (document.getElementById('coach-input') || {}).value };
+});
+serial('(n) with no key the connect screen shows no photo, so a photo shared or put back there stays unseen (back): the key connected in Settings, then a Today card\'s action goes without it and leaves its words in the box, and the chat that prompt opens makes it the composer\'s photo (none, inert61, tabsWeb; a fresh share and a kept one)', async () => {
+  for (const shell of ['none', 'inert61', 'tabsWeb']) {
+    for (const origin of ['fresh', 'kept']) {
+      const tag = shell + ', ' + origin + ': ';
+      const app = await pageBoot(shell, { init: "localStorage.removeItem('kt_apikey');" + N_FRAMES });
+      try {
+        await ready(app, shell !== 'none');
+        if (origin === 'kept') {
+          await ev(app, (r) => __plant(r), { data: PHOTO, mediaType: 'image/jpeg', at: Date.now() - 2 * MIN, src: 'share', words: WORDS });
+          await relaunch(app);
+          await waitLine(app, '/^photo: back from 2 min, chat opened$/.test(l)', 'the photo back at its place');
+          await ready(app, shell !== 'none');
+        } else await share(app, PHOTO, WORDS);
+        await settle(app, 400);
+        const s1 = await mSee(app), f1 = await ev(app, () => window.__photoFrames);
+        assert(!s1.key && s1.img && s1.tab === 'coach' && s1.view === 'chat' && s1.connect && !s1.chat && f1 === 0 && s1.on === 1 && s1.back === 1,
+          tag + 'at its place stands the connect screen, no frame showed the photo: still back: ' + J(Object.assign({ frames: f1 }, s1)));
+        assert(await nConnect(app, shell), tag + 'the key connected in Settings');
+        await mGo(app, shell, 'log');
+        const s2 = await mSee(app), f2 = await ev(app, () => window.__photoFrames);
+        assert(s2.key && s2.tab === 'log' && s2.back === 1 && f2 === 0, tag + 'on Log with a key, the photo never shown, still back: ' + J(Object.assign({ frames: f2 }, s2)));
+        const r = await nCard(app);
+        assert(r.sent && !r.image && r.pending && r.kept && r.framesBefore === 0, tag + 'the card\'s prompt went without the photo, which stays pending and kept: ' + J(r));
+        await settle(app, 250);
+        const s3 = await mSee(app), box = await ev(app, () => (document.getElementById('coach-input') || {}).value);
+        assert(s3.tab === 'coach' && s3.chat && s3.back === 0 && await ev(app, () => !!document.querySelector('#screen img[alt="Photo to send"]')),
+          tag + 'the chat the prompt opened shows it: the composer\'s photo from here: ' + J(s3));
+        assert(box === WORDS, tag + 'the share\'s words still wait in the box beside their photo: ' + J({ box, atSend: r.box }));
+        noErrors(app);
+      } finally { await app.close(); }
+    }
+  }
+});
+serial('(n) under the native chat the app\'s own prompt does not take the page\'s pending photo (it never did): a kept share with no key, the key in Settings, a Today card\'s action (tabs, coach61)', async () => {
+  for (const shell of ['tabs', 'coach61']) {
+    const app = await pageBoot(shell, { init: "localStorage.removeItem('kt_apikey');" + N_FRAMES });
+    try {
+      await ready(app, true);
+      await ev(app, (r) => __plant(r), { data: PHOTO, mediaType: 'image/jpeg', at: Date.now() - 2 * MIN, src: 'share', words: WORDS });
+      await relaunch(app);
+      await waitLine(app, '/^photo: back from 2 min/.test(l)', 'the photo back');
+      await ready(app, true);
+      await settle(app, 400);
+      assert(await nConnect(app, shell), shell + ': the key connected in Settings');
+      await ev(app, async (native) => { if (native && window.__fpShell.state().live) await __fpShell.tap('log'); else switchTab('log'); }, shell === 'tabs');
+      await settle(app, 200);
+      const r = await nCard(app);
+      assert(r.sent && !r.image && r.pending, shell + ': the prompt went without the page\'s pending photo: ' + J(r));
+      noErrors(app);
+    } finally { await app.close(); }
+  }
+});
+serial('(n) the kept share\'s turn finds its place already on screen with no key (a tool\'s route into the chat view): the connect screen stands there, back stays, and the card\'s prompt after a key goes without the photo (none, tabs)', async () => {
+  for (const shell of ['none', 'tabs']) {
+    const app = await pageBoot(shell, { init: "localStorage.removeItem('kt_apikey');" + N_FRAMES });
+    try {
+      await ready(app, shell !== 'none');
+      await ev(app, (r) => __plant(r), { data: PHOTO, mediaType: 'image/jpeg', at: Date.now() - 2 * MIN, src: 'share', words: WORDS });
+      await ev(app, () => localStorage.setItem('kt_dev_nav', 'coach/chat'));
+      await relaunch(app);
+      await waitLine(app, '/^photo: back from 2 min, chat already on screen$/.test(l)', 'the turn finding its place on screen');
+      await ready(app, shell !== 'none');
+      await settle(app, 400);
+      const s1 = await mSee(app), f1 = await ev(app, () => window.__photoFrames);
+      assert(!s1.key && s1.tab === 'coach' && s1.view === 'chat' && s1.connect && !s1.chat && f1 === 0 && s1.back === 1,
+        shell + ': the connect screen stands at the place, no frame showed the photo, still back: ' + J(Object.assign({ frames: f1 }, s1)));
+      assert(await nConnect(app, shell), shell + ': the key connected in Settings');
+      await mGo(app, shell, 'log');
+      const r = await nCard(app);
+      assert(r.sent && !r.image && r.pending, shell + ': the card\'s prompt went without the photo: ' + J(r));
       noErrors(app);
     } finally { await app.close(); }
   }

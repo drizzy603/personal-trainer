@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20261117-1"/>
+<meta name="build" content="20261117-2"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -10017,7 +10017,8 @@ function _photoLeave(img, quiet){
 }
 // render() calls it. Once the task's paints are done (a way into the chat passes the hub in the same task), the chat on
 // screen with a kept photo marks it there (on: the marker's left turns 0, the chat is the owner's place again; back
-// goes once the page is seen, so the app's own prompts take the photo as any other the composer shows), and a later
+// goes once the page is seen with a key, the one place it does: only then has a chat drawn the photo, and the app's
+// own prompts take it as any other the composer shows), and a later
 // paint off the chat is the owner leaving it. The page going to the background changes no route: leaving the app with
 // the chat up keeps it the place to come back to.
 var _photoWatchT=null;
@@ -10034,7 +10035,8 @@ function _photoWatch(){
     var img=pendingImage;
     if(!img || !img.at) return;
     if(_photoChatOn()){
-      if(document.visibilityState!=='hidden') img.back=0;
+      // in front of the owner only where a chat draws it: with no key the connect screen stands at this place
+      if(document.visibilityState!=='hidden' && getApiKey()) img.back=0;
       if(!img.on){ img.on=1; var m=_photoMarkRead(); if(m && m.at===img.at && m.left && !m.gone) _photoMark({n:m.n, at:m.at, left:0}); }
       return;
     }
@@ -10129,7 +10131,6 @@ function _photoBackOpen(b, took){
       return;
     }
     if(why==='on screen'){
-      if(document.visibilityState!=='hidden') b.img.back=0;
       _wchLog(head+', chat already on screen');
       return;
     }
@@ -10144,8 +10145,7 @@ function _photoBackOpen(b, took){
     // handed-over words that took the share's in come back at boot (the key follows the box): the draft would go in
     // beside them a second time (_restoreCoachDraft), so the composer the chat opens on is asked first
     if(b.words && !_fpWant('coach') && _fpPutBack(_coachDraft && _coachDraft.v, _fpHandover()).indexOf(String(b.words).trim())<0) coachPrefill(b.words);
-    pendingImage.back=0;   // the owner lands on it: from here it is the composer's photo as any other
-    render();
+    render();   // its paint's _photoWatch makes it the composer's photo as any other, where a chat with a key draws it
     _wchLog(head+', chat opened');
   }catch(e){}
 }
@@ -10175,6 +10175,9 @@ async function checkPendingShare(){
       var b64=String(r.imageBase64), words=r.comment ? String(r.comment) : '';
       _wchLog('share: read '+Math.round(b64.length*3/4/1024)+' KB, words '+_chars(words).length+' chars, page '+(document.visibilityState==='hidden' ? 'hidden' : 'visible'));
       pendingImage = {data: b64, mediaType: 'image/jpeg', previewUrl: 'data:image/jpeg;base64,'+b64};
+      // with no key the share lands on the connect screen, which shows no photo: not yet in front of the owner (back),
+      // so the app's own prompts leave it be until a chat has drawn it (_photoWatch), as a photo put back at boot
+      if(!getApiKey()) pendingImage.back=1;
       _photoSeq++; _photoKeep('share', words);
       // Through the tab switch: it leaves COMPARE and closes the day sheet (either sat over the
       // chat, with its Delete buttons mid-screen) and lights the Coach tab. Then the chat itself.
@@ -21402,7 +21405,7 @@ function _coachTurnRun(errNote){
   });
 }
 // The web composer's Send: what the box holds (and the photo it shows), through coachSend. o.keepPhoto (the app's own
-// prompt, _coachAsk, over a photo put back with its chat shut): the words go and the photo stays in the composer.
+// prompt, _coachAsk, over a photo no chat has drawn yet: back): the words go and the photo stays in the composer.
 async function sendCoachMessage(o){
   var inp=document.getElementById('coach-input');
   if(!inp)return;
@@ -21441,16 +21444,22 @@ function sendCoachChip(txt){
 // While the box holds words the native composer handed over (_fpBoxHeld) the prompt never goes
 // through it: sent as Send would send it (the photo it shows included), or during a reply put in
 // front of those words as a native composer takes a page draft (coachPrefill).
-// A photo put back from an earlier launch with its chat left shut (pendingImage.back, _photoRestore) has not been in
-// front of the owner: the prompt goes without it, and it stays in the composer for the owner's own Send.
+// A photo put back from an earlier launch with its chat left shut (pendingImage.back, _photoRestore), or shared or put
+// back while no key was connected (the connect screen stood where its chat would be), has not been in front of the
+// owner: the prompt goes without it, and it stays in the composer for the owner's own Send, with the words that wait
+// in the box beside it (a share's): the prompt goes past them straight to coachSend, as past handed-over words
+// (through the box it replaced them, and the photo was left without its question). That holds for this one prompt:
+// the chat it opens draws the photo, and from then a later prompt takes the photo and the box as for any photo the
+// composer shows; and while a reply is in flight the prompt still goes into the box, as it always did.
 // {ok}: whether the question went now.
 var _coachWaiting=null;   // {text, seed, stamp}: the app's prompt the next send of exactly those words takes up
 function _coachAsk(text, o){
   o=(o && typeof o==='object') ? o : {};
   var t=String(text==null?'':text), inp=document.getElementById('coach-input'), n0=_coachSentN;
   var unseen=!!(pendingImage && pendingImage.back);
+  var own=unseen && !!inp && !coachLoading && !!String(inp.value==null ? '' : inp.value).trim() && String(inp.value).trim()!==t.trim();
   _coachWaiting={text:t.trim(), seed:o.seed ? String(o.seed) : null, stamp:Array.isArray(o.stamp) ? o.stamp : null};
-  if(inp && _fpBoxHeld(inp, t)){ if(!coachLoading) coachSend(t, {seed:o.seed, usePending:!unseen}); else coachPrefill(t); }
+  if(inp && (own || _fpBoxHeld(inp, t))){ if(!coachLoading) coachSend(t, {seed:o.seed, usePending:!unseen}); else coachPrefill(t); }
   else if(inp){ inp.value=t; sendCoachMessage({seed:o.seed, keepPhoto:unseen}); }
   else if(!coachLoading) coachSend(t, o);
   else coachPrefill(t);
@@ -24127,10 +24136,12 @@ function deleteCustomEx(name){
 // machinery, which surfaces a notifications permission prompt at boot.
 if('serviceWorker' in navigator && !(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform())) {
   // The worker this document started under, read as the script runs: only another one taking over from it means a new
-  // worker replaced it → reload. A document the network served (no worker yet: the first install) never reloads. Read
-  // at load, a first install's clients.claim() landing while the page loaded looked like a worker already in charge, and
-  // its controllerchange, dispatched in a later task, reloaded the page (a test's page, mid-case, on a loaded machine:
-  // spec 108 M26, 15 Nov).
+  // worker replaced it → reload. A document the network served (no worker yet: a first visit, a forced reload) never
+  // reloads, whatever claims it later; it meets the new page at its next start. Read at load, as before web
+  // 20261115-5, a first install's claim could land between that read and its controllerchange, and the page reloaded
+  // itself: seen in WebKit (5 of 252 trials), the iPhone PWA's engine, not in Chromium (0 of 120). (The rule also went
+  // out as the cure for a test that failed at random, spec 108 M26. That it was not: M26 runs in Chromium and fails
+  // with service workers blocked too; it lost its result to the browser's inspector, see the case's own comment.)
   var _swFirst = navigator.serviceWorker.controller || null;
   window.addEventListener('load', function(){
     // Reload only when nothing would be lost: not mid-workout, not while
