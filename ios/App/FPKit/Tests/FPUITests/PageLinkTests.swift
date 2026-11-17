@@ -175,7 +175,8 @@ final class PageLinkTests: XCTestCase {
         var outcomes: [String] = []
         link.send(.coachKeep(id: "800")) { outcomes.append("keep " + $0.word) }                                       // in the page
         link.send(.coachSend(text: "x", image: nil, usePending: nil, nonce: "old")) { outcomes.append("send " + $0.word) }   // queued
-        try await Task.sleep(nanoseconds: 100_000_000)
+        // in the turn of the sends (no sleep between: after one of 100 ms, a case stalled for 0.7 s found the keep
+        // answered at its 800 ms and the queued send gone into the page): the keep is sent, as the read below shows
         link.setBoot(nil)   // the document started over (its hello is awaited)
         XCTAssertEqual(outcomes, ["keep gone", "send gone"])
         link.setBoot("b2")
@@ -188,13 +189,24 @@ final class PageLinkTests: XCTestCase {
         XCTAssertEqual(link.records.filter { $0.key == "old" }.map(\.sent), [false])
     }
 
-    /// A new document (a reload) with an intent in the page: WebKit never answers it, and the new document's start (which
-    /// ShellBridge sees through its document-start script) ends it as gone: no failure of the bridge, never resent.
+    /// A new document (a reload) with an intent in the page: the new document's start (which ShellBridge sees through its
+    /// document-start script, here `setBoot(nil)` as the reload is asked for) ends it as gone, no failure of the bridge;
+    /// the navigation that follows adds no second outcome (the old timer is cancelled, a late answer dropped) and the new
+    /// document never gets it. What this case does not reach: PageLink's own reading of a navigation under an intent
+    /// (`answered`'s failure branch and the suspects' grace: the simulator's wckill scenario; `timedOut`'s isLoading
+    /// branch: ShellBridgeTests.testALostPingLetsTheNextHoldAskAgain).
     func testANewDocumentWithAnIntentInThePageEndsItAsGone() async throws {
         var outcomes: [PageLink.Outcome] = []
         link.send(.coachStop) { outcomes.append($0) }   // never answers
-        try await Task.sleep(nanoseconds: 150_000_000)
-        let before = await got()
+        // read at once, with no sleep first (the page runs the intent before a read asked for after it; a sleep of 150 ms
+        // that the machine stretched was time off the intent's 2 s, which must not run out before the reload is asked
+        // for), and again for at most a second only if the page did not have it yet
+        var before = await got()
+        let inPage = Date().addingTimeInterval(1)
+        while before.isEmpty, Date() < inPage {
+            try await Task.sleep(nanoseconds: 20_000_000)
+            before = await got()
+        }
         XCTAssertEqual(before, ["coach.stop"], "it is in the page")
         // the new document's start ends it, as ShellBridge's document-start script does, before the page is up: told only
         // once the whole load had ended, a GitHub runner's slow load let the intent's 2 s timeout run first (15 Nov)
@@ -220,7 +232,8 @@ final class PageLinkTests: XCTestCase {
             order.append("B " + o.word)
             self?.link.send(.coachKeep(id: "100")) { order.append("D " + $0.word); all.fulfill() }
         }
-        try await Task.sleep(nanoseconds: 50_000_000)
+        // in the turn of the sends (no sleep between: after one of 50 ms, a case stalled for a quarter second found A
+        // answered at its 300 ms and B in the page): A is sent, as the read at the end shows
         link.setBoot("b2")   // A (in the page) and B (queued) go with their document
         await fulfillment(of: [all], timeout: 5)
         // D answers in 100 ms and C in 200: D after C means D went into the page only once C had answered

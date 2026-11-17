@@ -85,6 +85,18 @@ final class ShellBridgeTests: XCTestCase {
         }
     }
 
+    /// What reached the stand-in page (`window.__got`), read every 30 ms until `ok` holds or `loadWait` has passed (the
+    /// last read either way: the case's own check says what is missing). The wait ends when the page has it, so the
+    /// length costs a passing run nothing.
+    private func pageGot(until ok: ([String]) -> Bool) async throws -> [String] {
+        let deadline = Date().addingTimeInterval(Self.loadWait)
+        while true {
+            let got = ((try? await webView.evaluateJavaScript("window.__got")) as? [String]) ?? []
+            if ok(got) || Date() > deadline { return got }
+            try await Task.sleep(nanoseconds: 30_000_000)
+        }
+    }
+
     /// The coach fixture as this boot's model JSON.
     private func modelJSON(boot: String, rev: Int) throws -> String {
         let url = CoachFixtures.coachDir.appendingPathComponent("heavyweight-chat.json")
@@ -162,8 +174,9 @@ final class ShellBridgeTests: XCTestCase {
         let down = Date().addingTimeInterval(4)
         while stand.shown.last != nil, Date() < down { try await Task.sleep(nanoseconds: 30_000_000) }
         XCTAssertNil(stand.shown.last, "down at once")
-        try await Task.sleep(nanoseconds: 300_000_000)
-        let got = ((try? await webView.evaluateJavaScript("window.__got")) as? [String]) ?? []
+        // polled: the link sends one intent at a time, so screens.off waits for the page's answer to what went before it
+        // (covered, sent in the present's turn), and a fixed 0.3 s was all a slow page had to answer that in
+        let got = try await pageGot { $0.contains("screens.off") }
         XCTAssertTrue(got.contains("screens.off"), "the page heard screens.off: \(got)")
         XCTAssertFalse(b.binding?.link.isLive("coach") ?? true, "off for the rest of the document")
         if case .success = await message(b, "present", ["screen": "coach"]) { XCTFail("a present after it is refused") }
@@ -212,9 +225,13 @@ final class ShellBridgeTests: XCTestCase {
         _ = try await message(b, "confirm", ["id": "c1.b1", "title": "Restore previous programme?", "confirm": "Restore"]).get()
         XCTAssertEqual(screens.openConfirm, "c1.b1")
         screens.coach.draft.text = "Lost in the reload"
+        // the link's own clock out of the way: the send the page never answers ends with its document, never on a timeout
+        // that a slow turn before the reload is asked for could let run first (2 s)
+        b.binding?.pageLink.timeoutScale = Self.noClock
         XCTAssertTrue(screens.coach.sendComposer(nonce: "n-reload"))
-        try await Task.sleep(nanoseconds: 300_000_000)
-        let inPage = ((try? await webView.evaluateJavaScript("window.__got")) as? [String]) ?? []
+        // polled: the send waits in the link for the page's answer to what went before it (covered, sent in the
+        // present's turn), and a fixed 0.3 s was all a slow page had to answer that in
+        let inPage = try await pageGot { $0.contains("coach.send:n-reload") }
         XCTAssertEqual(inPage.filter { $0.hasPrefix("coach.") }, ["coach.send:n-reload"], "in the page, unanswered: \(inPage)")
         // the reload: a new document under the chat
         try await loadReloadPage(marking: true)

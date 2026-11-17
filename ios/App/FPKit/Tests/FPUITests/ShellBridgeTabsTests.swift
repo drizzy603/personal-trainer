@@ -100,8 +100,12 @@ final class ShellBridgeTabsTests: XCTestCase {
 
     /// The stand-in page. `FPScreens.call` records `{name, args}` in `window.__got` and keeps the page's view of the
     /// selection (`__tab`, `__seq`: a `tabs.select` with a newer seq switches it, contract 4.3); it answers as
-    /// `window.__how[name]` says: `ok` (the default), `never`, `fail:<code>`, `refuse:<why>`, `late:<ms>`, or an array of
-    /// those taken one per call (then `ok`); `window.__silent` leaves every call unanswered. An unanswered call's promise
+    /// `window.__how[name]` says: `ok` (the default), `never`, `fail:<code>`, `refuse:<why>`, `late:<ms>`, `held`, or an
+    /// array of those taken one per call (then `ok`); `window.__silent` leaves every call unanswered. `held` answers when
+    /// the case says so and not before (`window.__release(name)` answers every call of that name the page holds, oldest
+    /// first, and says how many; `window.__held[name]` is what it holds): the late answer of a case that reads "not yet"
+    /// before it, on no clock (`late:<ms>` under such a read is a race with whatever stalls the case: CI's test12 on 17
+    /// Nov). An unanswered call's promise
     /// is kept in `window.__pending`: WebKit fails a call whose promise the page's garbage collector took ("Completion
     /// handler for function call is no longer reachable", a script error), where a page that does not answer must time
     /// out. `throw` throws (a script error); `window.__took` makes `screens.off` with a `draft` answer `took: true`, as
@@ -110,8 +114,14 @@ final class ShellBridgeTabsTests: XCTestCase {
     static let page = """
         <!doctype html><meta charset="utf-8"><title>fp</title><script>
         window.__got = []; window.__opened = []; window.__how = {}; window.__silent = false; window.__pending = []; window.__took = false;
-        window.__json = {};
+        window.__json = {}; window.__held = {};
         window.__never = function () { var p = new Promise(function () {}); window.__pending.push(p); return p; };
+        window.__release = function (name) {
+          var held = window.__held[name] || [];
+          window.__held[name] = [];
+          for (var i = 0; i < held.length; i++) held[i]();
+          return held.length;
+        };
         window.__tab = 'log'; window.__seq = 0;
         window.FPScreens = { v: 1, call: function (name, args) {
           args = args || {};
@@ -132,6 +142,13 @@ final class ShellBridgeTabsTests: XCTestCase {
           if (how.indexOf('late:') === 0) {
             var ms = Number(how.slice(5));
             return new Promise(function (resolve) { setTimeout(function () { resolve(reply); }, ms); });
+          }
+          if (how === 'held') {
+            var waiting = new Promise(function (resolve) {
+              (window.__held[name] = window.__held[name] || []).push(function () { resolve(reply); });
+            });
+            window.__pending.push(waiting);
+            return waiting;
           }
           return Promise.resolve(reply);
         } };
@@ -200,9 +217,12 @@ final class ShellBridgeTabsTests: XCTestCase {
 
     /// A scene as SceneDelegate builds it (H9), its page loaded and, unless `hello` is nil, linked with those screens.
     /// `flag`: the App's `window.__FP_SHELL` script goes in after the install, as `capacitorDidLoad` adds it. `room`: the
-    /// first frame's (the root's look before any TabsModel, contract 6.1).
+    /// first frame's (the root's look before any TabsModel, contract 6.1). `built` runs once the root is the window's,
+    /// before the page is asked for: a read there has no document's clock running under it (test 17's hello deadline
+    /// runs from the document's start, through however long the load takes).
     private func scene(first: String = "log", allowed: Bool = true, hello screens: [String]? = ShellBridgeTabsTests.all,
-                       bridge: ShellBridge? = nil, flag: Bool = false, room: Room = .heavyweight) async throws -> TabsScene {
+                       bridge: ShellBridge? = nil, flag: Bool = false, room: Room = .heavyweight,
+                       built: ((TabsScene) -> Void)? = nil) async throws -> TabsScene {
         let s = TabsScene(bridge: bridge ?? makeBridge())
         scenes.append(s)
         let launch = ShellLaunch(tabRootAllowed: allowed, first: first, barGuess: RootTabController.predicted(screen: s.window.bounds.size))
@@ -226,6 +246,7 @@ final class ShellBridgeTabsTests: XCTestCase {
             s.window.rootViewController = s.web
             s.window.makeKeyAndVisible()
         }
+        built?(s)
         try await load(s)
         if let screens { try await hello(s, screens) }
         return s
@@ -322,6 +343,20 @@ final class ShellBridgeTabsTests: XCTestCase {
 
     private static func jsString(_ s: String) -> String {
         String(decoding: try! JSONSerialization.data(withJSONObject: [s]), as: UTF8.self).dropFirst().dropLast().description
+    }
+
+    /// Waits until the page holds one `name` (`held`): it has the intent and has not answered it, and does not until
+    /// `release`. A "not yet" read after this races no answer, however long the machine stalls the case (with the
+    /// link's own clock out of the way: `noClock`).
+    private func pageHolds(_ s: TabsScene, _ name: String, file: StaticString = #filePath, line: UInt = #line) async throws {
+        let count = "(window.__held[\(Self.jsString(name))] || []).length"
+        try await expect("\(name) in the page, held", within: 15, file: file, line: line) { await self.js(s, count) as? Int == 1 }
+    }
+
+    /// The page answers the `name` it holds, now (`window.__release`): the case's own late answer.
+    private func release(_ s: TabsScene, _ name: String, file: StaticString = #filePath, line: UInt = #line) async {
+        let answered = await js(s, "window.__release(\(Self.jsString(name)))") as? Int
+        XCTAssertEqual(answered, 1, "the page held one \(name) to answer", file: file, line: line)
     }
 
     /// Polls every 20 ms until `ok` holds; false if it never did within `timeout` (times the CI factor).
@@ -1043,22 +1078,30 @@ final class ShellBridgeTabsTests: XCTestCase {
         let s = try await scene(first: "log")
         let b = try XCTUnwrap(s.binding)
         func counts() -> [Int] { [failures(s, "coach"), failures(s, "coachHome"), failures(s, "tabs")] }
+        // Each late answer below is the page's when the case says so (`held`, `release`), read against no clock, and the
+        // link's own clock is out of the way (`noClock`). As `late:1500` it had 1.5 s to be read before it came, and half
+        // a second before the link's 2 s timed it out instead (a held timeout: its ping's answer cleans every piece).
+        b.pageLink.timeoutScale = Self.noClock
         // covered fails on the way into the WAITING Coach tab (its tabs.select answers late)
         await setHow(s, "shell.covered", "fail:bad-args")
-        await setHow(s, "tabs.select", ["late:1500"])
+        await setHow(s, "tabs.select", ["held"])
         tap(s, "coach")
         try await expect("covered's failure counted, now \(counts())") { self.failures(s, "coach") == 1 }
+        try await pageHolds(s, "tabs.select")
         XCTAssertEqual(counts(), [1, 1, 1], "one failure for each live piece, while the tabs.select is still out")
+        await release(s, "tabs.select")
         try await expect("the late tabs.select answered") { b.pageLink.pending == 0 }
         XCTAssertEqual(counts(), [1, 1, 0], "the tabs.select's answer is the bar's success alone")
         // a tabs.select that fails (an error: no ping, its restate at once, answered late here)
         await setHow(s, "shell.covered", "ok")
-        await setHow(s, "tabs.select", ["ok", "fail:bad-args", "late:1500"])
+        await setHow(s, "tabs.select", ["ok", "fail:bad-args", "held"])
         tap(s, "log")   // covered off (answered: every live piece clean again), its tabs.select answered
         try await expect("covered off and the tabs.select answered, now \(counts())") { b.pageLink.pending == 0 && self.failures(s, "coach") == 0 }
         tap(s, "progress")
         try await expect("the tabs.select's failure counted, now \(counts())") { self.failures(s, "tabs") == 1 }
+        try await pageHolds(s, "tabs.select")   // the restate, in the page
         XCTAssertEqual(counts(), [0, 0, 1], "the bar alone")
+        await release(s, "tabs.select")
         try await expect("the restate answered") { b.pageLink.pending == 0 }
         let sel = await calls(s, "tabs.select")
         XCTAssertEqual(sel.suffix(2).map(\.tab), ["progress", "progress"], "the failed one, then the restate")
@@ -1170,16 +1213,26 @@ final class ShellBridgeTabsTests: XCTestCase {
         let s = try await scene(first: "log")
         let root = try XCTUnwrap(s.root)
         let b = try XCTUnwrap(s.binding)
-        b.pageLink.timeoutScale = 0.5   // 2 s -> 1 s: every "not yet" below has most of a second to spare
-        await setHow(s, "tabs.select", ["late:1000", "never"])
+        // No "not yet" below reads against a clock (a 1 s answer and a 1 s timeout, read 0.15 s in, were CI's two failures
+        // of 17 Nov: the runner stalled the case past both). The page holds the first tap's answer until the case has read
+        // (`held`, `release`), the second tap's `tabs.select` times out when the case says so, once the page has it
+        // (`timeOut`), and the link's own clock is out of the way (`noClock`). The 0.15 s stay as a lower bound.
+        b.pageLink.timeoutScale = Self.noClock
+        await setHow(s, "tabs.select", ["held", "never"])
         tap(s, "progress")
         XCTAssertEqual(s.posts, [], "nothing in the funnel's turn")
+        try await pageHolds(s, "tabs.select")
         try await sleep(0.15)
         XCTAssertEqual(s.posts, [], "nothing before the page answers")
+        await release(s, "tabs.select")
         try await expect("the web view once answered: \(s.posts)") { s.posts == ["web"] }
         tap(s, "log")
+        try await expect("the second tap's tabs.select in the page, unanswered") {
+            await self.calls(s, "tabs.select").count == 2 && b.pageLink.inFlightName == "tabs.select"
+        }
         try await sleep(0.15)
         XCTAssertEqual(s.posts, ["web"], "nothing while it is out")
+        try await timeOut(s, "tabs.select")
         try await expect("the web view once it timed out: \(s.posts)") { s.posts == ["web", "web"] }
         try await expect("the restate went and was answered") { await self.calls(s, "tabs.select").count == 3 && b.pageLink.pending == 0 }
         XCTAssertEqual(s.posts.count, 2, "the restate is no move: nothing heard")
@@ -1202,6 +1255,10 @@ final class ShellBridgeTabsTests: XCTestCase {
         let s = try await scene(first: "log", hello: nil)
         let root = try XCTUnwrap(s.root)
         let b = try XCTUnwrap(s.binding)
+        // the link's own clock out of the way: the `tabs.select` no page answers below ends with its document, never on a
+        // timeout that a slow turn between the tap and the reload could let run first (2 s), and the one the page answers
+        // after the fallback is answered when the case says so (`held`, `release`)
+        b.pageLink.timeoutScale = Self.noClock
         tap(s, "progress")
         try await sleep(0.3)
         XCTAssertEqual(s.posts, [], "no page has drawn Progress")
@@ -1227,11 +1284,13 @@ final class ShellBridgeTabsTests: XCTestCase {
         XCTAssertEqual(s.posts.count, 2, "once")
 
         // a tabs.select the page answers after the scene fell back
-        await setHow(s, "tabs.select", "late:500")
+        await setHow(s, "tabs.select", ["held"])
         tap(s, "log")
         _ = try await message(s, "setSwitch", ["screen": "tabs", "on": false]).get()
         XCTAssertEqual(root.fellBack?.why, .switch)
+        try await pageHolds(s, "tabs.select")
         XCTAssertEqual(s.posts.count, 2, "the page has not drawn Log yet")
+        await release(s, "tabs.select")
         try await expect("the web view once the page answered: \(s.posts)") { s.posts == ["web", "web", "web"] }
         try await sleep(0.3)
         XCTAssertEqual(s.posts.count, 3, "once")
@@ -1401,10 +1460,16 @@ final class ShellBridgeTabsTests: XCTestCase {
     /// hidden, the WAITING Coach tab WEB with the web view shown, every piece tripped for the page build, and nothing sent
     /// (no link to send on). The page's failsafe `dismiss tabs` after it finds the scene fallen back: ok, nothing changes.
     func test17NoHelloWithinTheDeadlineFallsBackAndSendsNothing() async throws {
-        let s = try await scene(first: "coach", hello: nil, bridge: makeBridge(linkConfig: LinkState.Config(helloDeadline: 1)))
+        // WAITING is read where no clock runs, before the document starts (the deadline's second runs from there, through
+        // the page's load: a load of a second or more, a slow runner's, had the scene fallen back before the read after
+        // it), and again after the load unless the deadline has passed by then
+        var before: RootTabController.CoachMode?
+        let s = try await scene(first: "coach", hello: nil, bridge: makeBridge(linkConfig: LinkState.Config(helloDeadline: 1)),
+                                built: { before = $0.root?.coachMode })
         let root = try XCTUnwrap(s.root)
         let b = try XCTUnwrap(s.binding)
-        XCTAssertEqual(root.coachMode, .waiting)
+        XCTAssertEqual(before, .waiting)
+        if root.fellBack == nil { XCTAssertEqual(root.coachMode, .waiting) }
         try await expect("the no-hello fallback", within: 6) { root.fellBack != nil }
         XCTAssertEqual(root.fellBack?.why, .noHello)
         XCTAssertEqual(b.link.fellBackWhy, .noHello)
