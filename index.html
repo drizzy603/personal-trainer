@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20261115-6"/>
+<meta name="build" content="20261117-1"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -10021,9 +10021,12 @@ function _photoLeave(img, quiet){
 // paint off the chat is the owner leaving it. The page going to the background changes no route: leaving the app with
 // the chat up keeps it the place to come back to.
 var _photoWatchT=null;
-// The chat on screen, as renderCoach draws it (and _fpWant asks for the native one): the Coach tab with a key, on the
-// chat or in setup, whose chat shows whatever coachView says (a setup chat taken over at a reload keeps the hub's view).
-function _photoChatOn(){ return currentTab==='coach' && !!getApiKey() && (coachView==='chat' || !!intakeMode); }
+// The place a kept photo's chat is, as _photoBackOpen makes it: the Coach tab on the chat view, where a share lands with
+// or without a key (with none the connect screen stands there, and leaving it is leaving the share's place: web
+// 20261115-6 asked for a key here too, so a keyless owner's leave was never counted and every launch within the 30
+// minutes pulled them back to Coach), or in setup with a key, whose chat renderCoach draws whatever coachView says (a
+// setup chat taken over at a reload keeps the hub's view).
+function _photoChatOn(){ return currentTab==='coach' && (coachView==='chat' || (!!intakeMode && !!getApiKey())); }
 function _photoWatch(){
   if(_photoWatchT || !pendingImage || !pendingImage.at) return;
   _photoWatchT=setTimeout(function(){
@@ -25118,8 +25121,10 @@ function _fpHello(){
       // the native chat the document before had up (fp_chat) that this reply still offers but no longer names up was
       // taken down while no document was linked (the owner's Back during a WebContent restart: PageLink ends the intent
       // unsent): a place asked for, so a kept share's chat stays shut (_photoBackOpen). A reply that no longer offers it
-      // (the policy, a breaker) took it down itself: the kept share's chat opens as the web one
-      try{ if(sessionStorage.getItem('fp_chat') && up.indexOf('coach')<0 && _fp.hello.screens.indexOf('coach')>=0) _photoAsked++; }catch(e){}
+      // (the policy, a breaker) took it down itself, and so did a tab root that fell back meanwhile (the mark says 't',
+      // the chat stood on its Coach stack, and this reply names no tabs: the policy, a refusal, a page that left tabs
+      // out): the kept share's chat opens as it did
+      try{ var mk=sessionStorage.getItem('fp_chat'); if(mk && (mk!=='t' || named) && up.indexOf('coach')<0 && _fp.hello.screens.indexOf('coach')>=0) _photoAsked++; }catch(e){}
       // a page that left tabs mode already reads the reply for its other pieces and ignores its tabs; one that leaves
       // here renders below, after the take-over (classic's) has read up
       var left=false;
@@ -25230,13 +25235,15 @@ function _fpSync(){
   }catch(e){ _fpLog('sync: '+((e && e.message) || e), 'error'); }   // never in render's way
 }
 // The native chat up or not, kept in the scene's sessionStorage (fp_chat) beside fp_tab, so the next document's hello
-// can tell a chat the owner took down while no document was linked; written on a change only.
+// can tell a chat the owner took down while no document was linked: 't' while it stands on a tab root's Coach stack
+// (it goes down with that root when the root falls back), '1' as the overlay; written on a change only, and a chat
+// keeps the letter it went up with.
 var _fpChatMark=null;
 function _fpChatMarkSync(){
-  var on=_fp.shown.coach ? '1' : '';
+  var on=_fp.shown.coach ? (_fpChatMark || (_fp.tabs.mode ? 't' : '1')) : '';
   if(on===_fpChatMark) return;
   _fpChatMark=on;
-  try{ if(on) sessionStorage.setItem('fp_chat', '1'); else sessionStorage.removeItem('fp_chat'); }catch(e){}
+  try{ if(on) sessionStorage.setItem('fp_chat', on); else sessionStorage.removeItem('fp_chat'); }catch(e){}
 }
 // The shell would not present it: the page draws its own for the rest of the document. Whatever its code (contract
 // 3.1): build 60's words, not-presentable (no live tab root for coachHome) and not-native (the chat over a Coach tab

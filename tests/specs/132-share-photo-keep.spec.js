@@ -74,11 +74,21 @@
 //   newer selection on another tab) during a WebContent restart, a tab tapped at a cold launch before hello answered,
 //   and build 60's overlay chat taken down during a restart: the kept share comes back with its chat shut, counted as
 //   left, nothing presented again; with nothing moved (the take-over) nothing counts, and a chat the shell no longer
-//   offers (the policy turned it off during the restart) opens as the web chat.
+//   offers (the policy turned it off during the restart) opens as the web chat. The mark says which root the chat stood
+//   on (web 20261117-1: fp_chat is t on a tab root's Coach stack, 1 as the overlay): a tab root that fell back while no
+//   document was linked took its chat down itself (the policy before the next document or at its hello, a page that
+//   leaves tabs out of its hello), so nothing counts and the kept share's chat opens as it did; a refused hello offers
+//   no chat; a fallback the document heard leaves no mark; after a fallback nobody saw, the overlay chat's Back during
+//   a second restart still counts.
 // - (l) Setup's chat is the chat on screen whatever coachView says (web 20261115-6; renderCoach draws it so): a setup
 //   chat taken over at a reload has the kept share back in it, already on screen, nothing presented, the view left as
 //   setup keeps it; a photo that came back with its chat shut is the composer's photo once setup's chat shows it, and
-//   leaving that chat counts as leaving it.
+//   leaving that chat counts as leaving it. Setup with no key draws the connect screen: a photo back with its chat
+//   shut stays unseen there and nothing is counted (web 20261117-1).
+// - (m) With no key the place a share lands (the Coach tab on the chat view, where the connect screen stands) is still
+//   its place (web 20261117-1; 20261115-6 asked for a key and never counted the leave): the owner who goes to Log has
+//   left it, and the next launches within the 30 minutes leave them on Log (none, coach61, tabs at a relaunch and at a
+//   reload).
 // Every native boot names its shell (the mark above): FP_SHELL_INERT runs skip this spec.
 const { boot, assert, run } = require('../lib/harness');
 
@@ -1463,7 +1473,10 @@ serial('(j) setup\'s Cancel answered yes before a late read: the kept share\'s c
 // scene (__fpShellMock) is edited before the reload to stand for the move; a cold launch's tap is __fpShellPre, build
 // 60's chat __fpShellUp and the pieces the policy turned off __fpShellOff, each handed to the next document through
 // sessionStorage.
-const K_INIT = "try{ ['Pre','Up','Off'].forEach(function(k){ var v=sessionStorage.getItem('__k'+k); if(v){ sessionStorage.removeItem('__k'+k); window['__fpShell'+k]=JSON.parse(v); } }); }catch(e){}";
+// __kFlag (sessionStorage, once): a source run on the next document's flag as the mock sets it ('flag.min = 9;': its
+// hello is refused for its version; 'flag.tabs.bar = null;': the page's tabs test fails, so its hello leaves tabs out).
+const K_INIT = "try{ ['Pre','Up','Off'].forEach(function(k){ var v=sessionStorage.getItem('__k'+k); if(v){ sessionStorage.removeItem('__k'+k); window['__fpShell'+k]=JSON.parse(v); } }); }catch(e){}"
+  + "try{ var kf=sessionStorage.getItem('__kFlag'); if(kf){ sessionStorage.removeItem('__kFlag'); var kv; Object.defineProperty(window,'__FP_SHELL',{configurable:true,enumerable:true,get:function(){ return kv; },set:function(x){ kv=x; try{ (new Function('flag', kf))(kv); }catch(_){} }}); } }catch(e){}";
 const K_ASKED = (min) => 'photo: back from ' + min + ' min, chat not opened (asked elsewhere), counted as left';
 const kNext = (app, k, v) => ev(app, (a) => sessionStorage.setItem('__k' + a.k, JSON.stringify(a.v)), { k, v });
 const kScene = (app, src) => ev(app, (src) => {
@@ -1483,8 +1496,8 @@ serial('(k) a Back the shell took while the WebContent restarted (the chat down,
       await ready(app, true);
       await share(app, PHOTO, WORDS);
       await app.page.waitForFunction(() => window.__fpShell.state().scene.pushed === true, null, { timeout: 15000 });
-      const before = await kMark(app);
-      assert(before === '1', tag + 'the chat up is kept in the scene (fp_chat): ' + J(before));
+      const before = await kMark(app), letter = shell === 'tabs' ? 't' : '1';
+      assert(before === letter, tag + 'the chat up is kept in the scene (fp_chat: t on a tab root\'s stack, 1 as the overlay): ' + J(before));
       if (how === 'back') await kScene(app, 'scene.pushed = false;');
       if (gate) await ev(app, () => sessionStorage.setItem('__next', JSON.stringify({ gate: true })));
       await app.reload();   // the same scene: a WebContent restart
@@ -1501,7 +1514,7 @@ serial('(k) a Back the shell took while the WebContent restarted (the chat down,
           && (shell !== 'tabs' || (m.tab === 'coach' && m.view === 'home')) && after === null,
           tag + 'counted at hello, the photo back with its chat shut (tabs: on the Coach tab\'s hub), counted as left, the scene\'s mark gone: ' + say);
       } else {
-        assert(asked === 0 && m.img === PHOTO && m.ops.length === 0 && m.tab === 'coach' && m.view === 'chat' && after === '1'
+        assert(asked === 0 && m.img === PHOTO && m.ops.length === 0 && m.tab === 'coach' && m.view === 'chat' && after === letter
           && m.log.indexOf('photo: back from 0 min, chat already on screen') >= 0,
           tag + 'nothing counted: the chat taken over with the photo, already on screen, the mark kept: ' + say);
       }
@@ -1626,6 +1639,88 @@ serial('(k) build 60\'s overlay chat taken down while the WebContent restarted (
   }
 });
 
+// A tab root that fell back took the pushed chat down with it: no move of the owner's (web 20261117-1). The fallback is
+// played as the mock keeps it: before the next document started (the scene says fellBack, the Coach tab WEB, the chat
+// popped), at its hello (the policy's tabs off, read then), a page whose hello leaves tabs out, or a refused hello.
+const kStart = async () => {
+  const app = await pageBoot('tabs', { init: K_INIT });
+  await ready(app, true);
+  await share(app, PHOTO, WORDS);
+  await app.page.waitForFunction(() => window.__fpShell.state().scene.pushed === true, null, { timeout: 15000 });
+  return app;
+};
+const K_FELL = "scene.fellBack = { why: 'policy', at: Date.now() }; scene.coach = 'web'; scene.pushed = false;";
+serial('(k) a tab root that fell back while no document was linked took its chat down itself: nothing counts and the kept share\'s chat opens as it did (the policy before the next document started or at its hello, a page that leaves tabs out of its hello; the read at once and held); a refused hello offers no chat (tabs)', async () => {
+  for (const [how, gate] of [['before', false], ['before', true], ['hello', false], ['hello', true], ['page', false], ['refused', false]]) {
+    const tag = 'tabs, fell back (' + how + ')' + (gate ? ', read held' : '') + ': ';
+    const app = await kStart();
+    try {
+      const before = await kMark(app);
+      if (how === 'before') await kScene(app, K_FELL);
+      else if (how === 'hello') await kNext(app, 'Off', ['tabs']);
+      else await ev(app, (src) => sessionStorage.setItem('__kFlag', src), how === 'page' ? 'flag.tabs.bar = null;' : 'flag.min = 9;');
+      if (gate) await ev(app, () => sessionStorage.setItem('__next', JSON.stringify({ gate: true })));
+      await app.reload();   // the same scene: a WebContent restart
+      await app.page.waitForFunction(() => window._fp && _fp.hello, null, { timeout: 15000 });
+      await settle(app, 150);
+      const hello = await ev(app, () => ({ asked: _photoAsked, screens: _fp.hello.screens.slice(), tabs: !!_fp.tabs.mode && !_fp.tabs.left }));
+      if (gate) await ev(app, () => __idbRelease());
+      await waitLine(app, '/^photo: back from 0 min/.test(l)', 'the photo back');
+      await settle(app, 500);
+      const m = await look(app);
+      assert(before === 't' && hello.asked === 0 && !hello.tabs && (how === 'refused' ? hello.screens.length === 0 : hello.screens.indexOf('coach') >= 0)
+        && m.img === PHOTO && m.tab === 'coach' && m.view === 'chat' && m.log.indexOf('photo: back from 0 min, chat opened') >= 0 && !(m.mark && m.mark.left),
+        tag + 'a tab root\'s chat by its mark, a reply that names no tabs: nothing counted, the chat opened: ' + J(Object.assign({ before, hello }, m, { img: !!m.img, kept: !!m.kept, log: m.log.slice(0, 6) })));
+      clean(m.log);
+      noErrors(app);
+    } finally { await app.close(); }
+  }
+});
+
+serial('(k) a fallback the document heard (screens.off) leaves no mark behind; after a fallback nobody saw, the overlay chat\'s Back during a second restart still counts (tabs)', async () => {
+  let app = await kStart();
+  try {
+    await ev(app, () => { window.__fpShell.fallBack('policy'); });
+    await app.page.waitForFunction(() => window._fp && _fp.tabs.left === true, null, { timeout: 15000 });
+    await settle(app, 200);
+    const mid = await kMark(app);
+    await app.reload();
+    await app.page.waitForFunction(() => window._fp && _fp.hello, null, { timeout: 15000 });
+    await settle(app, 150);
+    const asked = await kAsked(app);
+    await waitLine(app, '/^photo: back from 0 min/.test(l)', 'the photo back');
+    await settle(app, 500);
+    const m = await look(app);
+    assert(mid === null && asked === 0 && m.img === PHOTO && m.tab === 'coach' && m.view === 'chat' && m.log.indexOf('photo: back from 0 min, chat opened') >= 0,
+      'a fallback heard: the mark gone before the restart, nothing counted, the chat opened: ' + J(Object.assign({ mid, asked }, m, { img: !!m.img, kept: !!m.kept, log: m.log.slice(0, 6) })));
+    noErrors(app);
+  } finally { await app.close(); }
+
+  app = await kStart();
+  try {
+    await kScene(app, K_FELL);
+    await app.reload();   // the fallback nobody saw: the chat opens again, as the overlay now
+    await app.page.waitForFunction(() => window._fp && _fp.hello, null, { timeout: 15000 });
+    await waitLine(app, '/^photo: back from 0 min/.test(l)', 'the photo back');
+    await app.page.waitForFunction(() => window.__fpShell.state().scene.pushed === true && currentTab === 'coach' && coachView === 'chat', null, { timeout: 15000 });
+    await settle(app, 200);
+    const mid = await kMark(app);
+    await kScene(app, 'scene.pushed = false;');   // the owner's Back on the overlay, no document linked
+    const n0 = await ev(app, () => __log().filter((l) => /^photo: back from/.test(l)).length);
+    await app.reload();
+    await app.page.waitForFunction(() => window._fp && _fp.hello, null, { timeout: 15000 });
+    await settle(app, 150);
+    const asked = await kAsked(app);
+    await app.page.waitForFunction((n0) => __log().filter((l) => /^photo: back from/.test(l)).length > n0, n0, { timeout: 15000 });
+    await settle(app, 500);
+    const m = await look(app), opens = await kOpens(app);
+    assert(mid === '1' && asked > 0 && opens === 0 && shut(m) && m.img === PHOTO && m.log.indexOf(K_ASKED(0)) >= 0 && m.mark && m.mark.left === 1,
+      'the overlay\'s mark is 1, and its Back during the second restart counts: the chat shut, counted as left: ' + J(Object.assign({ mid, asked, opens }, m, { img: !!m.img, kept: !!m.kept, log: m.log.slice(0, 6) })));
+    clean(m.log);
+    noErrors(app);
+  } finally { await app.close(); }
+});
+
 // ── (l) setup's chat is the chat on screen ──────────────────────────────────────────────────────────────────────────
 const SETUP = "localStorage.removeItem('kt_routine'); localStorage.setItem('kt_intake','1');";
 serial('(l) a setup chat taken over at a reload is the chat on screen: the kept share comes back into it, already on screen, nothing presented again, the view left as setup keeps it (tabs, coach61)', async () => {
@@ -1673,4 +1768,72 @@ serial('(l) a share kept over 30 minutes comes back with its chat shut; once set
     clean(left.log);
     noErrors(app);
   } finally { await app.close(); }
+});
+
+// ── (m) with no key the share's place is still its place ─────────────────────────────────────────────────────────
+// The owner's way to another tab: the native bar's tap under a tab root, the page's own bar otherwise.
+const mGo = async (app, shell, tab) => {
+  await ev(app, async (a) => { if (a.native) await __fpShell.tap(a.tab); else switchTab(a.tab); }, { native: shell === 'tabs' || shell === 'tabsWeb', tab });
+  await settle(app, 200);
+};
+// What the kept photo's bookkeeping says, and what stands on the Coach tab (the connect screen: the web field, or the
+// native Coach tab's connect route).
+const mSee = (app) => ev(app, () => {
+  const S = window.__fpShell, hm = S ? S.calls.filter((c) => c[0] === 'model' && c[1].screen === 'coachHome').map((c) => JSON.parse(c[1].json)) : [];
+  return { tab: currentTab, view: coachView, key: !!getApiKey(), img: !!pendingImage, on: pendingImage ? (pendingImage.on || 0) : null,
+    back: pendingImage ? (pendingImage.back === undefined ? null : pendingImage.back) : null, mark: __mark(),
+    connect: !!document.getElementById('coach-key-input') || (hm.length > 0 && hm[hm.length - 1].route === 'connect'),
+    chat: !!document.getElementById('coach-input'),
+    chats: S ? S.calls.filter((c) => c[0] === 'selectTab' && c[1] && c[1].intent === 'chat').length : 0,
+    log: __log().filter((l) => /^(photo|share): /.test(l)) };
+});
+serial('(l) setup with no key draws the connect screen, not its chat: a share kept over 30 minutes stays unseen there (back) and nothing is counted, on the Coach tab or after it (none, tabs)', async () => {
+  for (const shell of ['none', 'tabs']) {
+    const app = await pageBoot(shell, { init: "localStorage.removeItem('kt_apikey');" + SETUP });
+    try {
+      await ready(app, shell !== 'none');
+      await ev(app, (r) => __plant(r), { data: PHOTO, mediaType: 'image/jpeg', at: Date.now() - 40 * MIN, src: 'share' });
+      await relaunch(app);
+      await waitLine(app, '/^photo: back from 40 min$/.test(l)', 'the photo back');
+      await ready(app, shell !== 'none');
+      await settle(app, 200);
+      const st = await ev(app, () => ({ intake: !!intakeMode, key: !!getApiKey() }));
+      await mGo(app, shell, 'coach');
+      const on = await mSee(app);
+      await mGo(app, shell, 'log');
+      const off = await mSee(app);
+      assert(st.intake && !st.key && on.tab === 'coach' && on.connect && on.on === 0 && on.back === 1 && off.tab === 'log' && off.back === 1 && !(off.mark && off.mark.left)
+        && off.log.indexOf('photo: chat left') < 0,
+        shell + ': the connect screen in setup is no chat: the photo still back, nothing left: ' + J({ st, on, off }));
+      noErrors(app);
+    } finally { await app.close(); }
+  }
+});
+
+serial('(m) a share with no key lands on the Coach tab\'s connect screen; the owner who goes to Log has left its place: the marker says left, and the next two launches inside the 30 minutes leave them on Log (none, coach61, tabs at a relaunch and at a reload)', async () => {
+  for (const [shell, again] of [['none', 'relaunch'], ['coach61', 'relaunch'], ['tabs', 'relaunch'], ['tabs', 'reload']]) {
+    const tag = shell + ', ' + again + ': ';
+    const app = await pageBoot(shell, { init: "localStorage.removeItem('kt_apikey');" });
+    try {
+      await ready(app, shell !== 'none');
+      await share(app, PHOTO, WORDS);
+      await settle(app, 150);
+      const s1 = await mSee(app);
+      assert(!s1.key && s1.img && s1.tab === 'coach' && s1.view === 'chat' && s1.connect && !s1.chat && s1.on === 1,
+        tag + 'the share landed on the Coach tab, view chat, where the connect screen stands; its place is marked: ' + J(s1));
+      await mGo(app, shell, 'log');
+      const s2 = await mSee(app);
+      assert(s2.tab === 'log' && s2.mark && s2.mark.left === 1 && s2.log.indexOf('photo: chat left') >= 0, tag + 'going to Log is leaving it: ' + J(s2));
+      for (let k = 1; k <= 2; k++) {
+        if (again === 'reload') await app.reload(); else await relaunch(app);
+        await waitLine(app, '/^photo: back from/.test(l)', 'the photo back');
+        await ready(app, shell !== 'none');
+        await settle(app, 400);
+        const r = await mSee(app);
+        assert(r.img && r.tab === 'log' && r.chats === 0 && r.back === 1 && r.log.indexOf('photo: back from 0 min, chat not opened (left earlier)') >= 0,
+          tag + 'launch ' + k + ' leaves the owner on Log, the photo back with its chat shut: ' + J(r));
+      }
+      noErrors(app);
+    } finally { await app.close(); }
+  }
 });
