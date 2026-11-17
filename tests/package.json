@@ -4,6 +4,6 @@
   "description": "Playwright regression suites for the Supero web app",
   "type": "commonjs",
   "dependencies": {
-    "playwright": "^1.61.1"
+    "playwright": "^1.65.1"
   }
 }
