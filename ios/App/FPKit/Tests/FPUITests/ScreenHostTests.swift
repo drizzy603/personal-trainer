@@ -413,7 +413,7 @@ final class ScreenHostTests: XCTestCase {
         rig = nil
         window?.isHidden = true
         window = nil
-        try? FileManager.default.removeItem(at: folder)
+        if let folder { try? FileManager.default.removeItem(at: folder) }   // nil when setUp stopped at the warm-up
     }
 
     /// The hooks every case records through.

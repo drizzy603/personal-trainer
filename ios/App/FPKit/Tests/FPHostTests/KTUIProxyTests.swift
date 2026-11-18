@@ -92,10 +92,16 @@ final class KTUIProxyTests: XCTestCase {
     /// Whether a page has loaded in this process yet.
     private static var warm = false
 
+    private struct PageNeverLoaded: Error, CustomStringConvertible {
+        let why: String
+        var description: String { why }
+    }
+
     /// The first web view in a fresh simulator waits for WebKit's processes to start: 34 s on this Mac's never-booted
     /// device. On a GitHub runner that first view never finished its page at all (still loading after 180 s), while every
     /// later view loaded at once. So until a page has loaded in this process, a view that has not finished in 60 s is
-    /// replaced by a new one, five times at most; after that a page gets 20 s.
+    /// replaced by a new one, five times at most; after that a page gets 20 s. A page that never loads ends its case
+    /// (its scripts would wait on a page that is not there).
     private func load(_ url: String) async throws {
         try await loadPage(url) { $0.load(URLRequest(url: URL(string: url)!)) }
     }
@@ -110,20 +116,38 @@ final class KTUIProxyTests: XCTestCase {
             while Date().timeIntervalSince(began) < (Self.warm ? 20 : 60) {
                 try await Task.sleep(nanoseconds: 50_000_000)
                 if webView.isLoading { last = "still loading"; continue }
-                do {
-                    let state = try await webView.evaluateJavaScript("document.readyState") as? String
-                    if state == "complete" {
-                        if !Self.warm { print("KTUIProxyTests: the first page loaded on view \(attempt) after \(Int(Date().timeIntervalSince(start))) s") }
-                        Self.warm = true
-                        return
-                    }
-                    last = "readyState " + (state ?? "nil")
-                } catch {
-                    last = "\(error)"
+                let state = await readyState(webView)
+                if state == "complete" {
+                    if !Self.warm { print("KTUIProxyTests: the first page loaded on view \(attempt) after \(Int(Date().timeIntervalSince(start))) s") }
+                    Self.warm = true
+                    return
                 }
+                last = state
             }
         }
-        XCTFail("the page never loaded in \(Int(Date().timeIntervalSince(start))) s (\(what); last: \(last))")
+        let why = "the page never loaded in \(Int(Date().timeIntervalSince(start))) s (\(what); last: \(last))"
+        XCTFail(why)
+        throw PageNeverLoaded(why: why)
+    }
+
+    /// The view's `document.readyState` ("complete" once loaded), else what came instead: the readyState, WebKit's
+    /// error, or no answer in `seconds` (a WebKit process that is alive but never answers otherwise held the load for
+    /// good: its deadline is checked between reads).
+    private func readyState(_ view: WKWebView, within seconds: Double = 10) async -> String {
+        await withCheckedContinuation { (c: CheckedContinuation<String, Never>) in
+            var open = true   // the main thread's alone: the answer and the timer both come there
+            view.evaluateJavaScript("document.readyState") { value, error in
+                guard open else { return }
+                open = false
+                if let state = value as? String { return c.resume(returning: state == "complete" ? state : "readyState " + state) }
+                c.resume(returning: error.map { "\($0)" } ?? "readyState nil")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + seconds) {
+                guard open else { return }
+                open = false
+                c.resume(returning: "no answer in \(Int(seconds)) s")
+            }
+        }
     }
 
     private func js(_ src: String) async throws -> Any? {

@@ -85,7 +85,13 @@ private final class Weak {
 /// probe hears the root's mode change and fallback under no funnel run. Test 44: the hub's ground takes the first
 /// frame's room (contract 6.1). Test 45: the page's one pass from a WEB Coach tab pushes the chat over the hub. Test
 /// 46 (H10's review): a hub model and the resync's snapshot are applied inside `model coachHome@`. A read that says the
-/// page heard nothing waits for the link to go idle first (`linkIdle`).
+/// page heard nothing waits for the link to go idle first (`linkIdle`). A wait that runs out ends its case (`expect`,
+/// `timeOut`, `runSteps`: `WaitRanOut`) and every read of the page has a bound of its own (`evaluate`), so a stand-in
+/// page that dies or stops answering costs a case one bound. Before, a case went on and ran every later wait to its
+/// bound (test05b with its page's WebKit process killed just after hello: failed after 202.6 s on the Mac's bounds, 26
+/// failure lines; CI's bounds are ten times the Mac's), and a read that never came back held it for good (the same
+/// case with the process stopped: no progress until a 2-minute time allowance). Now the two end after 20.5 s and
+/// 27.5 s (168 s with the process stopped under CI's bounds), each naming its wait.
 @available(iOS 26.0, *)
 @MainActor
 final class ShellBridgeTabsTests: XCTestCase {
@@ -192,18 +198,19 @@ final class ShellBridgeTabsTests: XCTestCase {
     }
 
     /// A build 61 bridge (a new home unless one is given), on iOS 27, the app in use. `net`: the WAITING Coach tab's net;
-    /// a minute unless a case is about it (`ShellBridge.coachNetSeconds`, 3 s), since the stand-in page never declares
-    /// `coachHome` and the cases before H8's would otherwise see the tab turn WEB under them. `linkConfig`: no hello
+    /// a minute (times the CI factor: a case on a shared runner can run past one) unless a case is about it
+    /// (`ShellBridge.coachNetSeconds`, 3 s), since the stand-in page never declares `coachHome` and the cases before
+    /// H8's would otherwise see the tab turn WEB under them. `linkConfig`: no hello
     /// deadline to speak of (`ShellBridgeTests.patient`) unless a case is about it (test 17): `load` gives the stand-in
     /// page up to 100 s on CI, and a hello said 15 s after its document started is late: every piece tripped, the root
     /// fallen back `no-hello`, no `tabs.select` for a tap and `selectTab` refused `off` (test 2's four lines in CI's run
     /// 42522381728; a hello said 16 s after the load gives the same four).
-    private func makeBridge(home: Home? = nil, linkConfig: LinkState.Config = ShellBridgeTests.patient, net: TimeInterval = 60) -> ShellBridge {
+    private func makeBridge(home: Home? = nil, linkConfig: LinkState.Config = ShellBridgeTests.patient, net: TimeInterval? = nil) -> ShellBridge {
         let h = home ?? makeHome()
         let b = ShellBridge(defaults: h.defaults, folder: h.folder, shellBuild: "61", linkConfig: linkConfig)
         b.osMajor = { 27 }
         b.appActive = { true }
-        b.coachNetSeconds = net
+        b.coachNetSeconds = net ?? 60 * Self.slack
         return b
     }
 
@@ -255,18 +262,48 @@ final class ShellBridgeTabsTests: XCTestCase {
     /// Loads the stand-in page as a new document (the one before it, if any, is marked, so its FPScreens is not taken for
     /// the new one's).
     private func load(_ s: TabsScene) async throws {
-        _ = try? await s.webView.evaluateJavaScript("window.__fpOld = true; 0")
+        _ = await evaluate(s, "window.__fpOld = true; 0")
         s.webView.loadHTMLString(Self.page, baseURL: URL(string: "https://fp.test/"))
         let deadline = Date().addingTimeInterval(10 * Self.slack)
         while Date() < deadline {
             try await Task.sleep(nanoseconds: 50_000_000)
             let ready = "typeof window.FPScreens === 'object' && typeof window.__fpOld === 'undefined'"
-            if !s.webView.isLoading, (try? await s.webView.evaluateJavaScript(ready)) as? Bool == true {
+            if !s.webView.isLoading, await evaluate(s, ready) as? Bool == true {
                 s.pageUp = true
                 return
             }
         }
         throw PageDidNotLoad()
+    }
+
+    /// A script's answer, out of WebKit's completion handler (the main thread's, as the case is).
+    private final class Answer: @unchecked Sendable {
+        let value: Any?
+        init(_ value: Any?) { self.value = value }
+    }
+
+    /// Every script the case runs in a stand-in page goes through here, with a bound of its own: nil when the page has
+    /// not answered within `seconds` (times the CI factor), as when the script fails. A page whose WebKit process is
+    /// alive but never answers (stopped or stalled; `kill -STOP` on the simulator's WebContent stands for it) otherwise
+    /// held the case for good: `until` checks its deadline only between reads, so one read that never came back outlived
+    /// every bound, and only the CI job's own limit ended it (run 44197214428 on 17 Nov was cut at 40 minutes, the case
+    /// not named; unproven that this was why). A script whose read ran out still runs once the page answers again, after
+    /// whatever the case asked since: by then the case has failed (`expect`, `timeOut`) or is about to.
+    private func evaluate(_ s: TabsScene, _ script: String, within seconds: Double = 5) async -> Any? {
+        let answer = await withCheckedContinuation { (c: CheckedContinuation<Answer, Never>) in
+            var open = true   // the main thread's alone: the answer and the timer both come there
+            s.webView.evaluateJavaScript(script) { value, error in
+                guard open else { return }
+                open = false
+                c.resume(returning: Answer(error == nil ? value : nil))
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + seconds * Self.slack) {
+                guard open else { return }
+                open = false
+                c.resume(returning: Answer(nil))
+            }
+        }
+        return answer.value
     }
 
     @discardableResult
@@ -319,7 +356,7 @@ final class ShellBridgeTabsTests: XCTestCase {
     }
 
     private func got(_ s: TabsScene) async -> [Call] {
-        guard let text = (try? await s.webView.evaluateJavaScript("JSON.stringify(window.__got || [])")) as? String,
+        guard let text = await evaluate(s, "JSON.stringify(window.__got || [])") as? String,
               let list = (try? JSONSerialization.jsonObject(with: Data(text.utf8))) as? [[String: Any]] else { return [] }
         return list.map { Call(name: $0["name"] as? String ?? "", args: $0["args"] as? [String: Any] ?? [:]) }
     }
@@ -327,11 +364,11 @@ final class ShellBridgeTabsTests: XCTestCase {
     private func calls(_ s: TabsScene, _ name: String) async -> [Call] { await got(s).filter { $0.name == name } }
 
     private func opened(_ s: TabsScene) async -> [String] {
-        ((try? await s.webView.evaluateJavaScript("window.__opened")) as? [String]) ?? []
+        (await evaluate(s, "window.__opened") as? [String]) ?? []
     }
 
     private func js(_ s: TabsScene, _ expression: String) async -> Any? {
-        try? await s.webView.evaluateJavaScript(expression)
+        await evaluate(s, expression)
     }
 
     /// How the page answers `name` from now on: one word, or one per call.
@@ -455,13 +492,19 @@ final class ShellBridgeTabsTests: XCTestCase {
         return "#" + hex(r) + hex(g) + hex(b)
     }
 
-    /// Waits until `ok` holds; fails the case with `what` (read then) when it never did in time.
-    @discardableResult
+    /// A wait that ran out: its case ends there (`expect`, `timeOut`). The failure line before it says which wait.
+    private struct WaitRanOut: Error, CustomStringConvertible {
+        var description: String { "a wait ran out and the case ends there (the failure line before this one says which)" }
+    }
+
+    /// Waits until `ok` holds; when it never did in time, fails the case with `what` (read then) and ends it
+    /// (`WaitRanOut`). A case that went on had each later wait run to its own bound first, ten times the Mac's on CI,
+    /// for a page or a link that was no longer where the case needed it.
     private func expect(_ what: @autoclosure () -> String, within timeout: Double = 4, file: StaticString = #filePath, line: UInt = #line,
-                        _ ok: () async -> Bool) async throws -> Bool {
-        let done = try await until(timeout, ok)
-        if !done { XCTFail("never: " + what() + (await silentPages()), file: file, line: line) }
-        return done
+                        _ ok: () async -> Bool) async throws {
+        if try await until(timeout, ok) { return }
+        XCTFail("never: " + what() + (await silentPages()), file: file, line: line)
+        throw WaitRanOut()
     }
 
     /// For a wait that ran out: says so when a scene's stand-in page is no longer there to answer (its `FPScreens` gone
@@ -514,7 +557,7 @@ final class ShellBridgeTabsTests: XCTestCase {
 
     /// The page lets the `name` now in the link time out. Once the page has it (sent, the newest of its kind in
     /// `window.__got`, unanswered) its timeout comes at once (`PageLink.timeOutInFlight`): no clock to wait for and
-    /// none to race. Fails the case when no intent of that name reaches the page in time.
+    /// none to race. Fails the case and ends it (`WaitRanOut`) when no intent of that name reaches the page in time.
     private func timeOut(_ s: TabsScene, _ name: String, file: StaticString = #filePath, line: UInt = #line) async throws {
         let link = try XCTUnwrap(s.binding, "a binding", file: file, line: line).pageLink
         var sent = 0, inPage = 0
@@ -526,8 +569,9 @@ final class ShellBridgeTabsTests: XCTestCase {
             return inPage == sent
         }
         guard ready else {
-            return XCTFail("never: \(name) in the page, unanswered (in the link: \(link.inFlightName ?? "none"), sent \(sent), in the page \(inPage))",
-                           file: file, line: line)
+            XCTFail("never: \(name) in the page, unanswered (in the link: \(link.inFlightName ?? "none"), sent \(sent), in the page \(inPage))"
+                        + (await silentPages()), file: file, line: line)
+            throw WaitRanOut()
         }
         XCTAssertTrue(link.timeOutInFlight(name), "\(name) was in the page", file: file, line: line)
     }
@@ -2055,9 +2099,28 @@ final class ShellBridgeTabsTests: XCTestCase {
         return (bridge, probe, heard)
     }
 
-    /// Runs `steps` as one phase of the tests' probe, until it ends.
-    private func runSteps(_ probe: ShellProbe, _ steps: [[String: Any]]) async {
-        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in probe.runPhase(steps) { c.resume() } }
+    /// Runs `steps` as one phase of the tests' probe, until it ends; fails the case and ends it (`WaitRanOut`) when the
+    /// phase has not ended in 15 s (times the CI factor). A phase's `state` step reads the page with no bound of its own
+    /// (ShellProbe's `js`), so a page that never answers left the case waiting for good.
+    private func runSteps(_ probe: ShellProbe, _ steps: [[String: Any]], file: StaticString = #filePath, line: UInt = #line) async throws {
+        let ended = await withCheckedContinuation { (c: CheckedContinuation<Bool, Never>) in
+            var open = true   // the main thread's alone: the phase's end and the timer both come there
+            probe.runPhase(steps) {
+                guard open else { return }
+                open = false
+                c.resume(returning: true)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 15 * Self.slack) {
+                guard open else { return }
+                open = false
+                c.resume(returning: false)
+            }
+        }
+        guard ended else {
+            XCTFail("never: the probe's phase ended (\(steps.compactMap { $0["op"] as? String }.joined(separator: ", ")))"
+                        + (await silentPages()), file: file, line: line)
+            throw WaitRanOut()
+        }
     }
 
     /// Contract 15.3 and 8.1 step 7 (the H11 review): the probe hears each VoiceOver screen change under the funnel run
@@ -2149,7 +2212,7 @@ final class ShellBridgeTabsTests: XCTestCase {
         _ = try await sheets(s, open: true)
         XCTAssertTrue(root.isTabBarHidden)
         let runs = root.funnelRuns.count
-        await runSteps(probe, [["op": "tapTab", "tab": "progress"]])
+        try await runSteps(probe, [["op": "tapTab", "tab": "progress"]])
         let refused = try XCTUnwrap(heard.last("tapTab"))
         XCTAssertEqual(refused["activated"] as? Bool, false)
         XCTAssertEqual(refused["error"] as? String, "the bar is hidden (a sheet is open, or the root fell back): no finger can tap progress")
@@ -2158,7 +2221,7 @@ final class ShellBridgeTabsTests: XCTestCase {
 
         _ = try await sheets(s, open: false)
         try await sleep(0.8)
-        await runSteps(probe, [["op": "tapTab", "tab": "progress"]])
+        try await runSteps(probe, [["op": "tapTab", "tab": "progress"]])
         let tapped = try XCTUnwrap(heard.last("tapTab"))
         XCTAssertEqual(tapped["activated"] as? Bool, true, "\(tapped)")
         XCTAssertNil(tapped["error"])
@@ -2188,7 +2251,7 @@ final class ShellBridgeTabsTests: XCTestCase {
             refused(Refused())
             return "S1"
         }
-        await runSteps(probe, [["op": "sceneDestroy"], ["op": "state", "label": "refused"]])
+        try await runSteps(probe, [["op": "sceneDestroy"], ["op": "state", "label": "refused"]])
         XCTAssertEqual(heard.last("sceneDestroy")?["session"] as? String, "S1")
         XCTAssertEqual(heard.last("sceneDestroyRefused")?["error"] as? String, "The current device does not support multiple scenes.")
         XCTAssertNil(heard.last("sceneDestroyRefused")?["late"])
@@ -2202,10 +2265,10 @@ final class ShellBridgeTabsTests: XCTestCase {
             later.refuse = refused
             return "S2"
         }
-        await runSteps(probe, [["op": "sceneDestroy"], ["op": "state", "label": "not run: the phase ended"]])
+        try await runSteps(probe, [["op": "sceneDestroy"], ["op": "state", "label": "not run: the phase ended"]])
         XCTAssertEqual(heard.last("sceneDestroyNoAnswer")?["ms"] as? Int, 300)
         XCTAssertFalse(heard.all("state").contains { $0["label"] as? String == "not run: the phase ended" })
-        await runSteps(probe, [["op": "state", "label": "granted"]])
+        try await runSteps(probe, [["op": "state", "label": "granted"]])
         let granted = try XCTUnwrap(heard.last("state")?["replaced"] as? [String: Any], "what the scene held, reported")
         XCTAssertEqual(granted["by"] as? String, "sceneDestroy")
         XCTAssertEqual(granted["webView"] as? Bool, true, "this test still holds the scene: alive")
@@ -2214,7 +2277,7 @@ final class ShellBridgeTabsTests: XCTestCase {
 
         later.refuse?(Refused())
         try await expect("the late refusal logged") { heard.last("sceneDestroyRefused")?["late"] as? Bool == true }
-        await runSteps(probe, [["op": "state", "label": "taken back"]])
+        try await runSteps(probe, [["op": "state", "label": "taken back"]])
         XCTAssertTrue(heard.last("state")?["replaced"] is NSNull, "refused after all: nothing replaced")
     }
 
@@ -2234,16 +2297,16 @@ final class ShellBridgeTabsTests: XCTestCase {
             XCTAssertEqual(e?["where"] as? String, "hub", file: file, line: line)
             XCTAssertEqual(e?["control"] as? String, "Open the chat", file: file, line: line)
         }
-        await runSteps(probe, [press])
+        try await runSteps(probe, [press])
         check("no hub: the Coach tab is waiting, not native")
         root.setHome(s.home)
-        await runSteps(probe, [press])
+        try await runSteps(probe, [press])
         check("the hub is not on screen: log is selected")
         tap(s, "coach")
         _ = try await message(s, "model", ["screen": "coach", "rev": 1, "json": try coachModelJSON(rev: 1)]).get()
         _ = try await message(s, "present", ["screen": "coach"]).get()
         try await expect("the chat pushed", within: 10) { root.coachSlot.nav.viewControllers.count == 2 }
-        await runSteps(probe, [press])
+        try await runSteps(probe, [press])
         check("the hub is covered: the chat is pushed over it")
     }
     #endif
@@ -2595,7 +2658,7 @@ final class ShellBridgeTabsTests: XCTestCase {
         XCTAssertEqual(b.screens.openConfirm, "c1.b1")
         _ = await js(s, "window.__got = []; 0")
         let words = "the hub is covered: the shell's confirm is open"
-        await runSteps(probe, [["op": "press", "label": "Open Chat", "where": "hub"]])
+        try await runSteps(probe, [["op": "press", "label": "Open Chat", "where": "hub"]])
         let refused = try XCTUnwrap(heard.last("press"))
         XCTAssertEqual(refused["pressed"] as? Bool, false)
         XCTAssertEqual(refused["error"] as? String, words)

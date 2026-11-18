@@ -41,7 +41,7 @@ final class ShellBridgeTests: XCTestCase {
         window?.isHidden = true
         window = nil
         defaults?.removePersistentDomain(forName: suite)
-        try? FileManager.default.removeItem(at: folder)
+        if let folder { try? FileManager.default.removeItem(at: folder) }   // nil when setUp stopped at the warm-up
     }
 
     /// Every link of these cases, and of ShellBridgeTabsTests' unless a case is about the deadline: no hello deadline to

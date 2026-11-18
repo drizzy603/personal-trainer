@@ -3,7 +3,9 @@
 # from FPKit runs on a Mac (xcodebuild on iOS 26.5 and 27.0, swift test), with names and numbers made up. None of those
 # runs crashed, so the crash cases copy real crashes of scratch packages instead, with only their folders shortened:
 # case 6 from xcodebuild test in Xcode 27.2 on an iOS 26.5 simulator, case 7 from swift test (SwiftPM 6.4.2, Xcode
-# 27.2) on macOS. Exit 0 = every check passed, 1 = one failed.
+# 27.2) on macOS. Cases 15 and 17 copy real cases that ran past their time allowance (Xcode 27.2, an iOS 27.0
+# simulator).
+# Exit 0 = every check passed, 1 = one failed.
 # Usage: bash .github/scripts/annotate-xc-test.sh [SCRIPT]   (SCRIPT: the annotator to check, annotate-xc.sh by default)
 here=$(cd "$(dirname "$0")" && pwd)
 script=${1:-$here/annotate-xc.sh}
@@ -465,6 +467,133 @@ check "two bundles: the counts" noted "test counts|test.log: 5 tests ran, 1 fail
 annotate "$tmp/test.log"
 check "xcodebuild error: one error" is "$(errors)" 1
 check "xcodebuild error: the line" is "$(error 1)" "xcodebuild: error: Unable to find a device matching the provided destination specifier:"
+
+# 15. A case past its time allowance, copied from a real log (Xcode 27.2, "xcodebuild test -parallel-testing-enabled NO
+# -test-timeouts-enabled YES -default-test-execution-time-allowance 60" on an iOS 27.0 simulator; a scratch class whose
+# test2 awaits a continuation nobody resumes, only its folders shortened). xcodebuild says so when the allowance is up,
+# ends the test process (89 s later here) and restarts it for the case after: the line that says so is the case's
+# first failure line, the restart line counts for it too, and it never finished.
+cat > "$tmp/test.log" <<'EOF'
+Test Suite 'Selected tests' started at 2026-11-17 20:30:07.641.
+Test Suite 'FPUITests.xctest' started at 2026-11-17 20:30:07.647.
+Test Suite 'ZZHangProbeTests' started at 2026-11-17 20:30:07.647.
+Test Case '-[FPUITests.ZZHangProbeTests test1Passes]' started.
+Test Case '-[FPUITests.ZZHangProbeTests test1Passes]' passed (0.018 seconds).
+Test Case '-[FPUITests.ZZHangProbeTests test2HangsOnAnAwaitThatNeverReturns]' started.
+SWIFT TASK CONTINUATION MISUSE: test2HangsOnAnAwaitThatNeverReturns() leaked its continuation without resuming it. This may cause tasks waiting on it to remain suspended forever.
+2026-11-17 20:30:07.700585-0400 xctest[97190:5668852] SWIFT TASK CONTINUATION MISUSE: test2HangsOnAnAwaitThatNeverReturns() leaked its continuation without resuming it. This may cause tasks waiting on it to remain suspended forever.
+Test Case '-[FPUITests.ZZHangProbeTests test2HangsOnAnAwaitThatNeverReturns]' exceeded execution time allowance of 1 minute. The test may have hung; check Xcode's test report for additional diagnostics. If the test requires additional time, use -[XCTestCase executionTimeAllowance] or one of xcodebuild's command-line overrides.
+
+
+*** If you believe this error represents a bug, please attach the result bundle at /tmp/dd/Logs/Test/Test-FPKit-Package-2026.11.17_20-29-40--0400.xcresult
+
+
+Restarting after unexpected exit, crash, or test timeout; summary will include totals from previous launches.
+
+Test Suite 'Selected tests' started at 2026-11-17 20:32:36.262.
+Test Suite 'FPUITests.xctest' started at 2026-11-17 20:32:36.269.
+Test Suite 'ZZHangProbeTests' started at 2026-11-17 20:32:36.270.
+Test Case '-[FPUITests.ZZHangProbeTests test3RunsAfterTheHang]' started.
+Test Case '-[FPUITests.ZZHangProbeTests test3RunsAfterTheHang]' passed (0.018 seconds).
+Test Suite 'ZZHangProbeTests' passed at 2026-11-17 20:32:36.294.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.018 (0.024) seconds
+Test Suite 'FPUITests.xctest' passed at 2026-11-17 20:32:36.296.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.018 (0.027) seconds
+Test Suite 'Selected tests' passed at 2026-11-17 20:32:36.296.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.018 (0.035) seconds
+2026-11-17 20:32:56.585 xcodebuild[97149:5668439] [MT] IDETestOperationsObserverDebug: 196.019 elapsed -- Testing started completed.
+2026-11-17 20:32:56.585 xcodebuild[97149:5668439] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-11-17 20:32:56.585 xcodebuild[97149:5668439] [MT] IDETestOperationsObserverDebug: 196.019 sec, +196.019 sec -- end
+
+Test session results, code coverage, and logs:
+	/tmp/dd/Logs/Test/Test-FPKit-Package-2026.11.17_20-29-40--0400.xcresult
+
+Failing tests:
+	ZZHangProbeTests.test2HangsOnAnAwaitThatNeverReturns()
+
+** TEST EXECUTE FAILED **
+
+Testing started
+EOF
+annotate "$tmp/test.log"
+allowance="Test Case '-[FPUITests.ZZHangProbeTests test2HangsOnAnAwaitThatNeverReturns]' exceeded execution time allowance of 1 minute. \
+The test may have hung; check Xcode's test report for additional diagnostics. If the test requires additional time, use \
+-[XCTestCase executionTimeAllowance] or one of xcodebuild's command-line overrides."
+check "time allowance: two errors" is "$(errors)" 2
+check "time allowance: error 1 is the line that says the case ran past it" is "$(error 1)" "$allowance"
+check "time allowance: error 2 is the restart line, the case's" is "$(error 2)" \
+  "Restarting after unexpected exit, crash, or test timeout; summary will include totals from previous launches."
+check "time allowance: the counts" noted "test counts|test.log: 3 tests ran, 1 failed (2 failure lines), 0 skipped, 1 never finished"
+check "time allowance: the case" noted "failed test cases|1 failed test case, failure lines in brackets: \
+ZZHangProbeTests.test2HangsOnAnAwaitThatNeverReturns (never finished)"
+
+# 16. The same case when the log ends before the restart (the step's own limit stopped xcodebuild while it was still
+# collecting its report): the line that says so still names the case, once.
+sed -n '1,9p' "$tmp/test.log" > "$tmp/cut.log"
+annotate "$tmp/cut.log"
+check "time allowance, log cut: one error" is "$(errors)" 1
+check "time allowance, log cut: the line that says the case ran past it" is "$(error 1)" "$allowance"
+check "time allowance, log cut: the counts" noted "test counts|cut.log: 2 tests ran, 1 failed (1 failure line), 0 skipped, 1 never finished"
+
+# 17. A case that finished after its allowance was up, copied from a real log (Xcode 27.2, iOS 27.0, the same flags
+# with an allowance of 120 s; ShellBridgeTabsTests' test05b with its page's WebKit process stopped, then let go once
+# the allowance was up, so it ran on and passed; three of its log lines kept, folders shortened). Its passed line came
+# 6 s after the allowance ran out and the restart 17 s after that, with no case left to run: the case fails by the line
+# that says it ran past its allowance, it finished, and the restart line is the run's.
+cat > "$tmp/test.log" <<'EOF'
+Test Suite 'Selected tests' started at 2026-11-17 20:49:47.912.
+Test Suite 'FPUITests.xctest' started at 2026-11-17 20:49:47.913.
+Test Suite 'ShellBridgeTabsTests' started at 2026-11-17 20:49:47.914.
+Test Case '-[FPUITests.ShellBridgeTabsTests test05bRestatesStopAfterThreeInARowThatNeverSettle]' started.
+Test Case '-[FPUITests.ShellBridgeTabsTests test05bRestatesStopAfterThreeInARowThatNeverSettle]' exceeded execution time allowance of 2 minutes. The test may have hung; check Xcode's test report for additional diagnostics. If the test requires additional time, use -[XCTestCase executionTimeAllowance] or one of xcodebuild's command-line overrides.
+2026-11-17 20:51:53.891168-0400 xctest[12653:5715095] [screens] screens: the Coach tab's stack left (teardown): a later screen goes up over the page
+2026-11-17 20:51:53.891732-0400 xctest[12653:5715095] [coachHome] coachHome: torn down: the model gone, answers still on their way ignored
+2026-11-17 20:51:53.892019-0400 xctest[12653:5715095] [shell] shell: detached from a web view (scene disconnected)
+Test Case '-[FPUITests.ShellBridgeTabsTests test05bRestatesStopAfterThreeInARowThatNeverSettle]' passed (126.019 seconds).
+Test Suite 'ShellBridgeTabsTests' passed at 2026-11-17 20:51:53.935.
+	 Executed 1 test, with 0 failures (0 unexpected) in 126.019 (126.021) seconds
+Test Suite 'FPUITests.xctest' passed at 2026-11-17 20:51:53.937.
+	 Executed 1 test, with 0 failures (0 unexpected) in 126.019 (126.024) seconds
+Test Suite 'Selected tests' passed at 2026-11-17 20:51:53.937.
+	 Executed 1 test, with 0 failures (0 unexpected) in 126.019 (126.026) seconds
+
+
+*** If you believe this error represents a bug, please attach the result bundle at /tmp/dd/Logs/Test/Test-FPKit-Package-2026.11.17_20-49-28--0400.xcresult
+
+
+Restarting after unexpected exit, crash, or test timeout; summary will include totals from previous launches.
+
+Test Suite 'Selected tests' started at 2026-11-17 20:52:10.990.
+Test Suite 'FPUITests.xctest' started at 2026-11-17 20:52:10.990.
+Test Suite 'FPUITests.xctest' passed at 2026-11-17 20:52:10.990.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.000) seconds
+Test Suite 'Selected tests' passed at 2026-11-17 20:52:10.991.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.001) seconds
+2026-11-17 20:52:22.332 xcodebuild[12227:5713361] [MT] IDETestOperationsObserverDebug: 173.555 elapsed -- Testing started completed.
+2026-11-17 20:52:22.332 xcodebuild[12227:5713361] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-11-17 20:52:22.332 xcodebuild[12227:5713361] [MT] IDETestOperationsObserverDebug: 173.555 sec, +173.555 sec -- end
+
+Test session results, code coverage, and logs:
+	/tmp/dd/Logs/Test/Test-FPKit-Package-2026.11.17_20-49-28--0400.xcresult
+
+Failing tests:
+	ShellBridgeTabsTests.test05bRestatesStopAfterThreeInARowThatNeverSettle()
+
+** TEST EXECUTE FAILED **
+
+Testing started
+EOF
+annotate "$tmp/test.log"
+ran_past="Test Case '-[FPUITests.ShellBridgeTabsTests test05bRestatesStopAfterThreeInARowThatNeverSettle]' exceeded execution time \
+allowance of 2 minutes. The test may have hung; check Xcode's test report for additional diagnostics. If the test requires \
+additional time, use -[XCTestCase executionTimeAllowance] or one of xcodebuild's command-line overrides."
+check "finished past its allowance: two errors" is "$(errors)" 2
+check "finished past its allowance: error 1 is the line that says it ran past" is "$(error 1)" "$ran_past"
+check "finished past its allowance: error 2 is the restart line, the run's" is "$(error 2)" \
+  "Restarting after unexpected exit, crash, or test timeout; summary will include totals from previous launches."
+check "finished past its allowance: the counts" noted "test counts|test.log: 1 test ran, 1 failed (1 failure line), 0 skipped"
+check "finished past its allowance: the case, finished" noted "failed test cases|1 failed test case, failure lines in brackets: \
+ShellBridgeTabsTests.test05bRestatesStopAfterThreeInARowThatNeverSettle (1)"
 
 echo "annotate-xc-test: $checks checks, $failures failed ($script)"
 [ "$failures" -eq 0 ]

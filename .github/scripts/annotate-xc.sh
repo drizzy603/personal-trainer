@@ -3,8 +3,9 @@
 # GitHub keeps 10 error annotations a step, so the ten name failures, not a log's first ten error lines (CI run
 # 40886265725 named 3 failing cases, seven of its ten lines from one case's sixteen; the same classes on iOS 26.5
 # fail 7 cases on a Mac and give exactly those ten). First one line for each failed test case, in the order the log
-# meets them (its first failure line, which says where and why; a case with none, lost in a crash or a hang or only
-# listed under "Failing tests:", by the line that names it), then the lines that fail the run outside any case
+# meets them (its first failure line, which says where and why: for a case that ran past its time allowance, the line
+# that says so; a case with none, lost in a crash or a hang or only listed under "Failing tests:", by the line that
+# names it), then the lines that fail the run outside any case
 # (compile errors, xcodebuild's own, the reasons under "Testing failed:", SwiftPM's line for a crashed test process),
 # then the cases' other failure lines while room is left. Notices are counted apart from errors: one per test log says
 # how many tests ran, failed (with their failure lines) and were skipped, and up to three more name the failed cases
@@ -85,6 +86,11 @@ sect != "" && /^[ \t]+[^ \t]/ {
   name = substr($0, 12, RLENGTH - 13); k = key(name); rest = substr($0, RLENGTH + 1)
   tlog[file] = 1; ran(k)
   if (rest ~ /^started/) { if (cur != k) lost(cur); cur = k; sname[k] = name; next }
+  # A case past its time allowance (xcodebuild -test-timeouts-enabled): this line is why it failed, whatever follows.
+  # It names the case and moves nothing: xcodebuild then ends the test process (89 s later on the Mac) and restarts it
+  # for the cases after this one, so a case still running then never finished and the restart line counts for it, as
+  # for a crash; one whose passed line came first (a lone case's log) leaves the restart line to the run.
+  if (rest ~ /^exceeded execution time allowance/) { sname[k] = name; issue(k, $0, 1); next }
   if (rest ~ /^failed/) failed(k, $0)
   else if (rest ~ /^skipped/) nskip[file]++
   if (cur == k) cur = ""

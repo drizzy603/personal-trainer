@@ -164,7 +164,9 @@ jobs:
   # seconds for the same classes (its whole run of those tests on 27.0: renders 205 s, ShellBridgeTabsTests 110). The
   # seven failing cases took about 7.5 minutes on the Mac under CI's bounds, so for the last part's passing tests the 2.8
   # errs high. Another 8 to 9 minutes went outside the test steps (the first simulator boot 5.5 to 6.8), hence 40
-  # minutes for the job, so the warning comes well before the job is cut off. With H10's and H11's tests
+  # minutes for the job, so the warning comes well before the job is cut off. From 17 Nov the test step has 30 minutes
+  # of its own and each case 15 (the step's comment), and the job 45, so a step cut by its own limit still leaves the
+  # steps after it the time to name where it was. With H10's and H11's tests
   # (ShellBridgeTabsTests 52, ScreenHostTests 61) a calm Mac took about 200 s for renders, 230 for tabs, 200 for stack
   # and 95 for rest: about 12, 13, 12 and 7 minutes a test step by that rule, on either runtime, rest being the part
   # every new class joins, and a failing case's waits on top. CI's first run of all eight parts (41951156118, at
@@ -181,7 +183,7 @@ jobs:
   fpkit-ios:
     name: FPKit on an iOS simulator (${{ matrix.part }})
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 40
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -248,10 +250,26 @@ jobs:
         run: xcrun simctl bootstatus "${{ steps.sim.outputs.udid }}" -b
 
       # TEST_RUNNER_CI reaches the simulator's test process as CI (the speed bounds loosen on shared runners).
+      #
+      # No case takes the job with it, and a run that is cut names where it was (the time limits, below the job's 45
+      # minutes). Run 44197214428's tabs part (55c66d0 on next) was cancelled by the job's limit (40 minutes then) with
+      # this step 41 minutes in, where the same commit took 15.5 on main: nothing said which case it was in, since a
+      # cancelled job ran no `if: failure()` step, and its log needs a login.
+      # - Every case has TEST_ALLOWANCE seconds (-test-timeouts-enabled): xcodebuild fails a case that runs past them,
+      #   by name ("exceeded execution time allowance"), ends the test process (89 s later on the Mac) and goes on
+      #   with the cases after it. The slowest passing case took 77 s on a calm Mac and 175 s on a loaded one
+      #   (CoachHomeRenderTests on iOS 27.0, 17 and 15 Nov), and a shared runner takes three to four times a Mac's time
+      #   for a whole part. A case that needs more says so itself (XCTestCase.executionTimeAllowance, up to
+      #   TEST_ALLOWANCE_MAX).
+      # - The step stops at 30 minutes, which fails it (a step's own limit is a failure, not a cancel: the runner's
+      #   StepsRunner), so "Name the failures" runs and names the case the log ends in ("started and never finished").
       - name: Test on the simulator (${{ matrix.part }})
         working-directory: ios/App/FPKit
+        timeout-minutes: 30
         env:
           TEST_RUNNER_CI: 'true'
+          TEST_ALLOWANCE: '900'
+          TEST_ALLOWANCE_MAX: '1200'
         run: |
           set -o pipefail
           parts="$GITHUB_WORKSPACE/.github/scripts/fpkit-parts.sh"
@@ -263,6 +281,9 @@ jobs:
             -scheme FPKit-Package \
             -destination "id=${{ steps.sim.outputs.udid }}" \
             -parallel-testing-enabled NO \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance "$TEST_ALLOWANCE" \
+            -maximum-test-execution-time-allowance "$TEST_ALLOWANCE_MAX" \
             $args \
             test 2>&1 | tee "$RUNNER_TEMP/test.log" || status=$?
           secs=$(( $(date +%s) - start ))
@@ -276,11 +297,17 @@ jobs:
           fi
           exit $status
 
-      # A run's log needs a login; annotations do not, so the failing lines go there.
+      # A run's log needs a login; annotations do not, so the failing lines go there. Also on a cancel (a newer push, or
+      # the job's own limit), best effort: the log so far names the case it was in, if the cancel leaves the step time
+      # to run. The step's own limit above is what makes sure of it.
       - name: Name the failures
-        if: failure()
+        if: failure() || cancelled()
         run: |
           echo "::notice title=toolchain::$(xcodebuild -version | tr '\n' ' ') on ${{ steps.sim.outputs.name }}"
+          # A test step stopped by its limit (or a cancel) printed no minutes notice: its log has no closing result line.
+          if [ -f "$RUNNER_TEMP/test.log" ] && ! grep -qE '^\*\* (TEST|BUILD) ' "$RUNNER_TEMP/test.log"; then
+            echo "::notice title=fpkit-ios test step stopped (${{ matrix.part }})::the test log ends with no result line: the step was stopped (its 30-minute limit or a cancel) before xcodebuild finished"
+          fi
           .github/scripts/annotate-xc.sh "$RUNNER_TEMP/build.log" "$RUNNER_TEMP/test.log"
 
   # Disabled (if: false). Were it enabled, it would archive with the Xcode the app ships with, on the build job's image
