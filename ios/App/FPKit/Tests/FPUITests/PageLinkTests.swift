@@ -18,14 +18,14 @@ final class PageLinkTests: XCTestCase {
     /// answers a failure code. `window.__got` lists what reached the page, `window.__busy`/`__peak` how many were in it.
     static let page = """
         <!doctype html><meta charset="utf-8"><title>fp</title><script>
-        window.__got = []; window.__busy = 0; window.__peak = 0;
+        window.__got = []; window.__busy = 0; window.__peak = 0; window.__pending = [];
         window.FPScreens = { v: 1, call: function (name, args) {
           window.__got.push(name + (args && (args.nonce || args.id) ? ':' + (args.nonce || args.id) : ''));
           window.__busy++; window.__peak = Math.max(window.__peak, window.__busy);
           var done = function (v) { window.__busy--; return v; };
           if (name === 'ping') return Promise.resolve(done({ ok: true, v: 1 }));
           if (name === 'coach.keep') return new Promise(function (r) { setTimeout(function () { r(done({ ok: true, id: args.id })); }, Number(args.id)); });
-          if (name === 'coach.stop') return new Promise(function () {});
+          if (name === 'coach.stop') { var never = new Promise(function () {}); window.__pending.push(never); return never; }
           if (name === 'coach.retry') return Promise.resolve(done({ ok: false, error: 'stale' }));
           if (name === 'coach.back') { window.__busy--; throw new Error('boom'); }
           if (name === 'coach.openSettings') return Promise.resolve(done(42));

@@ -67,6 +67,9 @@ final class ShellBridgeTests: XCTestCase {
     /// How long a stand-in page gets to load. The wait ends when the page is up, so the length costs a passing run
     /// nothing; 10 s ran out on this Mac under a load of 20 to 58 ("the stand-in page did not load").
     private static let loadWait: TimeInterval = 60
+    /// How much longer a bound on time is on CI (as ShellBridgeTabsTests): the 4 s polls below end as soon as what they
+    /// wait for has happened, so the longer bound costs a passing run nothing and spares a slow runner a false failure.
+    private static let slack: Double = ProcessInfo.processInfo.environment["CI"] == nil ? 1 : 10
 
     /// Loads PageLinkTests' stand-in page (window.FPScreens answering) after the bridge's document-start script is in.
     private func loadPage() async throws {
@@ -139,7 +142,7 @@ final class ShellBridgeTests: XCTestCase {
         if case .success = await message(b, "present", ["screen": "coach"]) { XCTFail("no model: refused") }
         _ = await message(b, "model", ["screen": "coach", "rev": 1, "json": try modelJSON(boot: "b1", rev: 1)])
         _ = try await message(b, "present", ["screen": "coach"]).get()
-        let deadline = Date().addingTimeInterval(4)
+        let deadline = Date().addingTimeInterval(4 * Self.slack)
         while stand.shown.last == nil, Date() < deadline { try await Task.sleep(nanoseconds: 30_000_000) }
         XCTAssertEqual(stand.shown.last?.modalPresentationStyle, .overFullScreen)
         // a reload: the next document's hello hears the chat is still up, and the chat stays
@@ -152,7 +155,7 @@ final class ShellBridgeTests: XCTestCase {
         XCTAssertFalse(records.contains { $0.boot == "b2" && $0.name.hasPrefix("coach.") && $0.name != "coach.snapshot" }, "nothing of the old document sent again")
         // a page that cannot show it says dismiss, and the shell takes it down
         _ = await message(b, "dismiss", ["screen": "coach"])
-        let gone = Date().addingTimeInterval(4)
+        let gone = Date().addingTimeInterval(4 * Self.slack)
         while stand.shown.last != nil, Date() < gone { try await Task.sleep(nanoseconds: 30_000_000) }
         XCTAssertNil(stand.shown.last)
     }
@@ -167,11 +170,11 @@ final class ShellBridgeTests: XCTestCase {
         _ = await message(b, "hello", ["v": 1, "page": "P1", "screens": ["coach"], "boot": "b1"])
         _ = await message(b, "model", ["screen": "coach", "rev": 1, "json": try modelJSON(boot: "b1", rev: 1)])
         _ = await message(b, "present", ["screen": "coach"])
-        let up = Date().addingTimeInterval(4)
+        let up = Date().addingTimeInterval(4 * Self.slack)
         while stand.shown.last == nil, Date() < up { try await Task.sleep(nanoseconds: 30_000_000) }
         policy = Policy(screens: ["coach": .off])
         b.policyChanged(screens: ["coach"])
-        let down = Date().addingTimeInterval(4)
+        let down = Date().addingTimeInterval(4 * Self.slack)
         while stand.shown.last != nil, Date() < down { try await Task.sleep(nanoseconds: 30_000_000) }
         XCTAssertNil(stand.shown.last, "down at once")
         // polled: the link sends one intent at a time, so screens.off waits for the page's answer to what went before it
@@ -186,10 +189,10 @@ final class ShellBridgeTests: XCTestCase {
     /// puts there).
     static let reloadPage = """
         <!doctype html><meta charset="utf-8"><title>fp</title><script>
-        window.__got = [];
+        window.__got = []; window.__pending = [];
         window.FPScreens = { v: 1, call: function (name, args) {
           window.__got.push(name + (args && (args.nonce || args.id) ? ':' + (args.nonce || args.id) : ''));
-          if (name === 'coach.send') return new Promise(function () {});
+          if (name === 'coach.send') { var never = new Promise(function () {}); window.__pending.push(never); return never; }
           if (name === 'coach.snapshot') return Promise.resolve(window.__snap ? { ok: true, json: window.__snap } : { ok: false, error: 'none' });
           return Promise.resolve({ ok: true });
         } };
@@ -220,7 +223,7 @@ final class ShellBridgeTests: XCTestCase {
         _ = await message(b, "hello", ["v": 1, "page": "P1", "screens": ["coach"], "boot": "b1"])
         _ = await message(b, "model", ["screen": "coach", "rev": 5, "json": try modelJSON(boot: "b1", rev: 5)])
         _ = try await message(b, "present", ["screen": "coach"]).get()
-        let up = Date().addingTimeInterval(4)
+        let up = Date().addingTimeInterval(4 * Self.slack)
         while stand.shown.last == nil, Date() < up { try await Task.sleep(nanoseconds: 30_000_000) }
         _ = try await message(b, "confirm", ["id": "c1.b1", "title": "Restore previous programme?", "confirm": "Restore"]).get()
         XCTAssertEqual(screens.openConfirm, "c1.b1")
@@ -241,7 +244,7 @@ final class ShellBridgeTests: XCTestCase {
         _ = try await webView.evaluateJavaScript("window.__snap = \(Self.jsString(try modelJSON(boot: "b2", rev: 1))); 0")
         let hello = try await message(b, "hello", ["v": 1, "page": "P1", "screens": ["coach"], "boot": "b2"]).get()
         XCTAssertEqual(hello["up"] as? [String], ["coach"], "the next document takes the chat over")
-        let drawn = Date().addingTimeInterval(4)
+        let drawn = Date().addingTimeInterval(4 * Self.slack)
         while screens.coach.model?.boot != "b2", Date() < drawn { try await Task.sleep(nanoseconds: 30_000_000) }
         XCTAssertEqual(screens.coach.model?.boot, "b2", "the new boot's snapshot is drawn though its rev is lower")
         XCTAssertEqual(screens.coach.model?.rev, 1)
@@ -815,7 +818,7 @@ final class ShellBridgeTests: XCTestCase {
         _ = await message(b, "hello", ["v": 1, "page": "P1", "screens": ["coach"], "boot": "b1"])
         _ = await message(b, "model", ["screen": "coach", "rev": 5, "json": try modelJSON(boot: "b1", rev: 5)])
         _ = try await message(b, "present", ["screen": "coach"]).get()
-        let up = Date().addingTimeInterval(4)
+        let up = Date().addingTimeInterval(4 * Self.slack)
         while stand.shown.last == nil, Date() < up { try await Task.sleep(nanoseconds: 30_000_000) }
         _ = try await webView.evaluateJavaScript("window.__snap = \(Self.jsString(try modelJSON(boot: "b2", rev: 1))); 0")
         var during: [UInt8?] = []
@@ -825,7 +828,7 @@ final class ShellBridgeTests: XCTestCase {
         // the next document says hello with the chat still up: the shell draws it from the page's snapshot
         let hello = try await message(b, "hello", ["v": 1, "page": "P1", "screens": ["coach"], "boot": "b2"]).get()
         XCTAssertEqual(hello["up"] as? [String], ["coach"])
-        let drawn = Date().addingTimeInterval(4)
+        let drawn = Date().addingTimeInterval(4 * Self.slack)
         while screens.coach.model?.boot != "b2", Date() < drawn { try await Task.sleep(nanoseconds: 30_000_000) }
         watch.cancel()
         XCTAssertEqual(screens.coach.model?.boot, "b2")
