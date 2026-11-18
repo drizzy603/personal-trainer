@@ -941,26 +941,72 @@ final class RootTabControllerTests: XCTestCase {
         r.root.view.layoutIfNeeded()
 
         // the items keep UIKit's own traits (contract 6.1, I17): the root sets none on an item, and UIKit's selection, which
-        // its accessibility reads as `.selected`, follows the funnel on both copies UIKit draws. The traits themselves are
-        // read only where the accessibility runtime is loaded (in this host the controls are no accessibility elements; in
-        // the app probe61 read them, and the device checklist's VoiceOver line hears them)
+        // its accessibility reads as `.selected`, follows the funnel on both copies UIKit draws. What each drawn control
+        // tells accessibility is held to UIKit's own tab bar on this OS (a plain UITabBarController with the same titles and
+        // the same tab selected): an element exactly when UIKit's own control is, with its traits. `.button` and `.selected`
+        // are read only where UIKit's own controls carry them, that is where the accessibility runtime is loaded: in this
+        // host on iOS 26.5 and 27.0 the controls are no elements; on 27.2 they are elements with no traits at all, a plain
+        // bar's the same (17 Nov); in the app probe61 read them, and the device checklist's VoiceOver line hears them
         r.root.select("progress", source: .page(intent: nil))
         r.root.view.layoutIfNeeded()
         _ = outsideOverTurns(r.webView)
+        let reference = plainBarControls(titles: items.map { $0.title ?? "" }, selected: try XCTUnwrap(ShellTabs.ids.firstIndex(of: "progress")))
         var axLoaded = false
         for (i, id) in ShellTabs.ids.enumerated() {
             XCTAssertEqual(items[i].accessibilityTraits, UITabBarItem().accessibilityTraits, "\(id): no trait of the root's on the item")
             let cs = controls(r, drawing: items[i].title ?? "")
             XCTAssertFalse(cs.isEmpty, "\(id): UIKit draws a control for the item")
-            for c in cs {
+            XCTAssertEqual(cs.count, reference[i].count, "\(id): as many drawn controls as UIKit's own bar")
+            for (k, c) in cs.enumerated() {
                 XCTAssertEqual(c.isSelected, id == "progress", "\(id): selected exactly when its tab is")
-                guard c.isAccessibilityElement else { continue }
+                guard k < reference[i].count else { continue }
+                let own = reference[i][k]
+                XCTAssertEqual(c.isAccessibilityElement, own.element, "\(id): an accessibility element exactly when UIKit's own control is")
+                XCTAssertEqual(c.accessibilityTraits, own.traits, "\(id): UIKit's own control's traits")
+                guard c.isAccessibilityElement, own.traits.contains(.button) else { continue }
                 axLoaded = true
                 XCTAssertTrue(c.accessibilityTraits.contains(.button), "\(id): a button")
                 XCTAssertEqual(c.accessibilityTraits.contains(.selected), id == "progress", "\(id): .selected exactly when selected")
             }
         }
-        print("RootTabControllerTests: the bar's controls are accessibility elements here: \(axLoaded)")
+        print("RootTabControllerTests: the bar's controls carry UIKit's accessibility traits here: \(axLoaded)")
+    }
+
+    /// What UIKit's own tab bar draws for `titles` with tab `selected` chosen, on this OS: for each title, each control
+    /// that draws it (found as `controls` finds them), whether it is an accessibility element and its traits.
+    private func plainBarControls(titles: [String], selected: Int) -> [[(element: Bool, traits: UIAccessibilityTraits)]] {
+        let tbc = UITabBarController()
+        var vcs: [UIViewController] = []
+        for (i, t) in titles.enumerated() {
+            let vc = UIViewController()
+            vc.tabBarItem = UITabBarItem(title: t, image: UIImage(systemName: "circle"), tag: i)
+            vcs.append(vc)
+        }
+        tbc.viewControllers = vcs
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+        if let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first { window.windowScene = scene }
+        window.rootViewController = tbc
+        window.makeKeyAndVisible()
+        tbc.selectedIndex = selected
+        tbc.view.layoutIfNeeded()
+        _ = outsideOverTurns(tbc.view)
+        var out: [[(element: Bool, traits: UIAccessibilityTraits)]] = []
+        for t in titles {
+            func draws(_ v: UIView) -> Bool {
+                if let l = v as? UILabel, l.text == t { return true }
+                return v.subviews.contains(where: draws)
+            }
+            var found: [(element: Bool, traits: UIAccessibilityTraits)] = []
+            func walk(_ v: UIView) {
+                if let c = v as? UIControl, draws(c) { found.append((element: c.isAccessibilityElement, traits: c.accessibilityTraits)); return }
+                v.subviews.forEach(walk)
+            }
+            walk(tbc.tabBar)
+            out.append(found)
+        }
+        window.isHidden = true
+        window.rootViewController = nil
+        return out
     }
 
     // MARK: 8. The fallback
