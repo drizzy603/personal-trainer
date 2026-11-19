@@ -55,8 +55,12 @@ Launches, in this order (`--only` picks among them; prepare and restore always r
                  the first frame on Coach, no _trovoOpen; the page's boot read of the parked link takes the photo and the
                  comment (before its own +2.5 s check could)
   share          the share hook as the build can take it (no App Group container: an error that writes nothing, read back
-                 through trovo://share; a build signed to run locally: the file), then the legacy slot on purpose with a
-                 JPEG file beside the steps (`jpeg`), read by trovo://share
+                 through trovo://share; a build signed to run locally: build 62's layout, pendingShare.json then
+                 pendingShare.jpg, with the page's own reads held: TrovoShare.getPendingShare({keep:true}) leaves both
+                 files and answers the share's id, a clear by another id leaves them, then trovo://share: the page reads
+                 it, keeps it and clears it by its id, both files gone; then build 61's layout, the jpg with the words
+                 in the group's defaults, read and deleted with no id), then the legacy slot on purpose with a JPEG file
+                 beside the steps (`jpeg`), read by trovo://share
   ping           `blockPage` while a tap's tabs.select waits: its timeout held, confirmed by a ping (`ping` event, done),
                  no fallback
   sceneCycle     the scene's connection replayed twice (the step, then the generic `hook` step): a new web view in a
@@ -380,8 +384,9 @@ EVENTS = {
     'openURLOnActive': _alt({'url': 'str', 'fired': oneof(True), 'opened': 'bool'}, {'ran': 'bool', 'url': 'str', 'armed': oneof(True)},
                             ok=lambda e: 'fired' in e),
     'share': _all(_alt({'ran': oneof(True), 'jpeg': oneof('drawn', 'file'), 'bytes': 'int', 'stored': oneof('file', 'defaults'),
-                        'legacy': 'bool', 'commentLength': 'int'}, {'ran': 'bool', 'error': 'str'}),
-                  _only('ran', 'jpeg', 'bytes', 'stored', 'legacy', 'commentLength', 'error')),
+                        'legacy': 'bool', 'layout': oneof('62', '61', 'slot'), 'commentLength': 'int'}, {'ran': 'bool', 'error': 'str'}),
+                  lambda e: 'build 62\'s layout without its id' if e.get('layout') == '62' and 'error' not in e and type(e.get('id')) is not str else None,
+                  _only('ran', 'jpeg', 'bytes', 'stored', 'legacy', 'layout', 'id', 'commentLength', 'error')),
     'sceneCycle': _alt({'ran': oneof(True), 'root': oneof('tabs', 'classic'), 'newWebView': 'bool', 'newWindow': 'bool'},
                        {'error': 'str'}),
     'sceneDestroy': _alt({'session': 'str'}, {'error': 'str'}),
@@ -653,6 +658,43 @@ return { saved: k !== null, prefix: k ? k.slice(0, 12) : null, length: k ? k.len
 COMPOSER_JS = r"""
 var i = document.getElementById('coach-input');
 return { web: i ? i.value.length : null, photo: (typeof pendingImage !== 'undefined' && pendingImage) ? pendingImage.data.length : 0 };
+"""
+# The page's own reads of a pending share (the boot's +2.5 s check, a return's +0.6 s) held off: one under way is let
+# finish, then _shareBusy stays set, so a share the hook writes stays the runner's until SHARE_RELEASE_JS (native-shell's
+# SHARE_HOLD_JS).
+SHARE_HOLD_JS = r"""
+for (var i = 0; i < 100 && window._shareBusy; i++) await new Promise(function (r) { setTimeout(r, 100); });
+var busy = !!window._shareBusy;
+if (!busy) window._shareBusy = true;
+return { held: !busy && window._shareBusy === true };
+"""
+SHARE_RELEASE_JS = r"""
+window._shareBusy = false;
+return { released: true };
+"""
+# Build 62's TrovoShare asked as the page asks it (getPendingShare({keep:true})), by the runner: the answer's sizes and
+# id, never the words.
+SHARE_KEEP_READ_JS = r"""
+var TS = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.TrovoShare;
+if (!TS || typeof TS.clearPendingShare !== 'function') return { error: 'no build 62 TrovoShare' };
+var r = await TS.getPendingShare({ keep: true });
+return { photo: r && r.imageBase64 ? String(r.imageBase64).length : 0, commentLength: r && r.comment ? String(r.comment).length : 0,
+  id: r && r.id ? String(r.id) : null };
+"""
+# A clear by an id the App Group's share does not have (a share the page took before a newer one was written).
+SHARE_STALE_CLEAR_JS = r"""
+var r = await Capacitor.Plugins.TrovoShare.clearPendingShare({ id: 'probe-stale-' + Date.now() });
+return { cleared: !!(r && r.cleared) };
+"""
+# The page's share state after its read: its share and photo lines (sizes and states only), the share it holds and the
+# ids it kept and asked to clear.
+SHARE_LINES_JS = r"""
+var a = [];
+try { a = JSON.parse(localStorage.getItem('kt_wch_log') || '[]').map(function (l) { return String(l).slice(15); })
+  .filter(function (l) { return /^(share|photo): /.test(l); }).slice(0, 8); } catch (e) {}
+return { lines: a, sid: typeof _shareSid === 'string' ? _shareSid : null,
+  kept: (typeof _shareKept === 'object' && _shareKept) ? Object.keys(_shareKept) : null,
+  clearing: (typeof _shareClearing === 'object' && _shareClearing) ? Object.keys(_shareClearing) : null };
 """
 # The photo goes through the page's own remove (web 20261113-1 keeps a pending photo in IndexedDB until it is sent or
 # removed): set to null by hand, its kept copy would come back at a later launch and open the chat over the next step.
@@ -1135,21 +1177,109 @@ def scen_share(c):
     if os.path.exists(photo):
         size = os.path.getsize(photo)
     c.check(s, 'a JPEG for the hook\'s jpeg argument beside the steps files (%d bytes)' % size, size > 1000, photo)
-    phase = [wait(800), step('share', comment=c.share_text)]
+
+    # The App Group's two files as the runner sees them at a step's event (the step after each is a wait, so the look
+    # lands before the next step): the words file parsed, the photo's size.
+    snaps = {}
+
+    def files():
+        jp, pp = os.path.join(gc, 'pendingShare.json'), os.path.join(gc, 'pendingShare.jpg')
+        out = {'json': None, 'jpg': os.path.getsize(pp) if os.path.isfile(pp) else None}
+        if os.path.isfile(jp):
+            try:
+                with open(jp, encoding='utf-8') as f:
+                    out['json'] = json.load(f)
+            except ValueError:
+                out['json'] = 'unreadable'
+        return out
+
+    looks = [('62 written', 'share', None, 0), ('kept by the read', 'js', 'keep read', 0), ('after the stale clear', 'js', 'stale clear', 0),
+             ('after the page\'s read', 'js', 'share lines', 0), ('61 written', 'share', None, 1), ('after the 61 read', 'js', 'share lines 61', 0)]
+
+    def during(ev):
+        if not c.group:
+            return
+        for name, kind, label, k in looks:
+            if name in snaps:
+                continue
+            got = ev.all(kind) if label is None else [e for e in ev.all(kind) if e.get('label') == label]
+            if len(got) > k:
+                snaps[name] = files()
+
+    phase = [wait(800)]
     if c.group:
-        phase += [step('openURL', url='trovo://share'), wait(3500), state('shared file'), js('composer file', COMPOSER_JS),
-                  step('draft', text=''), js('clear file', CLEAR_JS)]
+        # build 62's layout, the page's own reads held: the plugin's keep read leaves both files, a clear by another id
+        # leaves them; then trovo://share: the page reads it, keeps it and clears it by its id. Then build 61's layout,
+        # read and deleted with no id.
+        phase += [js('share hold', SHARE_HOLD_JS), step('share', comment=c.share_text), wait(1500),
+                  js('keep read', SHARE_KEEP_READ_JS), wait(1500), js('stale clear', SHARE_STALE_CLEAR_JS), wait(1500),
+                  js('share release', SHARE_RELEASE_JS), step('openURL', url='trovo://share'), wait(3500), state('shared file'),
+                  js('composer file', COMPOSER_JS), js('share lines', SHARE_LINES_JS), wait(1500),
+                  step('draft', text=''), js('clear file', CLEAR_JS),
+                  step('share', comment=c.share_text, layout='61'), wait(1500), step('openURL', url='trovo://share'), wait(3500),
+                  state('shared 61'), js('composer 61', COMPOSER_JS), js('share lines 61', SHARE_LINES_JS), wait(1500),
+                  step('draft', text=''), js('clear 61', CLEAR_JS)]
     else:
         # the refused write is read back: trovo://share must find nothing (no photo, no comment, both composers empty)
-        phase += [step('openURL', url='trovo://share'), wait(3500), js('composer refused', COMPOSER_JS), state('refused read')]
+        phase += [step('share', comment=c.share_text), step('openURL', url='trovo://share'), wait(3500), js('composer refused', COMPOSER_JS),
+                  state('refused read')]
     phase += [step('share', comment=c.share_text, legacy=True, jpeg=PHOTO), step('openURL', url='trovo://share'), wait(3500), state('shared'),
               js('composer', COMPOSER_JS), step('draft', text=''), js('clear', CLEAR_JS), DONE]
-    ev = c.launch(s, 'share', [phase])
+    ev = c.launch(s, 'share', [phase], during=during)
+    if c.group:
+        # whatever a failed step left in the container goes, so no later launch's page reads it as a share
+        left = [n for n in ('pendingShare.json', 'pendingShare.jpg') if os.path.isfile(os.path.join(gc, n))]
+        for n in left:
+            os.remove(os.path.join(gc, n))
+        c.check(s, 'nothing of the shares left in the App Group\'s container at the end', not left, left)
     sh = ev.all('share')
     one = sh[0] if sh else {}
+    want_photo = lambda n: 4 * math.ceil(n / 3)
     if c.group:
-        c.check(s, 'share (a build with the App Group): pendingShare.jpg written as the extension writes it (stored file)',
-                one.get('stored') == 'file' and one.get('legacy') is False and one.get('commentLength') == len(c.share_text), one)
+        a = snaps.get('62 written') or {}
+        w = a.get('json') if isinstance(a.get('json'), dict) else {}
+        c.check(s, 'share (a build with the App Group): build 62\'s layout, the words file and the photo (stored file, layout 62, its id)',
+                one.get('stored') == 'file' and one.get('legacy') is False and one.get('layout') == '62' and type(one.get('id')) is str
+                and one.get('commentLength') == len(c.share_text), one)
+        c.check(s, 'both files written as the extension writes them: pendingShare.json {v: 1, id, at, bytes, comment} naming the photo\'s size and the '
+                   'event\'s id, the words in it, then pendingShare.jpg',
+                bool(w) and w.get('v') == 1 and w.get('id') == one.get('id') and type(w.get('at')) is int and w.get('bytes') == a.get('jpg')
+                and a.get('jpg') == one.get('bytes') and w.get('comment') == c.share_text,
+                {'json': {k: (len(v) if k == 'comment' and isinstance(v, str) else v) for k, v in w.items()}, 'jpg': a.get('jpg'),
+                 'event bytes': one.get('bytes')})
+        kr = first(ev, 'js', label='keep read').get('result') or {}
+        b = snaps.get('kept by the read') or {}
+        c.check(s, 'TrovoShare.getPendingShare({keep:true}) answers the photo, the words and the share\'s id, and leaves both files',
+                kr.get('photo') == want_photo(one.get('bytes') or 0) and kr.get('commentLength') == len(c.share_text) and kr.get('id') == one.get('id')
+                and isinstance(b.get('json'), dict) and b['json'].get('id') == one.get('id') and b.get('jpg') == one.get('bytes'),
+                {'answer': kr, 'files': {'json id': (b.get('json') or {}).get('id') if isinstance(b.get('json'), dict) else b.get('json'), 'jpg': b.get('jpg')}})
+        sc = first(ev, 'js', label='stale clear').get('result') or {}
+        cl = snaps.get('after the stale clear') or {}
+        c.check(s, 'a clear by another id answers cleared: false and leaves both files (a newer share stays for the next read)',
+                sc.get('cleared') is False and isinstance(cl.get('json'), dict) and cl.get('jpg') == one.get('bytes'),
+                {'answer': sc, 'jpg': cl.get('jpg'), 'json': bool(cl.get('json'))})
+        got, st = first(ev, 'js', label='composer file').get('result') or {}, ev.state('shared file')
+        ln = first(ev, 'js', label='share lines').get('result') or {}
+        d = snaps.get('after the page\'s read') or {}
+        c.check(s, 'trovo://share: the page read the share with keep, the photo in hand and the words in a composer, kept it and cleared it by its id',
+                got.get('photo') == want_photo(one.get('bytes') or 0) and (chat(st).get('draft') == c.share_text or got.get('web') == len(c.share_text))
+                and ln.get('sid') == one.get('id') and one.get('id') in (ln.get('kept') or []) and one.get('id') in (ln.get('clearing') or [])
+                and 'photo: kept' in (ln.get('lines') or []) and not [l for l in (ln.get('lines') or []) if l.startswith('share: not cleared')],
+                {'composer': got, 'native draft length': len(chat(st).get('draft') or ''), 'page': ln})
+        c.check(s, 'the page\'s clear removed both files', d.get('json') is None and d.get('jpg') is None, d)
+        e61 = sh[1] if len(sh) > 1 else {}
+        e = snaps.get('61 written') or {}
+        c.check(s, 'share {layout: 61}: build 61\'s layout, the photo alone in the container (the words in the group\'s defaults), no id',
+                e61.get('stored') == 'file' and e61.get('layout') == '61' and 'id' not in e61 and e.get('json') is None and e.get('jpg') == e61.get('bytes'),
+                {'event': e61, 'files': e})
+        g61, s61 = first(ev, 'js', label='composer 61').get('result') or {}, ev.state('shared 61')
+        l61 = first(ev, 'js', label='share lines 61').get('result') or {}
+        f = snaps.get('after the 61 read') or {}
+        c.check(s, 'build 61\'s layout read and deleted as before: the photo in hand, the words from the group\'s defaults in a composer, no id, '
+                   'nothing more cleared, the photo file gone',
+                g61.get('photo') == want_photo(e61.get('bytes') or 0) and (chat(s61).get('draft') == c.share_text or g61.get('web') == len(c.share_text))
+                and l61.get('sid') == '' and (l61.get('clearing') or []) == (ln.get('clearing') or []) and f.get('jpg') is None and f.get('json') is None,
+                {'composer': g61, 'native draft length': len(chat(s61).get('draft') or ''), 'page': l61, 'files': f})
     else:
         c.check(s, 'share with no App Group container: an error event that writes nothing (stored none), never the legacy slot unasked',
                 one.get('ran') is True and one.get('stored') == 'none' and 'error' in one, one)
@@ -1157,7 +1287,7 @@ def scen_share(c):
         c.check(s, 'read back, the refused share left nothing: trovo://share read no photo and no comment (both composers empty)',
                 got.get('photo') == 0 and got.get('web') in (0, None) and (chat(rr).get('draft') or '') == '',
                 {'composer': got, 'native draft length': len(chat(rr).get('draft') or '')})
-    leg = sh[1] if len(sh) > 1 else {}
+    leg = sh[-1] if len(sh) > 1 else {}
     c.check(s, 'share {legacy: true, jpeg: <file>}: the base64 slot on purpose (stored defaults), the file\'s bytes, the comment\'s length only',
             leg.get('stored') == 'defaults' and leg.get('legacy') is True and leg.get('jpeg') == 'file' and leg.get('bytes') == size
             and size > 0 and leg.get('commentLength') == len(c.share_text), {'event': leg, 'file': size})
@@ -1168,9 +1298,9 @@ def scen_share(c):
     got = first(ev, 'js', label='composer').get('result') or {}
     st = ev.state('shared')
     c.check(s, 'the page read the shared file and comment (TrovoShare\'s read): the file\'s photo in hand (its base64), the comment in a composer',
-            got.get('photo') == 4 * math.ceil(size / 3) and size > 0
+            got.get('photo') == want_photo(size) and size > 0
             and (chat(st).get('draft') == c.share_text or got.get('web') == len(c.share_text)),
-            {'composer': got, 'want photo': 4 * math.ceil(size / 3), 'native draft length': len(chat(st).get('draft') or '')})
+            {'composer': got, 'want photo': want_photo(size), 'native draft length': len(chat(st).get('draft') or '')})
 
 
 def scen_ping(c):
