@@ -44,7 +44,8 @@ Scenarios (build 60's nine and teardown, under both roots; decision.md section 9
            Back and off in setup
   wckill   a WebContent kill with the chat up: the new document takes it over (on the tab root coachHome and the chat,
            the Coach tab NATIVE throughout, no WEB frame), the shell resyncs on its boot without resending (the send in
-           flight ends as gone, its words back in the composer), and the open confirm closes as stale
+           flight ends as gone, its words back in the composer), and the open confirm closes as stale; the scene's
+           sessionStorage marks (fp_chat t or 1) are there at the new document's start and its hello counts nothing
   marker   a planted crash marker (presenting coach@...; on the tab root presenting coachHome@... too) brings back the
            web Coach, once: the verdict stays for this shell and page build; Settings > About says why and lists the
            shell's counters; its Try again (on 61's page: coachHome, then coach) brings the native Coach back next launch
@@ -689,21 +690,35 @@ return out;
 # The scene's marks and what the document's hello made of them (build 62's restart flag, R0): sessionStorage's fp_tab,
 # fp_chat and fp_seen now and every key's name, the marks as the document found them at its start (the probe's
 # document-start script, before the page's scripts: window.__fpStartMarks), the places asked for since its boot
-# (_photoAsked), its hello's answer (_fp.hello), the tab and view it shows, the seq it has seen, its boot, and the
-# navigation's type (performance's entry, and the old performance.navigation). Read once hello has answered (5 s at most).
+# (_photoAsked), its hello's answer (_fp.hello: from build 62 with the shell's doc), the tab and view it shows, the seq
+# it has seen, its boot, the navigation's type (performance's entry, and the old performance.navigation), the newest
+# eight Settings > About breadcrumbs (kt_wch_log, without their time) and all of them as stored (wchAll: newest first,
+# each with its 'MM-DD HH:MM:SS ' in front; they outlive a launch). Read once hello has answered (5 s at most).
 MARKS_JS = r"""
 for (var i = 0; i < 50 && !(window._fp && _fp.hello); i++) await new Promise(function (r) { setTimeout(r, 100); });
 var g = function (k) { try { return sessionStorage.getItem(k); } catch (e) { return 'error: ' + String(e && e.message || e); } };
 var keys = []; try { for (var i = 0; i < sessionStorage.length; i++) keys.push(sessionStorage.key(i)); keys.sort(); } catch (e) {}
 var nav = null; try { var n = performance.getEntriesByType('navigation')[0]; nav = n ? n.type : null; } catch (e) {}
-var f = window._fp || {}, T = f.tabs || {}, wch = [];
-try { wch = JSON.parse(localStorage.getItem('kt_wch_log') || '[]').slice(0, 4).map(function (l) { return String(l).slice(15); }); } catch (e) {}
-return { fp_tab: g('fp_tab'), fp_chat: g('fp_chat'), fp_seen: g('fp_seen'), keys: keys, start: window.__fpStartMarks || null, wch: wch,
+var f = window._fp || {}, T = f.tabs || {}, all = [];
+try { all = JSON.parse(localStorage.getItem('kt_wch_log') || '[]').map(String); } catch (e) {}
+return { fp_tab: g('fp_tab'), fp_chat: g('fp_chat'), fp_seen: g('fp_seen'), keys: keys, start: window.__fpStartMarks || null,
+  wch: all.slice(0, 8).map(function (l) { return l.slice(15); }), wchAll: all,
   asked: (typeof _photoAsked !== 'undefined') ? _photoAsked : null, hello: f.hello || null,
   tab: (typeof currentTab !== 'undefined') ? currentTab : null, view: (typeof coachView !== 'undefined') ? coachView : null,
   seqSeen: (typeof T.seq === 'number') ? T.seq : null, tabsMode: !!T.mode, boot: (typeof _fpBoot !== 'undefined') ? _fpBoot : null,
   nav: nav, navOld: (performance.navigation || {}).type, history: history.length };
 """
+
+
+def crumbs_since(lines, wall_ms):
+    """The breadcrumbs of a MARKS_JS read (`wchAll`: kt_wch_log's lines as stored, newest first, each starting with the
+    page's local 'MM-DD HH:MM:SS ') written at or after `wall_ms` (epoch ms on the host's clock, which the simulator's app
+    runs on; to the second), without their time: kt_wch_log outlives a launch, so a check of one launch's lines reads
+    only those."""
+    if not isinstance(wall_ms, (int, float)):
+        return []
+    t = time.strftime('%m-%d %H:%M:%S', time.localtime(wall_ms / 1000.0))
+    return [l[15:] for l in lines or [] if isinstance(l, str) and len(l) > 15 and l[:14] >= t]
 
 
 def marks_of(ev, label):
