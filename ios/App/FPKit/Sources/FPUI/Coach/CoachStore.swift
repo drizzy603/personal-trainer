@@ -6,35 +6,126 @@ import UIKit
 import os.log
 import FPCore
 
-/// The owner's composer, kept by its host across presents and launches (plan task C7; decision.md section 9, C7): the
-/// words in UserDefaults under `fpDraft.coach`, a picked photo in memory. Only the composer observes it, so a keystroke
-/// repaints the composer and never the conversation.
+/// The owner's composer, kept by its host across presents and launches (plan task C7; decision.md section 9, C7; build
+/// 62's S6): the words in UserDefaults under `fpDraft.coach`, a picked photo in the host's folder (`draft-photo`, the
+/// prepared bytes, with its media type, size, byte count and time under `fpDraft.coachPhoto`) for 24 h, as long as the page
+/// keeps a photo. Only the composer observes it, so a keystroke repaints the composer and never the conversation.
+///
+/// A pick is written as it is made (the file first, then its key; `atomic`, out of the device's backups) and removed as it
+/// leaves (the key first, then the file): Send and Remove take it, a send that never reached the page puts it back
+/// (`CoachStore.putBack`) and so writes it again, and the binding's teardown keeps the pick of a message still on its way.
+/// The next composer over the same defaults and folder (a relaunch, a scene's reconnect) opens on it. A file whose key does
+/// not name its byte count (an end between the two writes), one with no key, a key with no file, one older than 24 h or
+/// dated more than a minute ahead of the clock (as the page's kept photo), or bytes no preview can be drawn from: dropped.
 @MainActor
 public final class CoachComposerDraft: ObservableObject {
     /// Where the words wait between presents and launches.
     public static let defaultsKey = "fpDraft.coach"
+    /// Where a picked photo's media type, size, byte count and time wait (`photoFileName` in the folder holds its bytes).
+    public static let photoKey = "fpDraft.coachPhoto"
+    /// The picked photo's bytes in the folder.
+    public static let photoFileName = "draft-photo"
+    /// How long a kept pick waits for its send: as long as the page keeps a photo (index.html's `_photoRestore`, 24 h).
+    public static let photoLife: TimeInterval = 24 * 3600
 
     /// The composer's words, as typed (an empty draft removes the key).
     @Published public var text: String {
         didSet { if text != oldValue { save() } }
     }
-    /// A photo the owner picked and has not sent (not kept across launches).
-    @Published public var picked: PickedPhoto?
+    /// A photo the owner picked and has not sent: kept across presents and launches (24 h) when the composer has a folder,
+    /// else in memory only.
+    @Published public var picked: PickedPhoto? {
+        didSet { if picked?.prepared != oldValue?.prepared { savePhoto() } }
+    }
     /// The owner asked to send what the composer holds from outside the chat's own Send button (a hardware keyboard's
     /// Cmd+Return, which the screen's controller takes): the chat sends it as its Send does.
     public let sendAsked = PassthroughSubject<Void, Never>()
 
     private let defaults: UserDefaults?
+    private let folder: URL?
 
-    /// `defaults` nil keeps the words in memory only (previews, tests).
-    public init(defaults: UserDefaults? = .standard) {
+    /// `defaults` nil keeps the words in memory only (previews, tests); `folder` nil (or `defaults` nil) keeps a picked
+    /// photo in memory only. The app's composer (ShellBridge's binding) is the standard defaults and `FPShell`.
+    public init(defaults: UserDefaults? = .standard, folder: URL? = nil) {
         self.defaults = defaults
+        self.folder = defaults == nil ? nil : folder
         text = defaults?.string(forKey: Self.defaultsKey) ?? ""
+        // the storage itself, not the property: `picked` already holds its default nil here, so assigning it would run its
+        // didSet and write the kept pick again, its time renewed at every launch
+        _picked = Published(initialValue: Self.keptPhoto(defaults: defaults, folder: self.folder, now: Date()))
     }
 
     private func save() {
         guard let defaults else { return }
         if text.isEmpty { defaults.removeObject(forKey: Self.defaultsKey) } else { defaults.set(text, forKey: Self.defaultsKey) }
+    }
+
+    private var photoURL: URL? { folder?.appendingPathComponent(Self.photoFileName) }
+
+    /// The pick as it is now: written (the file, then its key) or removed (the key, then the file). A write that fails
+    /// leaves nothing behind, so an older pick is never brought back in its place; the pick stays in memory.
+    private func savePhoto() {
+        guard let defaults, let folder, let url = photoURL else { return }
+        guard let p = picked else {
+            defaults.removeObject(forKey: Self.photoKey)
+            try? FileManager.default.removeItem(at: url)
+            return
+        }
+        let data = p.prepared.data
+        do {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try data.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        } catch {
+            defaults.removeObject(forKey: Self.photoKey)
+            try? FileManager.default.removeItem(at: url)
+            CoachStore.log.error("composer: the picked photo could not be kept (\(String(describing: error), privacy: .public)); it stays in memory")
+            return
+        }
+        // an atomic write is a new file each time: it is kept out of the device's backups after every write
+        var marked = url
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        do { try marked.setResourceValues(values) } catch {
+            CoachStore.log.error("composer: the kept photo could not be kept out of backups (\(String(describing: error), privacy: .public))")
+        }
+        defaults.set(["mediaType": p.prepared.mediaType, "width": p.prepared.width, "height": p.prepared.height,
+                      "bytes": data.count, "at": (Date().timeIntervalSince1970 * 1000).rounded()] as [String: Any], forKey: Self.photoKey)
+        CoachStore.log.info("composer: the picked photo kept (\(data.count / 1024, privacy: .public) KB)")
+    }
+
+    /// The pick a composer before this one kept, when it is whole and young enough (see the type); anything else found is
+    /// removed. Nil without defaults or a folder.
+    static func keptPhoto(defaults: UserDefaults?, folder: URL?, now: Date) -> PickedPhoto? {
+        guard let defaults, let folder else { return nil }
+        let url = folder.appendingPathComponent(photoFileName)
+        let meta = defaults.dictionary(forKey: photoKey)
+        let data = try? Data(contentsOf: url)
+        func drop(_ why: String) -> PickedPhoto? {
+            defaults.removeObject(forKey: photoKey)
+            try? FileManager.default.removeItem(at: url)
+            CoachStore.log.info("composer: a kept photo dropped (\(why, privacy: .public))")
+            return nil
+        }
+        switch (meta, data) {
+        case (nil, nil): return nil
+        case (nil, _?): return drop("its file had no key")
+        case (_?, nil): return drop("its key had no file")
+        case (let meta?, let data?):
+            guard let type = meta["mediaType"] as? String, !type.isEmpty,
+                  let width = (meta["width"] as? NSNumber)?.intValue, let height = (meta["height"] as? NSNumber)?.intValue,
+                  let bytes = (meta["bytes"] as? NSNumber)?.intValue, let at = (meta["at"] as? NSNumber)?.doubleValue else {
+                return drop("its key is not whole")
+            }
+            guard bytes == data.count else { return drop("its file is not the one its key names") }
+            let age = now.timeIntervalSince1970 - at / 1000
+            if age <= -60 { return drop("dated ahead of the clock") }
+            if age >= photoLife { return drop("\(Int(age / 3600)) h old") }
+            guard let photo = CoachComposer.picked(CoachPhoto.Prepared(data: data, mediaType: type, width: width, height: height)) else {
+                return drop("no preview can be drawn from it")
+            }
+            CoachStore.log.info("composer: a kept photo is back (\(data.count / 1024, privacy: .public) KB, \(Int(age / 60), privacy: .public) min old)")
+            return photo
+        }
     }
 }
 
@@ -51,8 +142,9 @@ public final class CoachComposerDraft: ObservableObject {
 ///   linked; no answer and the page's next model, or the next document's, does not have it), goes back in the composer
 ///   with a word to the owner. Never resent.
 /// - **The composer** (`draft`) is the store's: the owner's words survive the chat going down and up again and a
-///   relaunch (`fpDraft.coach`); the page's own draft (Build day's question, a shared photo's comment) goes in once per
-///   nonce and the page hears `coach.draftTaken`, as its web composer fills from `coachPrefill`.
+///   relaunch (`fpDraft.coach`), and so does a photo they picked (24 h, in the composer's folder: build 62); the page's
+///   own draft (Build day's question, a shared photo's comment) goes in once per nonce and the page hears
+///   `coach.draftTaken`, as its web composer fills from `coachPrefill`.
 /// - **Photos.** The ones this chat sends ("n:<nonce>", as the page keys them) and the page's pending one (fetched once
 ///   with `coach.image`) are drawn by key; without one the chat says Photo, as the web does after a relaunch.
 /// - **Toasts and confirms** go through the bridge: the page forwards its own while the chat covers it and the host
@@ -386,8 +478,8 @@ public final class CoachStore: ObservableObject {
     // MARK: The hand-over (contract 4.2)
 
     /// The composer's words for `screens.off {screen:'coach', draft}` when the shell takes the native chat away: trimmed,
-    /// nil when there are none. A picked photo is not handed over: it lives in memory only and stays with the native chat.
-    /// Nothing changes here; `handedOver` decides once the page has answered.
+    /// nil when there are none. A picked photo is not handed over: it stays with the native chat (kept in the composer's
+    /// folder for the next one, build 62). Nothing changes here; `handedOver` decides once the page has answered.
     public func handOverDraft() -> String? {
         let w = draft.text.trimmingCharacters(in: .whitespacesAndNewlines)
         note(w.isEmpty ? "hand-over: nothing in the composer" : "hand-over: the composer's words offered to the page")

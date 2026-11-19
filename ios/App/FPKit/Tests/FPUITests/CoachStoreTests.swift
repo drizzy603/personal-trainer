@@ -16,6 +16,8 @@ import FPCore
 final class CoachStoreTests: XCTestCase {
     private var suite: String!
     private var defaults: UserDefaults!
+    /// The composer's folder (a picked photo's `draft-photo`, build 62): one per case, made by the first pick.
+    private var folder: URL!
     private var store: CoachStore!
     private var asked: [Intent] = []
     private var pending: [(intent: Intent, done: (PageLink.Outcome) -> Void)] = []
@@ -26,7 +28,8 @@ final class CoachStoreTests: XCTestCase {
     override func setUp() async throws {
         suite = "fp.coachstore.tests.\(UUID().uuidString)"
         defaults = UserDefaults(suiteName: suite)
-        store = CoachStore(draft: CoachComposerDraft(defaults: defaults))
+        folder = FileManager.default.temporaryDirectory.appendingPathComponent("fp-draft-\(UUID().uuidString)", isDirectory: true)
+        store = CoachStore(draft: CoachComposerDraft(defaults: defaults, folder: folder))
         store.now = { [unowned self] in self.clock }
         store.hooks.ask = { [unowned self] intent, done in
             self.asked.append(intent)
@@ -42,6 +45,7 @@ final class CoachStoreTests: XCTestCase {
 
     override func tearDown() async throws {
         defaults?.removePersistentDomain(forName: suite)
+        if let folder { try? FileManager.default.removeItem(at: folder) }
     }
 
     // MARK: Helpers
@@ -441,6 +445,8 @@ final class CoachStoreTests: XCTestCase {
         XCTAssertNil(store.handOverDraft())
         store.handedOver("", taken: true)
         XCTAssertNotNil(store.draft.picked, "the photo stays native")
+        XCTAssertEqual(try? Data(contentsOf: photoFile), jpeg, "and stays kept for the next native chat (build 62)")
+        XCTAssertEqual(CoachComposerDraft(defaults: defaults, folder: folder).picked?.prepared.data, jpeg)
     }
 
     func testWordsTakenByThePageLeaveTheComposerAndTheDefaults() {
@@ -584,6 +590,206 @@ final class CoachStoreTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(store.display).messages.last?.body, .text("What should I focus on this week?"))
         answer("coach.chip", .answered(.refused("busy")))
         XCTAssertEqual(store.draft.text, "What should I focus on this week?")
+    }
+
+    // MARK: The kept pick (build 62, S6)
+
+    /// The composer's file for a picked photo, and its key.
+    private var photoFile: URL { folder.appendingPathComponent(CoachComposerDraft.photoFileName) }
+    private func kept() -> [String: Any]? { defaults.dictionary(forKey: CoachComposerDraft.photoKey) }
+    private var fileKept: Bool { FileManager.default.fileExists(atPath: photoFile.path) }
+
+    /// A pick as the composer makes one (`side` px square, at scale 1): the prepared JPEG and its preview.
+    private func pick(_ side: Int = 8, _ color: UIColor = .systemBlue) -> PickedPhoto {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let ui = UIGraphicsImageRenderer(size: CGSize(width: side, height: side), format: format).image { c in
+            color.setFill()
+            c.fill(CGRect(x: 0, y: 0, width: side, height: side))
+        }
+        let jpeg = ui.jpegData(compressionQuality: 0.8)!
+        return PickedPhoto(prepared: CoachPhoto.Prepared(data: jpeg, mediaType: "image/jpeg", width: side, height: side), preview: ui)
+    }
+
+    /// The kept pick's time moved `seconds` into the past (negative: ahead of the clock).
+    private func age(_ seconds: TimeInterval) {
+        var meta = kept() ?? [:]
+        meta["at"] = ((Date().timeIntervalSince1970 - seconds) * 1000).rounded()
+        defaults.set(meta, forKey: CoachComposerDraft.photoKey)
+    }
+
+    /// A pick is written as it is made (the prepared bytes, out of the device's backups, its media type, size, byte count
+    /// and time beside them), and the next launch's composer opens on it with its preview, read back, not written again.
+    func testAPickOutlivesTheLaunchWithItsPreview() throws {
+        let p = pick(8)
+        let d = CoachComposerDraft(defaults: defaults, folder: folder)
+        XCTAssertNil(d.picked, "nothing kept yet")
+        XCTAssertNil(kept())
+        let before = Date()
+        d.picked = p
+        XCTAssertEqual(try Data(contentsOf: photoFile), p.prepared.data, "the prepared bytes, as Send would send them")
+        let meta = try XCTUnwrap(kept())
+        XCTAssertEqual(meta["mediaType"] as? String, "image/jpeg")
+        XCTAssertEqual((meta["width"] as? NSNumber)?.intValue, 8)
+        XCTAssertEqual((meta["height"] as? NSNumber)?.intValue, 8)
+        XCTAssertEqual((meta["bytes"] as? NSNumber)?.intValue, p.prepared.data.count)
+        let at = try XCTUnwrap((meta["at"] as? NSNumber)?.doubleValue)
+        XCTAssertEqual(at / 1000, before.timeIntervalSince1970, accuracy: 5, "stamped when it was picked, in ms")
+        XCTAssertEqual(try photoFile.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup, true,
+                       "never in the device's backups")
+        // the same pick again writes nothing new
+        let stamp = kept()?["at"] as? NSNumber
+        d.picked = PickedPhoto(prepared: p.prepared, preview: p.preview)
+        XCTAssertEqual(kept()?["at"] as? NSNumber, stamp)
+        // the next launch's composer
+        age(90)
+        let aged = kept()?["at"] as? NSNumber
+        let next = CoachComposerDraft(defaults: defaults, folder: folder)
+        XCTAssertEqual(next.picked?.prepared, p.prepared, "the same bytes, media type and size")
+        let preview = try XCTUnwrap(next.picked?.preview, "with its preview")
+        XCTAssertEqual(preview.size.width * preview.scale, 8)
+        XCTAssertEqual(kept()?["at"] as? NSNumber, aged, "read back, not written again: the pick keeps its own time")
+        XCTAssertEqual(try photoFile.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup, true)
+        // a store on it sends it
+        let s = CoachStore(draft: next)
+        var sent: [Intent] = []
+        s.hooks.ask = { intent, _ in sent.append(intent) }
+        s.apply(try model(rev: 1))
+        XCTAssertTrue(s.sendComposer(nonce: "kp1"))
+        guard case .coachSend(_, let image?, nil, "kp1")? = sent.last else { return XCTFail("\(sent)") }
+        XCTAssertEqual(image, p.prepared.coachImage, "the kept bytes go")
+    }
+
+    /// Send and Remove leave no file and no key; a send the page refuses (or one that never reached it) puts the pick back
+    /// and keeps it again; one the page took leaves nothing.
+    func testSendAndRemoveLeaveNoFileAndARefusedSendKeepsItAgain() throws {
+        store.apply(try model(rev: 1))
+        let p = pick()
+        store.draft.picked = p
+        XCTAssertTrue(fileKept)
+        XCTAssertTrue(store.sendComposer(nonce: "k1"))
+        XCTAssertFalse(fileKept, "Send takes it")
+        XCTAssertNil(kept())
+        XCTAssertNil(CoachComposerDraft(defaults: defaults, folder: folder).picked, "a launch now opens on no photo")
+        answer("coach.send", .answered(.refused("busy")))
+        XCTAssertEqual(store.draft.picked?.prepared, p.prepared, "a refused send puts it back")
+        XCTAssertEqual(try Data(contentsOf: photoFile), p.prepared.data, "and keeps it again")
+        XCTAssertEqual(CoachComposerDraft(defaults: defaults, folder: folder).picked?.prepared, p.prepared)
+        // Remove (the composer's cross sets its binding to nil)
+        store.draft.picked = nil
+        XCTAssertFalse(fileKept, "Remove takes it")
+        XCTAssertNil(kept())
+        // nothing linked: back and kept again
+        store.draft.picked = p
+        store.sendComposer(nonce: "k2")
+        answer("coach.send", .notLinked)
+        XCTAssertTrue(fileKept)
+        // a send the page took leaves nothing
+        XCTAssertTrue(store.sendComposer(nonce: "k3"))
+        answer("coach.send", done(["id": .string("m20.b1")]))
+        XCTAssertNil(store.draft.picked)
+        XCTAssertFalse(fileKept)
+        XCTAssertNil(kept())
+    }
+
+    /// The binding going (a scene's teardown) keeps the pick of a message still on its way: the next binding's composer
+    /// opens on its words and its photo.
+    func testTheBindingGoingKeepsThePickOfAMessageOnItsWay() throws {
+        store.apply(try model(rev: 1))
+        let p = pick()
+        store.draft.text = "This one"
+        store.draft.picked = p
+        XCTAssertTrue(store.sendComposer(nonce: "k4"))
+        XCTAssertFalse(fileKept, "on its way: Send took it")
+        store.tearDown()
+        XCTAssertEqual(store.draft.picked?.prepared, p.prepared)
+        let next = CoachComposerDraft(defaults: defaults, folder: folder)
+        XCTAssertEqual(next.text, "This one")
+        XCTAssertEqual(next.picked?.prepared, p.prepared, "the next binding's composer opens on the words and the photo")
+        XCTAssertEqual(toasts, [], "no one is looking")
+    }
+
+    /// A kept pick waits 24 h, as the page's kept photo does; one dated more than a minute ahead of the clock is dropped too.
+    func testAKeptPickLivesADay() throws {
+        let d = CoachComposerDraft(defaults: defaults, folder: folder)
+        d.picked = pick()
+        age(23 * 3600)
+        XCTAssertNotNil(CoachComposerDraft(defaults: defaults, folder: folder).picked, "23 h: still waiting")
+        XCTAssertTrue(fileKept)
+        age(25 * 3600)
+        XCTAssertNil(CoachComposerDraft(defaults: defaults, folder: folder).picked, "25 h: dropped")
+        XCTAssertFalse(fileKept, "with its file")
+        XCTAssertNil(kept(), "and its key")
+        d.picked = nil   // d still holds it in memory: a new pick of the same bytes must change something
+        d.picked = pick()
+        age(-120)
+        XCTAssertNil(CoachComposerDraft(defaults: defaults, folder: folder).picked, "two minutes ahead of the clock: dropped")
+        XCTAssertFalse(fileKept)
+        d.picked = nil
+        d.picked = pick()
+        age(-5)
+        XCTAssertNotNil(CoachComposerDraft(defaults: defaults, folder: folder).picked, "a few seconds ahead is the same pick")
+    }
+
+    /// Anything not whole is dropped at the next launch: a file whose key names another byte count (an end between the
+    /// two writes), a file with no key, a key with no file, a key missing a field, bytes no preview comes from; and a
+    /// write that fails leaves nothing behind, so an older pick never comes back in the new one's place.
+    func testWhatIsNotWholeIsDropped() throws {
+        let d = CoachComposerDraft(defaults: defaults, folder: folder)
+        d.picked = pick(8)
+        try pick(9, .systemRed).prepared.data.write(to: photoFile)
+        XCTAssertNil(CoachComposerDraft(defaults: defaults, folder: folder).picked, "a file its key does not name")
+        XCTAssertFalse(fileKept)
+        XCTAssertNil(kept())
+        try pick().prepared.data.write(to: photoFile)
+        XCTAssertNil(CoachComposerDraft(defaults: defaults, folder: folder).picked, "a file with no key")
+        XCTAssertFalse(fileKept)
+        defaults.set(["mediaType": "image/jpeg", "width": 8, "height": 8, "bytes": 100, "at": Date().timeIntervalSince1970 * 1000],
+                     forKey: CoachComposerDraft.photoKey)
+        XCTAssertNil(CoachComposerDraft(defaults: defaults, folder: folder).picked, "a key with no file")
+        XCTAssertNil(kept())
+        let jpeg = pick().prepared.data
+        try jpeg.write(to: photoFile)
+        defaults.set(["mediaType": "image/jpeg", "bytes": jpeg.count, "at": Date().timeIntervalSince1970 * 1000], forKey: CoachComposerDraft.photoKey)
+        XCTAssertNil(CoachComposerDraft(defaults: defaults, folder: folder).picked, "a key with no size")
+        XCTAssertFalse(fileKept)
+        XCTAssertNil(kept())
+        let junk = Data([1, 2, 3, 4, 5, 6])
+        try junk.write(to: photoFile)
+        defaults.set(["mediaType": "image/jpeg", "width": 8, "height": 8, "bytes": junk.count, "at": Date().timeIntervalSince1970 * 1000],
+                     forKey: CoachComposerDraft.photoKey)
+        XCTAssertNil(CoachComposerDraft(defaults: defaults, folder: folder).picked, "bytes no preview can be drawn from")
+        XCTAssertFalse(fileKept)
+        XCTAssertNil(kept())
+        // a write that fails (a folder where the file goes) takes the older pick's file and key with it
+        let older = pick(8)
+        let d2 = CoachComposerDraft(defaults: defaults, folder: folder)
+        d2.picked = older
+        try FileManager.default.removeItem(at: photoFile)
+        try FileManager.default.createDirectory(at: photoFile.appendingPathComponent("in-the-way"), withIntermediateDirectories: true)
+        defaults.set(["mediaType": "image/jpeg", "width": 8, "height": 8, "bytes": older.prepared.data.count,
+                      "at": Date().timeIntervalSince1970 * 1000], forKey: CoachComposerDraft.photoKey)
+        let newer = pick(9, .systemRed)
+        d2.picked = newer
+        XCTAssertEqual(d2.picked?.prepared, newer.prepared, "the new pick stays in memory")
+        XCTAssertNil(kept(), "no key left naming the older pick")
+        XCTAssertFalse(fileKept)
+        XCTAssertNil(CoachComposerDraft(defaults: defaults, folder: folder).picked, "nothing comes back in its place")
+    }
+
+    /// Without defaults or a folder a pick lives in memory only, as words do without defaults.
+    func testADraftWithNoDefaultsOrFolderKeepsThePickInMemoryOnly() {
+        let noFolder = CoachComposerDraft(defaults: defaults)
+        noFolder.picked = pick()
+        XCTAssertNotNil(noFolder.picked)
+        XCTAssertNil(kept(), "no key")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.path), "no folder made")
+        let noDefaults = CoachComposerDraft(defaults: nil, folder: folder)
+        noDefaults.picked = pick()
+        XCTAssertNotNil(noDefaults.picked, "in memory")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.path), "nothing written without the defaults that would name it")
+        noDefaults.picked = nil
+        XCTAssertNil(CoachComposerDraft(defaults: nil, folder: folder).picked)
     }
 
     // MARK: Photos

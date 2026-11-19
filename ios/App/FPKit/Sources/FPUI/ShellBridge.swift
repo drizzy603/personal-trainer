@@ -368,9 +368,10 @@ public final class ShellBridge: NSObject {
         if debug.clearBreaker { fx += link.editBook { $0.screens = [:] } }
         #endif
         let pageLink = PageLink(webView: webView)
-        // the live chat's store (plan task C7), its composer kept in these defaults (fpDraft.coach)
+        // the live chat's store (plan task C7), its composer kept in these defaults (fpDraft.coach) and a picked photo in the
+        // shell's folder (draft-photo, build 62): the next binding (a scene's reconnect, a relaunch) opens on both
         let screens = ScreenHost(presenter: presenter, webView: webView, shellBuild: shell.shell, pageBuild: pageBuild, markerFolder: folder,
-                                 coach: CoachStore(draft: CoachComposerDraft(defaults: defaults)))
+                                 coach: CoachStore(draft: CoachComposerDraft(defaults: defaults, folder: folder)))
         let handler = DocumentHandler(self)
         let ucc = webView.configuration.userContentController
         ucc.removeScriptMessageHandler(forName: Self.handlerName)
