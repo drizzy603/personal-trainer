@@ -12,7 +12,8 @@ import WebKit
 // Methods (the page sends them only with window.__FP_SHELL and this plugin both; FPCore PageMessage reads them):
 //   hello({v, page, screens, boot})         -> {v, screens, up?} (v 0 and why when refused); 61 adds tabs? under a
 //                                           live tab root, 62 doc on every reply (refusals too): the document's number
-//                                           in its scene, 1 for the scene's first (FPCore HelloReply.doc)
+//                                           among its scene's documents that said hello, 1 for the first to say it
+//                                           (FPCore HelloReply.doc)
 //   bootDone({page})                        the end of the page's boot (disarms the store breaker)
 //   present({screen}) / dismiss({screen})   rejects a present the shell will not make (the page shows its own)
 //   model({screen, rev, json})              json = _nativeJSON(model)

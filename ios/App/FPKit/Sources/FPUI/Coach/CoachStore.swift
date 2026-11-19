@@ -13,10 +13,12 @@ import FPCore
 ///
 /// A pick is written as it is made (the file first, then its key; `atomic`, out of the device's backups) and removed as it
 /// leaves (the key first, then the file): Send and Remove take it, a send that never reached the page puts it back
-/// (`CoachStore.putBack`) and so writes it again, and the binding's teardown keeps the pick of a message still on its way.
-/// The next composer over the same defaults and folder (a relaunch, a scene's reconnect) opens on it. A file whose key does
-/// not name its byte count (an end between the two writes), one with no key, a key with no file, one older than 24 h or
-/// dated more than a minute ahead of the clock (as the page's kept photo), or bytes no preview can be drawn from: dropped.
+/// (`CoachStore.putBack`) and so writes it again, and the binding's teardown keeps the pick of a message still on its way
+/// (one the page took goes: build 62's review, F-S4). The next composer over the same defaults and folder (a relaunch, a
+/// scene's reconnect) opens on it. A file whose key does not name its byte count (an end between the two writes), one with
+/// no key, a key with no file, one older than 24 h or dated more than a minute ahead of the clock (as the page's kept
+/// photo), or bytes no preview can be drawn from: dropped. A pick brought back that way never hides a page photo
+/// (`keptPickWaiting`, build 62's review, F-S1): the first chat model that carries one drops it (`CoachStore.apply`).
 @MainActor
 public final class CoachComposerDraft: ObservableObject {
     /// Where the words wait between presents and launches.
@@ -33,10 +35,18 @@ public final class CoachComposerDraft: ObservableObject {
         didSet { if text != oldValue { save() } }
     }
     /// A photo the owner picked and has not sent: kept across presents and launches (24 h) when the composer has a folder,
-    /// else in memory only.
+    /// else in memory only. Any change in this binding (a pick, Send, Remove, a message put back) makes it this binding's.
     @Published public var picked: PickedPhoto? {
-        didSet { if picked?.prepared != oldValue?.prepared { savePhoto() } }
+        didSet {
+            keptPickWaiting = false
+            if picked?.prepared != oldValue?.prepared { savePhoto() }
+        }
     }
+    /// The pick is the one an earlier composer kept, read back at this one's start, and nothing in this binding has
+    /// touched it since (build 62's review, F-S1). Such a pick gives way to a page photo (`dropKeptPick`): the owner has
+    /// not chosen it here, and a share that opened the chat must show and send its own photo, as build 61 did, whose pick
+    /// never outlived a launch. A pick made in this binding keeps the two slots (the pick wins the box and the send).
+    public private(set) var keptPickWaiting = false
     /// The owner asked to send what the composer holds from outside the chat's own Send button (a hardware keyboard's
     /// Cmd+Return, which the screen's controller takes): the chat sends it as its Send does.
     public let sendAsked = PassthroughSubject<Void, Never>()
@@ -52,7 +62,18 @@ public final class CoachComposerDraft: ObservableObject {
         text = defaults?.string(forKey: Self.defaultsKey) ?? ""
         // the storage itself, not the property: `picked` already holds its default nil here, so assigning it would run its
         // didSet and write the kept pick again, its time renewed at every launch
-        _picked = Published(initialValue: Self.keptPhoto(defaults: defaults, folder: self.folder, now: Date()))
+        let kept = Self.keptPhoto(defaults: defaults, folder: self.folder, now: Date())
+        _picked = Published(initialValue: kept)
+        keptPickWaiting = kept != nil
+    }
+
+    /// A page photo came (build 62's review, F-S1): a pick kept from an earlier composer that nothing in this binding has
+    /// touched gives way to it, its file and key going with it (`picked` set to nil). True when it dropped one.
+    @discardableResult
+    func dropKeptPick() -> Bool {
+        guard keptPickWaiting, picked != nil else { return false }
+        picked = nil
+        return true
     }
 
     private func save() {
@@ -142,9 +163,10 @@ public final class CoachComposerDraft: ObservableObject {
 ///   linked; no answer and the page's next model, or the next document's, does not have it), goes back in the composer
 ///   with a word to the owner. Never resent.
 /// - **The composer** (`draft`) is the store's: the owner's words survive the chat going down and up again and a
-///   relaunch (`fpDraft.coach`), and so does a photo they picked (24 h, in the composer's folder: build 62); the page's
-///   own draft (Build day's question, a shared photo's comment) goes in once per nonce and the page hears
-///   `coach.draftTaken`, as its web composer fills from `coachPrefill`.
+///   relaunch (`fpDraft.coach`), and so does a photo they picked (24 h, in the composer's folder: build 62), until the
+///   first model that carries a page photo, which a pick brought back from an earlier launch and not touched since gives
+///   way to (build 62's review, F-S1); the page's own draft (Build day's question, a shared photo's comment) goes in once
+///   per nonce and the page hears `coach.draftTaken`, as its web composer fills from `coachPrefill`.
 /// - **Photos.** The ones this chat sends ("n:<nonce>", as the page keys them) and the page's pending one (fetched once
 ///   with `coach.image`) are drawn by key; without one the chat says Photo, as the web does after a relaunch.
 /// - **Toasts and confirms** go through the bridge: the page forwards its own while the chat covers it and the host
@@ -261,7 +283,9 @@ public final class CoachStore: ObservableObject {
     // MARK: Models
 
     /// A model the link accepted. Within a document only a newer rev replaces the one drawn (false: stale, ignored); a
-    /// model of another document replaces it whatever its rev.
+    /// model of another document replaces it whatever its rev. The first that carries a page photo drops a pick the
+    /// composer brought back from an earlier launch and nothing here has touched (build 62's review, F-S1): the page's
+    /// photo shows and goes with Send (`usePending`), as in build 61.
     @discardableResult
     public func apply(_ m: CoachModel) -> Bool {
         if let cur = model, cur.boot == m.boot, m.rev <= cur.rev {
@@ -271,6 +295,9 @@ public final class CoachStore: ObservableObject {
         if let cur = model, cur.boot != m.boot { note("a new document's model (rev \(m.rev))") }
         model = m
         settle(m)
+        if let k = m.composer.image?.key, draft.dropKeptPick() {
+            note("the photo kept from an earlier launch gave way to the page's photo \(k)")
+        }
         takePageDraft(m)
         fetchPendingPhoto(m)
         return true
@@ -285,11 +312,19 @@ public final class CoachStore: ObservableObject {
     }
 
     /// The binding is going (its scene went): every message still on its way goes back in the composer (kept for the
-    /// next chat in fpDraft.coach); no toast, no one is looking.
+    /// next chat in fpDraft.coach, its pick in the folder), whether still being asked or with no answer to rely on; no
+    /// toast, no one is looking. One the page took (`.sent`: the model that holds it has not come) goes, words and pick
+    /// both (build 62's review, F-S4): the page has it, and the next launch must not offer it to send again.
     public func tearDown() {
         let left = echoes
         echoes = []
-        for e in left { putBack(e, why: "the chat went", toast: false) }
+        for e in left {
+            if e.phase == .sent {
+                note("echo \(e.nonce) went with the binding: the page took it")
+            } else {
+                putBack(e, why: "the chat went", toast: false)
+            }
+        }
     }
 
     /// Whether the page's model holds this message: by the id the page answered with (ids carry their boot's tag), or a

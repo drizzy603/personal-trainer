@@ -845,15 +845,17 @@ public final class ShellBridge: NSObject {
     /// `coachHome` out, whatever its mode; a WAITING tab (only before the scene's first declaration) starts its 3 s net; a
     /// NATIVE tab is named in `up` and taken over by the new document (its declaration: no present, no timer); a WEB tab
     /// stays WEB. Every reply, refusals included, numbers the document in its scene (`doc`, build 62: the link's count of
-    /// this web view's documents, 1 for the scene's first). After the answer, the resync.
+    /// this web view's documents that said hello, this one included, 1 for the scene's first to say it). After the
+    /// answer, the resync.
     private func hello(_ h: HelloRequest, _ b: Binding, at now: Date) -> (reply: [String: Any], after: () -> Void) {
         let answer = b.link.hello(h, ownChecks: ownChecks(page: h.page, book: b.link.book), at: now)
         apply(answer.effects, b)
         var reply = answer.reply.takingOver(shownForUp(b))
-        // the document's number in its scene (build 62), on every reply, refusals included: the link counts every
-        // document of this web view, one scene connection's (a new boot whose start went unseen too), after this hello's
-        // own count, so 1 is the scene's first; the page reads a later one that finds none of the scene's marks
-        reply.doc = b.link.documents
+        // the document's number in its scene (build 62), on every reply, refusals included: the link counts the documents
+        // of this web view, one scene connection's, that said hello (each boot once, this one included), never a start
+        // that ended before its hello (build 62's review, F-R1), so 1 is the first to say hello; the page reads a later
+        // one that finds none of the scene's marks, which every document counted wrote before its hello
+        reply.doc = b.link.documentsSaidHello
         if #available(iOS 26.0, *), let root = liveRoot(b), reply.screens.contains("tabs") {
             if !reply.screens.contains("coachHome") {
                 coachTurnsWeb(b, why: "the hello's answer leaves coachHome out")

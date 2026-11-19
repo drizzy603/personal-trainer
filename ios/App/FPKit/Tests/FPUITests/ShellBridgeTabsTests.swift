@@ -2805,10 +2805,10 @@ final class ShellBridgeTabsTests: XCTestCase {
     }
 
     /// Build 62's restart flag: every hello's reply numbers its document in the scene (`doc`), the link's count of the
-    /// web view's documents, one scene connection's: 1 for the scene's first, 2 after a reload, 3 for a new boot whose
-    /// document start went unseen (LinkState's rule), the same boot again no new document. A scene connected again (the
-    /// old one let go, a new web view and binding on the same bridge) starts at 1 again; a classic root's reply and a
-    /// refusal carry it too.
+    /// web view's documents that said hello, one scene connection's: 1 for the scene's first, 2 after a reload, 3 for a
+    /// new boot whose document start went unseen (each boot counts at its first hello), the same boot again no new
+    /// document. A scene connected again (the old one let go, a new web view and binding on the same bridge) starts at 1
+    /// again; a classic root's reply and a refusal carry it too. Test 48: starts that never said hello count nothing.
     func test47HelloNumbersItsDocumentInTheScene() async throws {
         let s = try await scene(first: "log", hello: nil)
         let first = try await hello(s)
@@ -2835,6 +2835,34 @@ final class ShellBridgeTabsTests: XCTestCase {
         let refused = try await message(c, "hello", ["v": 0, "page": "P1", "screens": ["coach"], "boot": "b2"]).get()
         XCTAssertEqual(refused["why"] as? String, "no-version")
         XCTAssertEqual(refused["doc"] as? Int, 2, "a refusal carries it")
+    }
+
+    /// Build 62's review (F-R1): `doc` counts the web view's documents that said hello (each boot once, this one
+    /// included), not its document starts. A scene's first document that ended before its hello (its WebContent died
+    /// during the boot, the reload landing in the foreground) leaves the first document that says hello 1, so the page
+    /// reads it as the scene's first, never as a later one that lost the scene's marks; a start between two hellos that
+    /// said none counts nothing; a second scene starts at 1 again, after a start with no hello too. Before (547d7a5) the
+    /// reply counted the starts: 2 for the first document to say hello, which the page then read as booted blind.
+    func test48HelloCountsOnlyTheDocumentsThatSaidHello() async throws {
+        let s = try await scene(first: "log", hello: nil)   // the scene's first document: it never says hello
+        try await load(s)
+        let first = try await hello(s, boot: "b2")
+        XCTAssertEqual(first["doc"] as? Int, 1, "the first document to say hello is the scene's first")
+        XCTAssertNotNil(first["tabs"], "on the tab root")
+        try await load(s)   // a document that never says hello
+        try await load(s)
+        let second = try await hello(s, boot: "b4")
+        XCTAssertEqual(second["doc"] as? Int, 2, "the second to say hello")
+        let same = try await hello(s, boot: "b4")
+        XCTAssertEqual(same["doc"] as? Int, 2, "the same boot again counts nothing more")
+        XCTAssertEqual(s.binding?.documents, 4, "four document starts")
+        // the scene goes and connects again: its first document says no hello either
+        s.letGo()
+        scenes.removeAll { $0 === s }
+        let again = try await scene(first: "log", hello: nil, bridge: s.bridge)
+        try await load(again)
+        let reconnected = try await hello(again, boot: "c2")
+        XCTAssertEqual(reconnected["doc"] as? Int, 1, "a second scene starts at 1")
     }
 
 }

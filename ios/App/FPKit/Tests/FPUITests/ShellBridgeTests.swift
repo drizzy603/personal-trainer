@@ -100,12 +100,17 @@ final class ShellBridgeTests: XCTestCase {
         }
     }
 
-    /// The coach fixture as this boot's model JSON.
-    private func modelJSON(boot: String, rev: Int) throws -> String {
+    /// The coach fixture as this boot's model JSON; `image`: the key of a pending photo of the page's in its composer.
+    private func modelJSON(boot: String, rev: Int, image: String? = nil) throws -> String {
         let url = CoachFixtures.coachDir.appendingPathComponent("heavyweight-chat.json")
         var o = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
         o["boot"] = boot
         o["rev"] = rev
+        if let image {
+            var c = (o["composer"] as? [String: Any]) ?? [:]
+            c["image"] = ["key": image]
+            o["composer"] = c
+        }
         return String(decoding: try JSONSerialization.data(withJSONObject: o), as: UTF8.self)
     }
 
@@ -149,8 +154,8 @@ final class ShellBridgeTests: XCTestCase {
         // a reload: the next document's hello hears the chat is still up, and the chat stays
         let again = try await message(b, "hello", ["v": 1, "page": "P1", "screens": ["coach"], "boot": "b2"]).get()
         XCTAssertEqual(again["up"] as? [String], ["coach"])
-        // a new boot with no document start seen (no load here) is a new document all the same: the reply carries the
-        // link's count, not the start messages' (one, the load's)
+        // a new boot with no document start seen (no load here) is a new document all the same: the reply counts the
+        // documents that said hello (two boots), not the start messages (one, the load's)
         XCTAssertEqual(again["doc"] as? Int, 2, "the scene's second document, counted by the link")
         try await Task.sleep(nanoseconds: 600_000_000)
         XCTAssertNotNil(stand.shown.last, "the chat stays up for the page to take over")
@@ -1100,6 +1105,77 @@ final class ShellBridgeTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
         XCTAssertNil(defaults.dictionary(forKey: CoachComposerDraft.photoKey))
         relaunch.sceneDisconnected(webView: webView)
+    }
+
+    /// Build 62's review (F-S1) on the real model path: a pick an earlier launch kept comes back at the binding's start,
+    /// a chat model with no page photo leaves it, and the first that carries one (a share opened the chat) drops it from
+    /// the bridge's folder and defaults; the composer's Send then takes the page's photo (`usePending`) to the page.
+    /// Before (547d7a5) the kept pick stayed and went with the share's words.
+    func testAKeptPickGivesWayToThePagesPhotoOnTheModelPath() async throws {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let ui = UIGraphicsImageRenderer(size: CGSize(width: 8, height: 8), format: format).image { c in
+            UIColor.systemPurple.setFill()
+            c.fill(CGRect(x: 0, y: 0, width: 8, height: 8))
+        }
+        let jpeg = try XCTUnwrap(ui.jpegData(compressionQuality: 0.8))
+        let photo = PickedPhoto(prepared: CoachPhoto.Prepared(data: jpeg, mediaType: "image/jpeg", width: 8, height: 8), preview: ui)
+        let file = folder.appendingPathComponent(CoachComposerDraft.photoFileName)
+        CoachComposerDraft(defaults: defaults, folder: folder).picked = photo   // the earlier launch's pick
+        XCTAssertTrue(FileManager.default.fileExists(atPath: file.path))
+
+        let b = bridge()
+        XCTAssertEqual(b.install(webView: webView, presenter: root, pageBuild: "P1"), ["coach"])
+        let store = try XCTUnwrap(b.binding?.screens.coach)
+        XCTAssertEqual(store.draft.picked?.prepared, photo.prepared, "brought back at the binding's start")
+        var asked: [Intent] = []
+        let forward = store.hooks.ask
+        store.hooks.ask = { intent, done in
+            asked.append(intent)
+            forward(intent, done)
+        }
+        try await loadPage()
+        _ = try await message(b, "hello", ["v": 1, "page": "P1", "screens": ["coach"], "boot": "b1"]).get()
+        _ = await message(b, "model", ["screen": "coach", "rev": 1, "json": try modelJSON(boot: "b1", rev: 1)])
+        var deadline = Date().addingTimeInterval(4 * Self.slack)
+        while store.model?.rev != 1, Date() < deadline { try await Task.sleep(nanoseconds: 30_000_000) }
+        XCTAssertEqual(store.model?.rev, 1)
+        XCTAssertEqual(store.draft.picked?.prepared, photo.prepared, "a model with no page photo leaves it")
+        _ = await message(b, "model", ["screen": "coach", "rev": 2, "json": try modelJSON(boot: "b1", rev: 2, image: "p1.b1")])
+        deadline = Date().addingTimeInterval(4 * Self.slack)
+        while store.model?.rev != 2, Date() < deadline { try await Task.sleep(nanoseconds: 30_000_000) }
+        XCTAssertEqual(store.model?.composer.image?.key, "p1.b1")
+        XCTAssertNil(store.draft.picked, "the page's photo, not the kept pick")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: file.path), "gone from the shell's folder")
+        XCTAssertNil(defaults.dictionary(forKey: CoachComposerDraft.photoKey), "and from its defaults")
+        store.draft.text = "With the shared photo"
+        XCTAssertTrue(store.sendComposer(nonce: "n-share"))
+        XCTAssertEqual(asked.last, .coachSend(text: "With the shared photo", image: nil, usePending: true, nonce: "n-share"))
+        let got = try await pageGot { $0.contains("coach.send:n-share") }
+        XCTAssertTrue(got.contains("coach.send:n-share"), "the page got the send: \(got)")
+        b.sceneDisconnected(webView: webView)
+    }
+
+    /// Build 62's review (F-R1) on build 60's hello list: hello's `doc` counts this web view's documents that said hello
+    /// (each boot once, this one included), not its document starts. A document that ended before its hello (a WebContent
+    /// that died during the boot) leaves the next one that says hello 1, and starts between two hellos that said none
+    /// count nothing; a second hello of the same boot counts nothing more. Before (547d7a5) the reply counted the starts
+    /// (2, then 4), and a later document that had every mark of the scene but the first's read as one that had none.
+    func testHelloCountsTheDocumentsThatSaidHelloNotTheirStarts() async throws {
+        let b = bridge()
+        XCTAssertEqual(b.install(webView: webView, presenter: root, pageBuild: "P1"), ["coach"])
+        try await loadReloadPage(marking: false)   // the first document never says hello
+        try await loadReloadPage(marking: true)
+        let first = try await message(b, "hello", ["v": 1, "page": "P1", "screens": ["coach"], "boot": "b2"]).get()
+        XCTAssertEqual(first["doc"] as? Int, 1, "the first document to say hello, whatever started before it")
+        let same = try await message(b, "hello", ["v": 1, "page": "P1", "screens": ["coach"], "boot": "b2"]).get()
+        XCTAssertEqual(same["doc"] as? Int, 1, "the same boot again counts nothing more")
+        try await loadReloadPage(marking: true)   // a document that never says hello
+        try await loadReloadPage(marking: true)
+        let next = try await message(b, "hello", ["v": 1, "page": "P1", "screens": ["coach"], "boot": "b4"]).get()
+        XCTAssertEqual(next["doc"] as? Int, 2, "the second to say hello")
+        XCTAssertEqual(b.binding?.documents, 4, "four document starts")
+        b.sceneDisconnected(webView: webView)
     }
 }
 
