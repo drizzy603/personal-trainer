@@ -777,6 +777,132 @@ final class CoachStoreTests: XCTestCase {
         XCTAssertNil(CoachComposerDraft(defaults: defaults, folder: folder).picked, "nothing comes back in its place")
     }
 
+    // MARK: A kept pick and the page's photo (build 62's review, F-S1); a message the page took at the teardown (F-S4)
+
+    /// A store on the composer the next launch opens, over a pick an earlier launch kept, with its own record of the
+    /// intents it asks: the page's photo (`coach.image`) answered with `pagePhoto`'s bytes, the rest unanswered.
+    private func relaunched(with p: PickedPhoto, pagePhoto: Data? = nil) -> (CoachStore, () -> [Intent]) {
+        CoachComposerDraft(defaults: defaults, folder: folder).picked = p   // the earlier launch's pick, kept
+        let s = CoachStore(draft: CoachComposerDraft(defaults: defaults, folder: folder))
+        var sent: [Intent] = []
+        s.hooks.ask = { [unowned self] intent, done in
+            sent.append(intent)
+            if case .coachImage = intent, let pagePhoto {
+                done(self.done(["mediaType": .string("image/jpeg"), "data": .string(pagePhoto.base64EncodedString())]))
+            }
+        }
+        return (s, { sent })
+    }
+
+    /// A pick brought back from an earlier launch never hides a page photo: the first model that carries one (a share
+    /// opened the chat) drops it, its file and its key, with one line in the store's events, so the composer shows the
+    /// page's photo (fetched by its key) and Send takes it (`usePending`), as build 61 did, whose pick never outlived a
+    /// launch. Before (547d7a5) the kept pick stayed in the box, won the preview and went with the share's words.
+    func testAPickKeptFromAnEarlierLaunchGivesWayToThePagesPhoto() throws {
+        let p = pick()
+        let (shared, sharedJPEG) = tinyPhoto()
+        let (s, sent) = relaunched(with: p, pagePhoto: sharedJPEG)
+        XCTAssertEqual(s.draft.picked?.prepared, p.prepared, "brought back at the binding's start")
+        XCTAssertTrue(s.apply(try model(rev: 1, composer: composer(draft: ["text": "Shared words", "nonce": "d1.b1"], image: "p1.b1"))))
+        XCTAssertNil(s.draft.picked, "the page's photo shows, not the kept pick")
+        XCTAssertFalse(fileKept, "its file goes")
+        XCTAssertNil(kept(), "and its key")
+        XCTAssertNil(CoachComposerDraft(defaults: defaults, folder: folder).picked, "nothing for the next launch")
+        XCTAssertEqual(s.events.filter { $0.contains("gave way to the page's photo") }.count, 1, "one line: \(s.events)")
+        XCTAssertTrue(sent().contains(.coachImage(key: "p1.b1")), "the page's photo is fetched for the box: \(sent())")
+        // the box's preview (CoachComposer: the pick's, else the page's photo the host holds by the composer's key)
+        let held = try XCTUnwrap(s.image("p1.b1"), "the page's photo held for the preview")
+        XCTAssertEqual(held.size.width * held.scale, shared.size.width * shared.scale, "the shared photo, with no pick over it")
+        XCTAssertEqual(s.draft.text, "Shared words")
+        XCTAssertTrue(s.sendComposer(nonce: "kp2"))
+        XCTAssertEqual(sent().last, .coachSend(text: "Shared words", image: nil, usePending: true, nonce: "kp2"), "Send takes the page's photo")
+        XCTAssertEqual(try XCTUnwrap(s.display).messages.last?.image?.key, "p1.b1", "the echo draws the page's photo")
+    }
+
+    /// A kept pick with no page photo stays (S6): models without one leave it, and Send sends it.
+    func testAPickKeptFromAnEarlierLaunchStaysWithNoPagePhoto() throws {
+        let p = pick()
+        let (s, sent) = relaunched(with: p)
+        XCTAssertTrue(s.apply(try model(rev: 1)))
+        XCTAssertTrue(s.apply(try model(rev: 2, composer: composer(draft: ["text": "Build my Arms day", "nonce": "d2.b1"]))))
+        XCTAssertEqual(s.draft.picked?.prepared, p.prepared, "kept")
+        XCTAssertTrue(fileKept)
+        XCTAssertNotNil(kept())
+        XCTAssertTrue(s.sendComposer(nonce: "kp3"))
+        guard case .coachSend(_, let image?, nil, "kp3")? = sent().last else { return XCTFail("\(sent())") }
+        XCTAssertEqual(image, p.prepared.coachImage, "the kept pick goes")
+    }
+
+    /// A pick made in this binding keeps the two slots over a page photo (DESIGN S6, unchanged): the pick wins the box and
+    /// the send, and the page's photo shows again after it.
+    func testAPickMadeInThisBindingKeepsTheTwoSlots() throws {
+        let p = pick()
+        store.apply(try model(rev: 1))
+        store.draft.picked = p
+        store.apply(try model(rev: 2, composer: composer(image: "p2.b1")))
+        XCTAssertEqual(store.draft.picked?.prepared, p.prepared, "this binding's pick stays")
+        XCTAssertTrue(fileKept)
+        XCTAssertTrue(store.sendComposer(nonce: "kp4"))
+        guard case .coachSend(_, let image?, nil, "kp4")? = asked.last else { return XCTFail("\(asked)") }
+        XCTAssertEqual(image, p.prepared.coachImage)
+    }
+
+    /// A kept pick the owner replaced in this binding is this binding's: a page photo after it leaves it.
+    func testAKeptPickReplacedInThisBindingKeepsTheTwoSlots() throws {
+        let (s, sent) = relaunched(with: pick(8))
+        let q = pick(9, .systemRed)
+        s.draft.picked = q
+        XCTAssertTrue(s.apply(try model(rev: 1, composer: composer(image: "p3.b1"))))
+        XCTAssertEqual(s.draft.picked?.prepared, q.prepared, "the new pick stays")
+        XCTAssertEqual(try Data(contentsOf: photoFile), q.prepared.data, "kept for the next launch")
+        XCTAssertTrue(s.sendComposer(nonce: "kp5"))
+        guard case .coachSend(_, let image?, nil, "kp5")? = sent().last else { return XCTFail("\(sent())") }
+        XCTAssertEqual(image, q.prepared.coachImage)
+    }
+
+    /// F-S4: the binding going drops a message the page took (`.sent`: the model that holds it had not come), its words
+    /// and its pick both, so the next launch never offers again what the chat already has. Before (547d7a5) it went
+    /// back in the composer and, from build 62, its photo was kept on disk for the next launch.
+    func testTheBindingGoingDropsAMessageThePageTook() throws {
+        store.apply(try model(rev: 1))
+        let p = pick()
+        store.draft.text = "Already with the page"
+        store.draft.picked = p
+        XCTAssertTrue(store.sendComposer(nonce: "k7"))
+        answer("coach.send", done(["id": .string("m21.b1")]))
+        XCTAssertEqual(store.echoes.map(\.phase), [.sent], "taken, its model not come yet")
+        store.tearDown()
+        XCTAssertEqual(store.echoes, [])
+        XCTAssertEqual(store.draft.text, "", "the words are the page's now")
+        XCTAssertNil(store.draft.picked, "and so is the photo")
+        XCTAssertFalse(fileKept)
+        XCTAssertNil(kept())
+        XCTAssertEqual(store.restored, [])
+        let next = CoachComposerDraft(defaults: defaults, folder: folder)
+        XCTAssertEqual(next.text, "", "the next launch offers nothing the chat has")
+        XCTAssertNil(next.picked)
+        XCTAssertEqual(toasts, [])
+    }
+
+    /// F-S4: a message with no answer to rely on (`.unsure`) still goes back with its pick when the binding goes, as one
+    /// still being asked does (testTheBindingGoingKeepsThePickOfAMessageOnItsWay).
+    func testTheBindingGoingPutsBackAMessageWithNoAnswerToRelyOn() throws {
+        store.apply(try model(rev: 1))
+        let p = pick()
+        store.draft.text = "Unsure of this one"
+        store.draft.picked = p
+        XCTAssertTrue(store.sendComposer(nonce: "k8"))
+        answer("coach.send", .documentGone)
+        XCTAssertEqual(store.echoes.map(\.phase), [.unsure])
+        store.tearDown()
+        XCTAssertEqual(store.draft.text, "Unsure of this one")
+        XCTAssertEqual(store.draft.picked?.prepared, p.prepared)
+        let next = CoachComposerDraft(defaults: defaults, folder: folder)
+        XCTAssertEqual(next.text, "Unsure of this one")
+        XCTAssertEqual(next.picked?.prepared, p.prepared, "kept for the next launch")
+        XCTAssertEqual(toasts, [], "no one is looking")
+    }
+
     /// Without defaults or a folder a pick lives in memory only, as words do without defaults.
     func testADraftWithNoDefaultsOrFolderKeepsThePickInMemoryOnly() {
         let noFolder = CoachComposerDraft(defaults: defaults)

@@ -3,11 +3,11 @@ import Foundation
 // The link between the shell and one page document (plan task C4; decision.md section 6, "Breakers
 // and switches").
 //
-// One LinkState per web view (kept, or handed the stored book again, when a scene reconnects). The host
-// (FPHost, FPUI's PageLink) feeds it events and carries out the effects it returns; it does no I/O and
-// reads no clock, so the tests drive it with plain dates. It holds the process's BreakerBook: every
-// change to the book goes through it (`editBook` for the store breaker and crash markers), and
-// `bookChanged` tells the host to store it.
+// One LinkState per web view: a scene that connects (again) binds a new web view, whose LinkState is new
+// (every count at 0) and handed the stored book. The host (FPHost, FPUI's PageLink) feeds it events and
+// carries out the effects it returns; it does no I/O and reads no clock, so the tests drive it with plain
+// dates. It holds the process's BreakerBook: every change to the book goes through it (`editBook` for the
+// store breaker and crash markers), and `bookChanged` tells the host to store it.
 //
 // - A document starts (a load, a reload, a WebContent restart): the link waits for the page's hello.
 //   Only time in the foreground counts toward the 15 s deadline, so a launch sent to the background
@@ -181,8 +181,20 @@ public struct LinkState: Equatable, Sendable {
     public private(set) var pageBuild: String?
     /// The breaker records: store them after `bookChanged`.
     public private(set) var book: BreakerBook
-    /// Documents seen in this process (a hello from a new boot counts as one).
+    /// The documents this web view started (a load, a reload, a WebContent restart; a hello from a new boot whose start
+    /// went unseen counts as one): what a hello with no boot is named by (`doc-<n>`). Not hello's `doc`, which counts
+    /// only the documents that said hello (`documentsSaidHello`).
     public private(set) var documents = 0
+    /// The documents of this web view that said hello, this one included once it has (build 62's `doc`, HelloReply.doc):
+    /// each boot counts once, at its first hello (a second hello of the same boot counts nothing more), and a document
+    /// that ended before its hello (its WebContent died during the boot) never counts, so the first document to say
+    /// hello is 1 whatever starts came before it (build 62's review, F-R1). A new web view's LinkState (a scene's
+    /// connection) starts at 0, so each scene's first is 1 again: the page reads a document above 1 that finds none of
+    /// the scene's marks in its sessionStorage as one whose marks were lost (every counted document wrote `fp_seen`
+    /// before its hello), and the scene's first has none by construction.
+    public private(set) var documentsSaidHello = 0
+    /// The boot of the last hello counted in `documentsSaidHello`.
+    private var countedBoot: String?
     /// The scene is in the foreground.
     public private(set) var foreground: Bool
     /// The scene's root is a live tab root (contract 1.3, 2.2): false at init (a classic root) and from a fallback on.
@@ -362,6 +374,10 @@ public struct LinkState: Equatable, Sendable {
             beginDocument(at: now)
         }
         let boot = h.boot ?? "doc-\(documents)"
+        if boot != countedBoot {
+            documentsSaidHello += 1
+            countedBoot = boot
+        }
         let late: Bool
         if case .unlinked(.noHello) = phase { late = true } else { late = (waitedForHello(at: now) ?? 0) >= config.helloDeadline }
         fx += setPageBuild(h.page)

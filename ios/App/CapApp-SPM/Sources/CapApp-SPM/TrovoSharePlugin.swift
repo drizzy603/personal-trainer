@@ -40,12 +40,34 @@ public class TrovoSharePlugin: CAPPlugin, CAPBridgedPlugin {
         return Words(id: id, bytes: bytes, comment: o["comment"] as? String ?? "")
     }
 
+    /// The size of the file at `url` now, nil when there is none.
+    static func size(_ url: URL) -> Int? {
+        ((try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? NSNumber)?.intValue
+    }
+
+    /// Removes the file at `url`: true once it is gone (removed, or there was none), false when the removal failed for
+    /// any other reason (the file is still there).
+    static func remove(_ url: URL) -> Bool {
+        do {
+            try FileManager.default.removeItem(at: url)
+            return true
+        } catch {
+            let e = error as NSError
+            if e.domain == NSCocoaErrorDomain, e.code == NSFileNoSuchFileError || e.code == NSFileReadNoSuchFileError { return true }
+            if e.domain == NSPOSIXErrorDomain, e.code == Int(ENOENT) { return true }
+            return false
+        }
+    }
+
     /// getPendingShare({keep?}): the share waiting in the App Group, as {imageBase64, comment}; {imageBase64: null,
     /// comment: ''} when there is none. With `keep` (build 62's page, which keeps its own copy and then clears this one by
     /// id) a paired share stays where it is and the answer adds its `id`. Anything else is read and deleted as build 61
     /// read it: the photo (the file, else the legacy base64 slot), the legacy keys, and the words file when it is the
     /// photo's pair, whose words it answers (else the legacy `pendingShareComment`'s). A words file that is not the
-    /// photo's pair (a newer share's, written before its photo) is left for its photo.
+    /// photo's pair (a newer share's, written before its photo) is left for its photo. Each file is checked again right
+    /// before it goes (build 62's review, F-S3): the photo only while its size is still the bytes read, the words file
+    /// only while it still names the pair read, so a newer share the extension wrote meanwhile (its words, then its photo
+    /// renamed into place) stays whole for the next read.
     @objc public func getPendingShare(_ call: CAPPluginCall) {
         let keep = call.getBool("keep") ?? false
         guard let defaults = UserDefaults(suiteName: Self.group) else {
@@ -56,11 +78,11 @@ public class TrovoSharePlugin: CAPPlugin, CAPBridgedPlugin {
         let photoURL = dir?.appendingPathComponent(Self.photoName)
         let wordsURL = dir?.appendingPathComponent(Self.wordsName)
         var base64: String? = nil
-        var fromFile = false
+        var read: Int? = nil
         var pair: Words? = nil
         if let photoURL, let data = try? Data(contentsOf: photoURL) {
             base64 = data.base64EncodedString()
-            fromFile = true
+            read = data.count
             if let wordsURL, let w = Self.words(wordsURL), w.bytes == data.count { pair = w }
         }
         // the base64 slot is read for one more release, so a share made before an update still lands
@@ -74,8 +96,8 @@ public class TrovoSharePlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
         let comment = pair?.comment ?? defaults.string(forKey: "pendingShareComment") ?? ""
-        if fromFile, let photoURL { try? FileManager.default.removeItem(at: photoURL) }
-        if pair != nil, let wordsURL { try? FileManager.default.removeItem(at: wordsURL) }
+        if let read, let photoURL, Self.size(photoURL) == read { _ = Self.remove(photoURL) }
+        if let pair, let wordsURL, Self.words(wordsURL)?.id == pair.id { _ = Self.remove(wordsURL) }
         defaults.removeObject(forKey: "pendingShareImage")
         defaults.removeObject(forKey: "pendingShareComment")
         defaults.synchronize()
@@ -85,9 +107,12 @@ public class TrovoSharePlugin: CAPPlugin, CAPBridgedPlugin {
     /// clearPendingShare({id}): the page holds its own copy of the share it was answered `id` with (kept, or the photo
     /// sent, removed or replaced), so the App Group's copy goes: the photo, then its words file, and the legacy keys,
     /// while the words file still names that id -> {cleared: true}. A newer share written since (its words file names
-    /// another id) stays for the next read, and nothing there at all is nothing to clear -> {cleared: false}. The words
-    /// file is read again before it goes: a newer share writes its words before its photo, so the photo removed after the
-    /// first read is still this share's, and words that turned into a newer share's in between are left for their photo.
+    /// another id) stays for the next read, and nothing there at all is nothing to clear -> {cleared: false}. Each file is
+    /// checked again right before it goes (build 62's review, F-S3): the photo only while its size is still the words
+    /// file's `bytes` (a newer share writes its words, then renames its photo into place: one renamed in since the first
+    /// read stays, and the answer is {cleared: false}, a newer share waiting), the words file only while it still names
+    /// that id (words that turned into a newer share's are left for their photo). A removal that fails for anything but
+    /// a file already gone answers {cleared: false} too: the share is still there, for the next document to read.
     @objc public func clearPendingShare(_ call: CAPPluginCall) {
         guard let id = call.getString("id"), !id.isEmpty else {
             call.reject("id required")
@@ -98,18 +123,22 @@ public class TrovoSharePlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
         let wordsURL = dir.appendingPathComponent(Self.wordsName)
-        guard Self.words(wordsURL)?.id == id else {
+        guard let w = Self.words(wordsURL), w.id == id else {
             call.resolve(["cleared": false])
             return
         }
-        try? FileManager.default.removeItem(at: dir.appendingPathComponent(Self.photoName))
-        if Self.words(wordsURL)?.id == id { try? FileManager.default.removeItem(at: wordsURL) }
+        let photoURL = dir.appendingPathComponent(Self.photoName)
+        var cleared = true
+        if let n = Self.size(photoURL) {
+            if n == w.bytes { cleared = Self.remove(photoURL) } else { cleared = false }   // not this share's photo: it stays
+        }
+        if Self.words(wordsURL)?.id == id, !Self.remove(wordsURL) { cleared = false }
         if let defaults = UserDefaults(suiteName: Self.group) {
             defaults.removeObject(forKey: "pendingShareImage")
             defaults.removeObject(forKey: "pendingShareComment")
             defaults.synchronize()
         }
-        call.resolve(["cleared": true])
+        call.resolve(["cleared": cleared])
     }
 
     // Writes a text file into the app's iCloud Drive folder (Documents), so

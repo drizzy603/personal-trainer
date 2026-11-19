@@ -45,7 +45,9 @@ Scenarios (build 60's nine and teardown, under both roots; decision.md section 9
   wckill   a WebContent kill with the chat up: the new document takes it over (on the tab root coachHome and the chat,
            the Coach tab NATIVE throughout, no WEB frame), the shell resyncs on its boot without resending (the send in
            flight ends as gone, its words back in the composer), and the open confirm closes as stale; the scene's
-           sessionStorage marks (fp_chat t or 1) are there at the new document's start and its hello counts nothing
+           sessionStorage marks (fp_chat t or 1) are there at the new document's start and its hello counts nothing;
+           it found fp_seen (the classic root's only mark: it writes no fp_tab), hello's doc reads 1 then 2, and no
+           blind line, whatever its number, is in the shell's log or the breadcrumbs since the kill (build 62, R2)
   marker   a planted crash marker (presenting coach@...; on the tab root presenting coachHome@... too) brings back the
            web Coach, once: the verdict stays for this shell and page build; Settings > About says why and lists the
            shell's counters; its Try again (on 61's page: coachHome, then coach) brings the native Coach back next launch
@@ -721,6 +723,21 @@ def crumbs_since(lines, wall_ms):
     return [l[15:] for l in lines or [] if isinstance(l, str) and len(l) > 15 and l[:14] >= t]
 
 
+# The page's line for a document that booted blind (build 62's restart flag, R2: index.html's _fpHello), whatever the
+# document's number: the shell's log has it with 'fp: ' in front, the breadcrumbs as it is.
+BLIND_RE = re.compile(r"shell: document \d+ booted without the scene's marks")
+
+
+def blind_line(doc):
+    """The blind line a document numbered `doc` says."""
+    return "shell: document %s booted without the scene's marks" % doc
+
+
+def blind_lines(texts):
+    """The lines among `texts` (the page's log texts, or breadcrumbs) that say a document booted blind, any number."""
+    return [t for t in texts or [] if isinstance(t, str) and BLIND_RE.search(t)]
+
+
 def marks_of(ev, label):
     """A MARKS_JS step's answer ({} when it did not answer)."""
     r = (ev.first('js', label=label) or {}).get('result')
@@ -1342,6 +1359,23 @@ def scen_wckill(c):
                '%s after its hello (performance.navigation %s); hello %s; the replies\' doc %s' % (
                    pb.get('web'), pa2.get('web'), pb.get('net'), pa2.get('net'), st.get('nav'), ma.get('nav'), ma.get('navOld'),
                    ma.get('hello'), [h.get('doc') for h in page_events(ev, 'hello')]))
+    # Build 62's restart flag (R2), on both roots: the new document found the mark the scene's first wrote at its hello
+    # (fp_seen; the classic root writes no fp_tab, so there fp_seen is the only mark it finds), so it did not boot blind:
+    # hello's doc 1 then 2, and no blind line, whatever its number, in the shell's log or the breadcrumbs since the kill.
+    # A page that read only fp_tab would read the classic root's new document as blind (review R2's first half).
+    kev = ev.first('killWebContent') or {}
+    docs = [h.get('doc') for h in page_events(ev, 'hello')]
+    said = blind_lines([x.get('text') for x in page_events(ev, 'log', after=t_kill)])
+    crumbs = blind_lines(crumbs_since(ma.get('wchAll'), kev.get('wall')))
+    c.rep.check(s, 'the new document found the scene\'s mark (fp_seen 1 at its start) and did not boot blind: hello\'s doc 1 then 2, and no '
+                '"shell: document N booted without the scene\'s marks" in the shell\'s log or the breadcrumbs since the kill (build 62, R2)',
+                st.get('fp_seen') == '1' and not st.get('error') and docs == [1, 2] and (ma.get('hello') or {}).get('doc') == 2
+                and type(kev.get('wall')) in (int, float) and not said and not crumbs,
+                {'start': {k: st.get(k) for k in ('fp_seen', 'fp_tab', 'fp_chat', 'keys', 'error') if k in st}, 'docs': docs,
+                 'hello': ma.get('hello'), 'kill wall': kev.get('wall'), 'log': said, 'breadcrumbs': crumbs})
+    c.rep.fact(s, 'the marks at the new document\'s start: fp_seen %r, fp_tab %r, fp_chat %r (%s)' % (
+        st.get('fp_seen'), st.get('fp_tab'), st.get('fp_chat'),
+        'fp_seen alone of the two the blind test reads' if st.get('fp_tab') is None else 'both marks the blind test reads'))
     pa = page(a)
     presents = page_events(ev, 'present', after=(b or {}).get('t', 0))
     if c.tabs:
@@ -2068,6 +2102,14 @@ def self_test():
         case('a malformed roots or marks is refused, saying what a tab-root-only row writes (a bare root name, an unknown root, '
              'an empty list, an unknown key, a tuple)', len(k) == 6 and all(all(w in got.get(i, '') for w in ws) for i, ws in want.items()), k)
         case('a refused row adds no scenario; the base ten keep their own', [e.name for e in entries] == base + ['twice'], [e.name for e in entries])
+
+    # ── the page's blind line (build 62, R2): read in the shell's log and the breadcrumbs, whatever the document's number ──
+    texts = ["fp: shell: document 2 booted without the scene's marks", "shell: document 13 booted without the scene's marks",
+             "shell: document booted without the scene's marks", "shell: document 2 booted with the scene's marks",
+             "hello v1 coach,coachHome,tabs", None, 7]
+    case('blind_lines finds the blind line with any document number, with the shell log\'s fp: in front or as a breadcrumb, and '
+         'nothing else', blind_lines(texts) == texts[:2] and blind_line(2) == texts[0][4:] and blind_lines(None) == [],
+         blind_lines(texts))
 
     # ── a mark's shot, its go file, and how a shot is judged ──
     phases = [[state('a'), mark('one'), wait(5)], [mark('two cap', cap=1500, transient=True)]]

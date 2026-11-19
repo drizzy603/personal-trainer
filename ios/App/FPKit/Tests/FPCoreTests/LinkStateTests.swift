@@ -322,6 +322,39 @@ final class LinkStateTests: XCTestCase {
         XCTAssertEqual(s.modelReceived(screen: "coach", rev: 1, boot: "b3", decoded: true, at: t0 + 23).verdict, .stale)
     }
 
+    /// Build 62's review (F-R1): `documentsSaidHello` (hello's `doc`) counts the documents that said hello, each boot once
+    /// at its first hello, and never a start that ended before its hello; `documents` still counts every start (the
+    /// `doc-<n>` name of a hello with no boot). A new LinkState (a new web view: a scene's connection) starts at 0.
+    func testHelloCountsTheDocumentsThatSaidHelloNotTheirStarts() {
+        var s = LinkState(shell: shell)
+        XCTAssertEqual(s.documentsSaidHello, 0)
+        _ = s.documentStarted(pageBuild: "P1", at: t0)          // a document that ends before its hello
+        _ = s.documentStarted(pageBuild: "P1", at: t0 + 1)
+        XCTAssertEqual(s.documentsSaidHello, 0, "a start alone says nothing")
+        _ = s.hello(hello(boot: "b2"), ownChecks: ["coach"], at: t0 + 2)
+        XCTAssertEqual(s.documentsSaidHello, 1, "the first document to say hello")
+        XCTAssertEqual(s.documents, 2, "two starts")
+        _ = s.hello(hello(boot: "b2"), ownChecks: ["coach"], at: t0 + 3)
+        XCTAssertEqual(s.documentsSaidHello, 1, "the same boot again counts nothing more")
+        _ = s.documentStarted(pageBuild: "P1", at: t0 + 4)      // no hello in this one either
+        _ = s.documentStarted(pageBuild: "P1", at: t0 + 5)
+        _ = s.hello(hello(boot: "b4"), ownChecks: ["coach"], at: t0 + 6)
+        XCTAssertEqual(s.documentsSaidHello, 2)
+        // a new boot whose start went unseen counts, at its hello; a refused hello is a hello too
+        _ = s.hello(hello(boot: "b5"), ownChecks: ["coach"], at: t0 + 7)
+        XCTAssertEqual(s.documentsSaidHello, 3)
+        XCTAssertEqual(s.hello(hello(boot: "b6", v: 0), ownChecks: ["coach"], at: t0 + 8).reply.why, "no-version")
+        XCTAssertEqual(s.documentsSaidHello, 4)
+        XCTAssertEqual(s.hello(hello(boot: "b6", v: 0), ownChecks: ["coach"], at: t0 + 9).reply.why, "no-version")
+        XCTAssertEqual(s.documentsSaidHello, 4, "its second hello counts nothing more")
+        // hellos with no boot: each document's own name, counted once
+        _ = s.documentStarted(pageBuild: "P1", at: t0 + 10)
+        _ = s.hello(hello(boot: nil), ownChecks: ["coach"], at: t0 + 11)
+        _ = s.hello(hello(boot: nil), ownChecks: ["coach"], at: t0 + 12)
+        XCTAssertEqual(s.documentsSaidHello, 5)
+        XCTAssertEqual(LinkState(shell: shell, book: s.book).documentsSaidHello, 0, "a new web view's link starts at 0")
+    }
+
     func testWithdrawIsImmediateAndLastsForTheDocument() {
         var s = linked()
         XCTAssertEqual(s.withdraw(["coach"]), [.screenOff(screen: "coach", reason: .withdrawn)])

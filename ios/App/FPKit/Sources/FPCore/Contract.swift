@@ -5,12 +5,13 @@ import Foundation
 // - The shell injects `window.__FP_SHELL = {v:1, min:1, shell:'60', screens:['coach'], dev:{nav, theme}}`
 //   at document start. `screens` is this binary's screens less those the device switch, the policy
 //   file, a stale crash marker or the native breaker turned off for the page build being served
-//   (ScreenGate). Later builds only add keys (`tabs` in 61, `features: ['stream']` in 62).
+//   (ScreenGate). Later builds only add keys (`tabs` in 61; 62 adds none to the flag, only hello's `doc`;
+//   `features: ['stream']` comes with typing replies, in a later build).
 // - The page answers with the TrovoShell plugin: `hello {v, page, screens, boot?}` gets the
 //   negotiated `{v, screens, up?}` (`up`: a native screen still showing from the document before, which
-//   the page takes over; 61 adds `tabs`, 62 `doc`, the document's number in its scene, on every reply,
-//   refusals included); then `bootDone`, `present`/`dismiss`, `model`, `toast`, `confirm` and `log`
-//   (PageMessage). Plugin calls arrive off main; the plugin hops to main.
+//   the page takes over; 61 adds `tabs`, 62 `doc`, the document's number among its web view's documents
+//   that said hello, on every reply, refusals included); then `bootDone`, `present`/`dismiss`, `model`,
+//   `toast`, `confirm` and `log` (PageMessage). Plugin calls arrive off main; the plugin hops to main.
 // - Native behaviour comes from this flag and the plugin's presence, never from build stamps: an
 //   older binary serves a newer staged page.
 // - Within a version, only additions; the page speaks every contract an installable shell speaks.
@@ -229,11 +230,14 @@ public struct HelloReply: Equatable, Sendable {
     public var why: String?
     /// The selection and the measured bar, iff `tabs` is negotiated (contract 3.2); left out of the JSON otherwise.
     public var tabs: TabsReply?
-    /// This document's number among the documents of its web view, which is one scene connection's: 1 for the scene's
-    /// first (LinkState's count, so a new boot whose document start the shell missed counts too). Build 62's shell sets
-    /// it on every reply, refusals included; left out of the JSON when nil (additive within v1). It tells a later
-    /// document of the scene that finds none of the scene's marks in its sessionStorage (WebKit's Networking process,
-    /// where they live, restarted while the scene lived) from the scene's first, which has none by construction.
+    /// This document's number among the documents of its web view (one scene connection's) that said hello, this one
+    /// included: 1 for the first to say hello, whatever starts ended before their hello (LinkState's
+    /// `documentsSaidHello`: each boot once, so a new boot whose document start the shell missed counts too, and a
+    /// second hello of the same boot counts nothing more). Build 62's shell sets it on every reply, refusals included;
+    /// left out of the JSON when nil (additive within v1). It tells a later document of the scene that finds none of the
+    /// scene's marks in its sessionStorage (WebKit's Networking process, where they live, restarted while the scene
+    /// lived; every counted document wrote its mark before its hello) from the scene's first, which has none by
+    /// construction.
     public var doc: Int?
 
     public var json: JSONValue {

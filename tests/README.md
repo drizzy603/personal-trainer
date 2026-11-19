@@ -273,7 +273,10 @@ scrolled; `interactivePop` on with Back, off in setup); `wckill` (WebContent
 killed with the chat up: the new document takes it over, on the tab root
 coachHome too with the Coach tab NATIVE throughout, resynced, nothing resent, the
 open confirm stale; the scene's marks, `fp_chat` `t` or `1`, are there at the new
-document's start and nothing is counted at its hello); `marker` (a planted crash marker, on the tab root the chat's
+document's start and nothing is counted at its hello; on both roots the new document
+found `fp_seen` (on the classic root its only mark: the classic root writes no
+`fp_tab`), hello's `doc` reads 1 then 2, and no blind line, whatever its number, is
+in the shell's log or the breadcrumbs since the kill: build 62's review, R2); `marker` (a planted crash marker, on the tab root the chat's
 and then the hub's: the web Coach once, About's row and counters, Try again);
 `policy` (`screens.coach` "off" at once, on the tab root `screens.coachHome` too,
 the bar staying); `breaker` (three timeouts: pings on the classic root, `coach.*`
@@ -307,7 +310,8 @@ the context `c` (`c.sim`, `c.rep`, `c.root`, `c.tabs`, `c.os`, `c.page`,
 
 `shellscen/a_restart.py` (build 62's restart flag, the tab root only): `wckill-log`
 (a scene begun on Log, Progress tapped, or Coach and the hub's Open Chat, then the
-WebContent killed: the marks kept, nothing counted) and `wckill-net` (the same with
+WebContent killed: the marks kept, nothing counted, and no blind line, whatever its
+number, in the shell's log or the breadcrumbs since the kill) and `wckill-net` (the same with
 WebKit's Networking process ended in the same turn through ShellProbe's
 `killNetwork`: every sessionStorage key gone, the scene kept) and `wckill-crash`
 (the Networking process killed from the host with SIGKILL, as jetsam ends it, by
@@ -455,7 +459,13 @@ each step, `TrovoShare.getPendingShare({keep:true})` leaving both and answering 
 id, a clear by another id leaving them, the page's read through `trovo://share`
 keeping the photo and clearing the share by its id (both files gone), then build
 61's layout (`layout: "61"`: the jpg, the words in the group's defaults) read and
-deleted with no id, and the base64 slot (`legacy: true`); the shell's counters moving only where a step moves them; and a
+deleted with no id, then the plugin's checks before each removal (build 62's review,
+F-S3: a clear by the share's id once the runner renamed another photo over its photo
+leaves that photo and answers `cleared: false`, build 61's read then taking it as an
+unpaired photo; a clear whose removal fails, the runner having made the container
+read-only, answers `cleared: false` and leaves both files, and the next clear takes
+them; the container is made writable again whatever the launch came to), and the
+base64 slot (`legacy: true`); the shell's counters moving only where a step moves them; and a
 canary (`sk-ant-test-` and 16 random characters) typed into the native key field
 and saved by CONNECT, found in no probe log (each log read after the app ended).
 The page's coach calls go to a closed loopback port (`-fpApiBase`), so the canary

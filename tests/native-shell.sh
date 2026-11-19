@@ -25,7 +25,8 @@
 # root the bar as drawn too), focus (a focused web field, then the chat up and down by the page, Back and the edge pan or
 # navPop: no keyboard comes back, the document not scrolled; interactivePop on with Back, off in setup), wckill
 # (WebContent killed with the chat up: taken over and resynced on the new boot, the Coach tab NATIVE throughout, nothing
-# resent, the open confirm stale, the scene's sessionStorage marks kept and nothing counted at hello), marker (a planted crash marker brings back the web Coach once; on the tab root the
+# resent, the open confirm stale, the scene's sessionStorage marks kept and nothing counted at hello, fp_seen found
+# and no blind line on either root), marker (a planted crash marker brings back the web Coach once; on the tab root the
 # hub's marker too), policy (screens.coach "off" at once; on the tab root screens.coachHome too), breaker (three timeouts
 # turn it off for the page build), counters (the web view out of its window; on the tab root a stray selection),
 # inactive (no marker while the app is away), teardown (the scene torn down and connected again with the chat up: the
