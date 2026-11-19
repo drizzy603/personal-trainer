@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20261119-2"/>
+<meta name="build" content="20261119-3"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -9826,15 +9826,48 @@ function runnerSetRpe(val){
 // page feature-tests clearPendingShare and then asks getPendingShare({keep:true}) (without it, getPendingShare() as
 // before), whose answer carries the share's id (_shareSid), and clears it by that id once the photo's keep has
 // committed (_photoKeep answers its transaction's outcome), or once the photo is sent, removed or replaced by a pick
-// (_photoDrop, the pick's _photoKeep); a later share needs no clear, its extension wrote it over the one before. A keep
-// that fails clears nothing: the App Group's copy is then the photo's durable copy, and the next document reads it as a
-// fresh share. A read that answers an id this document took is nothing new (no second chat, keep or line). A clear
-// that does not clear leaves a line (a newer share waiting, or an error, which the next read of that id asks again).
+// (_photoDrop, the pick's _photoKeep); a later share needs no clear, its extension wrote it over the one before. A
+// share whose keep fails is kept again on _photoRetry's schedule (0.3 s later while the page shows, else 0.3 s after it
+// next shows: _photoSoon), three keeps of it a document at most (_shareKeep, web 20261119-3): one that commits clears
+// the share; when the third fails the share is cleared as build 61's plugin cleared it at its read, the photo pending
+// in memory only, with one line. The photo sent, removed or replaced meanwhile ends its keeps (that step cleared the
+// share, or a newer share wrote over it). So the App Group's copy outlives a document only when the document ends
+// before a page that shows has tried its keep again (in practice a hidden background launch that ended), and the next
+// document reads it as a fresh share, as the extension's "Saved. Open Fitness Programmer to send it." promises. Before,
+// a failed keep left it there until a later keep committed or the photo was sent or removed, and the next launch read
+// it as a fresh share whatever its age and though its chat had been left (the failed keep had marked the photo gone). A
+// read that answers an id this document took is nothing new (no second chat, keep or line), but a keep of it waiting to
+// be tried again starts at once when the page shows. A clear that does not clear leaves a line (a newer share waiting,
+// or an error, which the next read of that id asks again).
 var _shareBusy=false;
 var _shareSid='';       // the id of the build-62 share the pending photo came from ('' for any other photo)
 var _shareTook={};      // the share ids this document took: a read that answers one again is nothing new
 var _shareKept={};      // the share ids whose photo this document's keep committed
+var _shareLost={};      // the share ids whose photo three keeps could not keep: cleared as build 61 cleared a share
+var _shareWait={};      // the share ids whose keep waits to be tried again: the wait (_photoSoon's handle)
 var _shareClearing={};  // the share ids asked to be cleared: one ask each (one that failed may be asked again)
+// Keeps the pending photo of build-62 share sid, the k-th keep of it in this document (_photoKeep): one that commits
+// clears the share; one that fails, while the photo is still that share's, is tried again on _photoRetry's schedule
+// (_photoSoon), and when the third fails the share is cleared as build 61's plugin cleared it at its read (the photo
+// pending in memory only), with one line. The photo sent, removed or replaced settled the share's copy then (cleared,
+// or written over by a newer share): no keep follows.
+function _shareKeep(sid, words, k){
+  var img=pendingImage;
+  _photoKeep('share', words, sid, k).then(function(r){
+    if(r && r.ok){ _shareKept[sid]=1; if(_shareSid===sid) _shareClear(sid); return; }
+    if(_shareSid!==sid || pendingImage!==img) return;
+    if(k>=3){ _shareLost[sid]=1; _shareLog('share: cleared after 3 failed keeps (photo in memory only)'); _shareClear(sid); return; }
+    _shareWait[sid]=_photoSoon(function(){
+      delete _shareWait[sid];
+      if(_shareSid===sid && pendingImage===img) _shareKeep(sid, words, k+1);
+    });
+  });
+}
+// The keep of share id that waits to be tried again waits no more: its photo is no longer that share's.
+function _shareStop(id){
+  var w=_shareWait[id];
+  if(w){ delete _shareWait[id]; w.stop(); }
+}
 // The App Group's copy of a share this document took goes (TrovoShare.clearPendingShare, build 62): once per id; a
 // line when it did not clear.
 function _shareClear(id){
@@ -10009,21 +10042,28 @@ function _photoMark(m){
 // back the photo this one replaced. Answers a promise of the keep's outcome ({ok, why}: ok once the record's
 // transaction has committed; at once, not ok, when nothing was put). A pick replacing a build-62 share's photo clears
 // that share's App Group copy (_shareClear); a share does not need to (its extension wrote it over the one before).
-function _photoKeep(src, words, sid){
+// A pick or a newer share also ends the keep of the share before that waits to be tried again (_shareStop). k: which
+// keep of a build-62 share this is (_shareKeep: 1 for the first; a pick or a share with no id passes none). One tried
+// again (k above 1) adds no line for its failure while one says it already (a run of them is one line: _shareLog), says
+// which keep it was when it commits, and carries into the marker the owner's leave of the photo's chat that the failed
+// keep before could not mark (the marker said gone: _photoLeave refused it).
+function _photoKeep(src, words, sid, k){
   var img=pendingImage;
   if(!img || !img.data) return Promise.resolve({ok:false, why:'no photo'});
   var was=_shareSid;
   _shareSid=(src==='share' && sid) ? String(sid) : '';
+  if(was && was!==_shareSid) _shareStop(was);
   if(was && src!=='share') _shareClear(was);
+  var again=k>1, say=again ? _shareLog : _wchLog;
   var m0=_photoMarkRead(), n=Math.max(m0 ? m0.n : 0, _photoN)+1, at=Math.max(Date.now(), _photoAt+1);
   _photoN=n; _photoAt=at; img.at=at;
-  var no=_photoMark({n:n, at:at});
-  if(no){ _photoTx('readwrite', function(st){ st.delete('pending'); }); _wchLog('photo: not kept ('+no+')'); return Promise.resolve({ok:false, why:no}); }
+  var no=_photoMark(again && img.on===0 ? {n:n, at:at, left:1} : {n:n, at:at});
+  if(no){ _photoTx('readwrite', function(st){ st.delete('pending'); }); say('photo: not kept ('+no+')'); return Promise.resolve({ok:false, why:no}); }
   var rec={data:String(img.data), mediaType:String(img.mediaType || 'image/jpeg'), at:at, src:src==='share' ? 'share' : 'pick', n:n};
   if(src==='share' && words) rec.words=String(words);
   return _photoTx('readwrite', function(st){ st.put(rec, 'pending'); }).then(function(r){
     if(!r.ok){ var m=_photoMarkRead(); if(m && m.n===n && !m.gone) _photoMark({n:n, at:at, gone:1}); }
-    _wchLog(r.ok ? 'photo: kept' : 'photo: not kept ('+r.why+')');
+    if(r.ok) _wchLog(again ? 'photo: kept (keep '+k+')' : 'photo: kept'); else say('photo: not kept ('+r.why+')');
     return r;
   });
 }
@@ -10031,7 +10071,7 @@ function _photoKeep(src, words, sid){
 // Group's copy of the build-62 share it came from. The marker says gone at once, so a deletion IndexedDB fails leaves a
 // record the boot drops.
 function _photoDrop(what){
-  if(_shareSid){ _shareClear(_shareSid); _shareSid=''; }
+  if(_shareSid){ _shareStop(_shareSid); _shareClear(_shareSid); _shareSid=''; }
   var m=_photoMarkRead();
   if(m && !m.gone) _photoMark({n:m.n, at:m.at, gone:1});
   if(what) _wchLog('photo: '+what);
@@ -10133,20 +10173,27 @@ function _photoRestore(n){
 // and each read settles it by the rules above at its own time (its own _photoSeq, the marker, the 30 minutes,
 // _photoAsked). The page's visibility is read again when the wait ends: hidden by then, it waits for the next show.
 function _photoRetry(n){
-  if(n>=3) return;
-  var go=function(){
-    if(document.visibilityState==='hidden'){ whenShown(); return; }
-    _photoRestore(n+1);
-  };
+  if(n<3) _photoSoon(function(){ _photoRestore(n+1); });
+}
+// The schedule a failed read of the kept copy (_photoRetry) and a build-62 share's failed keep (_shareKeep) are tried
+// again on: fn runs 0.3 s from now while the page shows, else 0.3 s after it next shows, the page's visibility read
+// again when the wait ends (hidden by then, it waits for the next show). Answers the wait: now() runs fn at once (once
+// at most), stop() drops it.
+function _photoSoon(fn){
+  var t=null, h=null, done=false;
+  var off=function(){ clearTimeout(t); t=null; if(h){ document.removeEventListener('visibilitychange', h); h=null; } };
+  var run=function(){ if(done) return; done=true; off(); fn(); };
+  var go=function(){ t=null; if(document.visibilityState==='hidden') whenShown(); else run(); };
   var whenShown=function(){
-    var h=function(){
+    h=function(){
       if(document.visibilityState==='hidden') return;
-      document.removeEventListener('visibilitychange', h);
-      setTimeout(go, 300);
+      document.removeEventListener('visibilitychange', h); h=null;
+      t=setTimeout(go, 300);
     };
     document.addEventListener('visibilitychange', h);
   };
-  if(document.visibilityState==='hidden') whenShown(); else setTimeout(go, 300);
+  if(document.visibilityState==='hidden') whenShown(); else t=setTimeout(go, 300);
+  return {now:run, stop:function(){ done=true; off(); }};
 }
 // The kept share's chat, at the end of the reader's turn (took: it found a new share, whose chat is open instead). On a
 // page nobody sees (a background launch, or the owner gone again) it waits: the next reader (the return's check, 0.6 s
@@ -10210,9 +10257,11 @@ async function checkPendingShare(){
     var r = TS ? await (keep ? TS.getPendingShare({keep:true}) : TS.getPendingShare()) : null;
     var sid = (keep && r && r.id!=null && r.id!=='') ? String(r.id) : '';
     if(r && r.imageBase64 && sid && _shareTook[sid]){
-      // the share this document took, still in the App Group: nothing new. Its clear waits for its keep, unless its
-      // photo has gone or its keep committed already (a clear that failed is asked again here)
-      if(_shareSid!==sid || _shareKept[sid]) _shareClear(sid);
+      // the share this document took, still in the App Group: nothing new. A keep of it that waits to be tried again
+      // goes now when the page shows (on a hidden page it waits for the show); else its clear waits for its keep,
+      // unless its photo has gone, its keep committed or three keeps failed (a clear that failed is asked again here)
+      if(_shareWait[sid]){ if(document.visibilityState!=='hidden') _shareWait[sid].now(); }
+      else if(_shareSid!==sid || _shareKept[sid] || _shareLost[sid]) _shareClear(sid);
     } else if(r && r.imageBase64){
       took=true;
       if(sid) _shareTook[sid]=1;
@@ -10223,9 +10272,10 @@ async function checkPendingShare(){
       // so the app's own prompts leave it be until a chat has drawn it (_photoWatch), as a photo put back at boot
       if(!getApiKey()) pendingImage.back=1;
       _photoSeq++;
-      // the App Group's copy goes once the page's own is kept (a keep that fails leaves it: the durable copy), while the
-      // photo is still this share's (sent, removed or picked over, it was cleared then; a newer share wrote over it)
-      _photoKeep('share', words, sid).then(function(k){ if(sid && k && k.ok){ _shareKept[sid]=1; if(_shareSid===sid) _shareClear(sid); } });
+      // a build-62 share's App Group copy goes once the page's own is kept, or once three keeps have failed (_shareKeep),
+      // while the photo is still this share's (sent, removed or picked over, it was cleared then; a newer share wrote
+      // over it); a share with no id was deleted as it was read
+      if(sid) _shareKeep(sid, words, 1); else _photoKeep('share', words, sid);
       // Through the tab switch: it leaves COMPARE and closes the day sheet (either sat over the
       // chat, with its Delete buttons mid-screen) and lights the Coach tab. Then the chat itself.
       // The switch's own paint (the Coach tab opens on its hub) presents and dismisses nothing, so a
