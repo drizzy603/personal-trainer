@@ -439,7 +439,9 @@ function MOCK_RULES() {
 // __fpShellHelloTabs (the reply's tabs replaced; null leaves it out), __fpShellOff (pieces off before this hello),
 // __fpShellBar {h, safe}, __fpShellThrow (method names that throw synchronously), __fpShellUp, __fpShellStatus,
 // __fpShellCross ('<tab>': a tap crosses the next selectTab), __fpShellSheetsDelay (ms, default 16),
-// __fpShellSheetsSilent, __fpShellRefreshDelay (ms, default 0), __fpShellIOS (a number below 26: tabs off 'os').
+// __fpShellSheetsSilent, __fpShellRefreshDelay (ms, default 0), __fpShellIOS (a number below 26: tabs off 'os'),
+// __fpShellDoc (build 62's hello: every reply carries doc, the scene's count of its documents; without it the reply is
+// 61's, which names none).
 // Helpers: __fpShell.tap(tab), select(tab, 'deepLink' | 'stray'), bar(h, safe), fallBack(why, draft), state();
 // __fpShell.composer stands for the native composer's unsent words (cleared by an answer with took: true).
 function shellMock(arg) {
@@ -575,6 +577,9 @@ function shellMock(arg) {
     if (has('tabs')) reply.tabs = { selected: scene.selected, seq: scene.seq, bar: shownBar() };
     const ht = knob('__fpShellHelloTabs');
     if (ht !== undefined) { if (ht === null) delete reply.tabs; else reply.tabs = copy(ht); }
+    // build 62's reply (window.__fpShellDoc, opt-in): the document's number in its scene on every reply, refusals
+    // included; the default stays 61's reply, which names none
+    if (knob('__fpShellDoc')) reply.doc = scene.docs;
     // the Coach tab (1.4): WEB at once on a reply without coachHome; a screen up that the reply leaves out goes down
     if (live() && !has('coachHome')) scene.coach = 'web';
     if (scene.pushed && !has('coach')) scene.pushed = false;

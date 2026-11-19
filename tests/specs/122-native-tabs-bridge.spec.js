@@ -2,7 +2,9 @@
 // 122: build 61's tab bar bridge (plan task P1 creates it with the harness's own cases; P2 and P13 append).
 // - The harness (P1): the four 61 flags are contract 2.1's strings, build 60's two unchanged; SHELL_METHODS['61'] is
 //   contract 3.1's list in order and its first 11 are SHELL_METHODS['60']; the mock negotiates as FPCore with the
-//   dependency rule and the fallback at hello (a fresh scene per row), and MOCK_RULES run in Node give the same reply;
+//   dependency rule and the fallback at hello (a fresh scene per row), and MOCK_RULES run in Node give the same reply
+//   (under the __fpShellDoc knob it is that reply with build 62's doc, the document's number in its scene: 1 in a fresh
+//   one, a refusal included);
 //   the page before the tabs half (BASE_PAGE(), 91708ae) under inert61, coach61, tabs and tabsWeb makes no selectTab,
 //   sheets or setSwitch call and shows its own #tabs (under tabs its hello names coach only, so the scene falls back
 //   with tabs declined and 60's overlay chat is negotiated); dismiss {screen:'tabs'} falls back 'page' with no
@@ -144,6 +146,14 @@ serial('P1: the mock negotiates as FPCore with the dependency rule and the fallb
       const n = R.hello(SHELLS[r.shell], { v: r.v === undefined ? 1 : r.v, screens: r.screens }, { live: !!SHELLS[r.shell].tabs, off: [] });
       assert(J(n.screens) === J(reply.screens) && n.fellBack === r.fellBack && J(n.declined.sort()) === J(r.declined.slice().sort()) && (n.why || null) === (r.why || null),
         tag + 'Node: ' + J(n));
+      // build 62's reply (the __fpShellDoc knob) is 61's with doc, the document's number in its scene (1 in a fresh one),
+      // a refusal included; the default reply carries none
+      await freshScene(app);
+      await ev(app, () => { window.__fpShellDoc = true; });
+      const r62 = await hello(app, r.screens, r.v);
+      const rest = Object.assign({}, r62);
+      delete rest.doc;
+      assert(reply.doc === undefined && r62.doc === 1 && J(rest) === J(reply), tag + '62\'s reply is 61\'s and doc 1: ' + J(r62) + ' / 61: ' + J(reply));
     }
   } finally { for (const k in apps) await apps[k].close(); }
   // the dependency rule alone
