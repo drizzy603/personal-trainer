@@ -52,8 +52,10 @@ MOVES = {
              step('waitCoach', label='chat up', until='up', ms=8000), wait(1500)],
 }
 KILLS = {S_LOG: {'op': 'killWebContent'}, S_NET: {'op': 'killNetwork'}, S_CRASH: {'op': 'killWebContent'}}
-# the page's line for a document that booted blind (build 62, R2): the shell's log has it with 'fp: ' in front
-BLIND_LINE = "shell: document 2 booted without the scene's marks"
+# the page's line for a document that booted blind (build 62, R2): the shell's log has it with 'fp: ' in front; the
+# new document of each launch is the scene's second to say hello, so a blind one says document 2. Its absence is read for
+# any number (native_shell.blind_lines), so a document counted otherwise cannot pass for one that said none.
+BLIND_LINE = shell.blind_line(2)
 
 
 def _crash_at(label):
@@ -181,14 +183,18 @@ def _one(c, s, half):
                 h1.get('doc') == 1 and ha.get('doc') == 2 and m1.get('fp_seen') == '1' and mb.get('fp_seen') == '1' and ma.get('fp_seen') == '1',
                 {'hello': [h1, ha], 'fp_seen': [m1.get('fp_seen'), mb.get('fp_seen'), ma.get('fp_seen')]})
     blind = (ha.get('doc') or 0) > 1 and st.get('fp_seen') != '1' and st.get('fp_tab') not in shell.TAB_IDS
-    said = [t for t in logs if BLIND_LINE in (t or '')]
-    crumbs = [l for l in shell.crumbs_since(ma.get('wchAll'), k.get('wall')) if l == BLIND_LINE]   # this launch's, since the kill
+    said = shell.blind_lines(logs)   # any document's number
+    crumbs = shell.blind_lines(shell.crumbs_since(ma.get('wchAll'), k.get('wall')))   # this launch's, since the kill
     if s == S_LOG:
         c.rep.check(s, '%s: a WebContent kill keeps the scene\'s marks (fp_tab %s%s and fp_seen 1 at the new document\'s start, before its '
-                    'scripts), so it boots where the owner was, not blind (no line), and its hello counts no place asked for (_photoAsked 0)' % (
+                    'scripts), so it boots where the owner was, and its hello counts no place asked for (_photoAsked 0)' % (
                         half, want, ', fp_chat t' if half == 'chat' else ''),
-                    kept and st.get('fp_seen') == '1' and not st.get('error') and booted == want and not blind and not said and not crumbs
-                    and ma.get('asked') == 0, {'start': st, 'booted': booted, 'asked': ma.get('asked'), 'lines': said + crumbs})
+                    kept and st.get('fp_seen') == '1' and not st.get('error') and booted == want and ma.get('asked') == 0,
+                    {'start': st, 'booted': booted, 'asked': ma.get('asked')})
+        c.rep.check(s, '%s: so it did not boot blind: no "shell: document N booted without the scene\'s marks", whatever N, in the shell\'s '
+                    'log or the breadcrumbs since the kill (build 62, R2)' % half,
+                    not blind and not said and not crumbs and type(k.get('wall')) in (int, float),
+                    {'blind': blind, 'log': said, 'breadcrumbs': crumbs, 'kill wall': k.get('wall')})
     else:
         c.rep.fact(s, '%s: the marks %s the Networking process\'s end (fp_tab %r, fp_chat %r, fp_seen %r at the new document\'s start); '
                    'the page booted on %s and its hello counted %s place%s asked for (_photoAsked %r)' % (
@@ -197,7 +203,8 @@ def _one(c, s, half):
         c.rep.check(s, '%s: the new document %s, and its hello counted no place asked for (_photoAsked 0)' % (
             half, 'booted blind (doc 2, none of the scene\'s marks at its start): "%s" once in the shell\'s log and once in the '
             'breadcrumbs, hello\'s %s adopted uncounted' % (BLIND_LINE, want) if blind else 'found the scene\'s marks at its start: no blind line'),
-            ma.get('asked') == 0 and ma.get('tab') == want and ((len(said) == 1 and len(crumbs) == 1) if blind else (not said and not crumbs)),
+            ma.get('asked') == 0 and ma.get('tab') == want and ((said == ['fp: ' + BLIND_LINE] or said == [BLIND_LINE]) and crumbs == [BLIND_LINE]
+                                                                if blind else (not said and not crumbs)),
             {'blind': blind, 'start': st, 'asked': ma.get('asked'), 'tab': ma.get('tab'), 'log': said,
              'breadcrumbs since the kill': shell.crumbs_since(ma.get('wchAll'), k.get('wall'))})
     return {'kept': kept, 'asked': ma.get('asked'), 'booted': booted, 'start': st, 'after': ma, 'blind': blind}
