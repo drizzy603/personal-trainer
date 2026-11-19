@@ -86,7 +86,10 @@
 //   without the scene's marks' line; the native chat taken over either way; with the marks kept a bar tap during the
 //   restart still counts, and so does a tab tapped before hello at a cold launch (doc 1); under the classic root a
 //   blind restart is only logged and a Back during it stays uncounted (the miss, left for later); fp_seen is written
-//   once per document at its hello under every shell, and never without one.
+//   once per document at its hello under every shell, and never without one. With exactly one of the marks kept
+//   (fp_seen alone: the owner never changed tab; fp_tab alone: the Networking process crashed under the live page,
+//   then the owner changed tab) the document is not blind and a bar tap during the restart counts: each half of the
+//   blind test is held by one case.
 // - (l) Setup's chat is the chat on screen whatever coachView says (web 20261115-6; renderCoach draws it so): a setup
 //   chat taken over at a reload has the kept share back in it, already on screen, nothing presented, the view left as
 //   setup keeps it; a photo that came back with its chat shut is the composer's photo once setup's chat shows it, and
@@ -1909,6 +1912,47 @@ serial('(k) 62: the scene\'s marks kept and a bar tap the shell took during the 
     noErrors(app);
   } finally { await app.close(); }
 });
+
+// Exactly one of the scene's marks kept (the review's R2): fp_seen alone is any tab-root scene whose owner never changed
+// tab (the page writes fp_tab only at a switch); fp_tab alone follows the Networking process crashing under a live page
+// (its sessionStorage reads empty at once: a_restart's wckill-crash) and the owner changing tab after. Either mark says
+// the scene's marks were not lost, so the document is not blind and a bar tap the shell took during the restart counts:
+// each half of the page's blind test (!fp_seen, !fp_tab) is held by one of these cases.
+const kOneMark = async (mark) => {
+  const tag = 'tabs, 62, ' + (mark === 'seen' ? 'fp_seen kept without fp_tab' : 'fp_tab kept without fp_seen') + ': ';
+  const app = await pageBoot('tabs', { init: K_INIT + K_DOC });
+  try {
+    await ready(app, true);
+    if (mark === 'tab') {
+      await kLose(app);   // the Networking process crashed: the live page's sessionStorage reads empty, the scene lives
+      await ev(app, () => __fpShell.tap('progress'));   // then the owner taps Progress on the bar
+      await app.page.waitForFunction(() => currentTab === 'progress', null, { timeout: 15000 });
+      await settle(app, 100);
+    }
+    const before = await ev(app, () => ({ seen: sessionStorage.getItem('fp_seen'), tab: sessionStorage.getItem('fp_tab'), on: currentTab }));
+    assert(mark === 'seen' ? before.seen === '1' && before.tab === null && before.on === 'log' : before.seen === null && before.tab === 'progress' && before.on === 'progress',
+      tag + 'the one mark the scene keeps: ' + J(before));
+    // a share kept 2 minutes ago, then a tap on another tab the shell took while the WebContent restarted
+    await ev(app, (r) => __plant(r), { data: PHOTO, mediaType: 'image/jpeg', at: Date.now() - 2 * MIN, src: 'share' });
+    const to = mark === 'seen' ? 'progress' : 'log';
+    await kScene(app, "scene.selected = '" + to + "'; scene.seq = scene.seq + 1;");
+    await app.reload();   // the same scene, its one mark kept
+    await app.page.waitForFunction(() => window._fp && _fp.hello, null, { timeout: 15000 });
+    await settle(app, 150);
+    const hello = await kHello(app);
+    await waitLine(app, '/^photo: back from 2 min/.test(l)', 'the photo back');
+    await settle(app, 400);
+    const m = await look(app);
+    assert(hello.doc === 2 && hello.asked > 0 && hello.tab === to && m.tab === to && shut(m) && m.img === PHOTO && m.log.indexOf(K_ASKED(2)) >= 0
+      && m.mark && m.mark.left === 1 && kBlinds(m).length === 0,
+      tag + 'not blind: the tap counted, the kept share\'s chat shut on ' + to + ', counted as left, no blind line: '
+      + J(Object.assign({ hello }, m, { img: !!m.img, kept: !!m.kept, log: m.log.slice(0, 6) })));
+    clean(m.log);
+    noErrors(app);
+  } finally { await app.close(); }
+};
+serial('(k) 62: fp_seen kept without fp_tab (the owner never changed tab) and a bar tap the shell took during the restart: not blind (doc 2), the tap counts, the kept share\'s chat stays shut on Progress, counted as left, no blind line (tabs)', () => kOneMark('seen'));
+serial('(k) 62: fp_tab kept without fp_seen (the Networking process crashed under the live page, then the owner changed tab) and a bar tap the shell took during the restart: not blind (doc 2), the tap counts, the kept share\'s chat stays shut on Log, counted as left, no blind line (tabs)', () => kOneMark('tab'));
 
 serial('(k) 62: a cold launch (doc 1, no marks by construction) still counts a tab tapped before hello answered, and with no tap the kept share\'s chat opens (tabs)', async () => {
   for (const pre of [null, { selected: 'progress', seq: 1 }]) {
