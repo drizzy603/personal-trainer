@@ -318,13 +318,17 @@ an Undo toast, the screen marker, Back, and the rooms' appearance: Lime dark on 
 dark one, the phone's appearance proven from the page's `prefers-color-scheme`, and on the tab root the bar as drawn),
 `focus` (a focused web field, then the chat up and down by the page, Back and the edge pan or `navPop`: no keyboard
 comes back and the document is not scrolled), `wckill` (WebContent killed with the chat up: taken over and resynced on
-the new boot, the Coach tab NATIVE throughout, nothing resent, the open confirm stale), `marker` (a planted crash marker
+the new boot, the Coach tab NATIVE throughout, nothing resent, the open confirm stale, the scene's sessionStorage marks
+kept), `marker` (a planted crash marker
 brings back the web Coach once; on the tab root the hub's marker too), `policy` (`screens.coach` off at once; on the tab
 root `screens.coachHome` too), `breaker` (three timeouts turn it off for the page build), `counters` (the web view out
 of its window; on the tab root a stray selection), `inactive` (no marker while the app is away) and `teardown` (the
 scene torn down and connected again with the chat up: the web view, the root and the window it held all let go). Then
 every module of `tests/tools/shellscen/*.py`, by rank; a row marked `{'roots': 'tabs'}` or `'classic'` runs on that
-root's passes only.
+root's passes only: `a_restart.py`'s `wckill-log`, `wckill-net` and `wckill-crash` (build 62's restart flag: the
+WebContent killed, or WebKit's Networking process ended with it through ShellProbe's Debug-only `killNetwork` or killed
+from the host with SIGKILL as jetsam does, either of which takes every key of the scene's sessionStorage while the scene
+lives; hello's `doc` 1 then 2, and the page's blind boot).
 
 Each mark holds the app until its shot is on disk (the page waits for a go file the runner writes once the screenshot
 has returned), so a loaded Mac cannot shoot the next step. Shots land in `screenshots/out/native-shell/` as
