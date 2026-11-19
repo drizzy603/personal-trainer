@@ -206,23 +206,29 @@ extension AppDelegate {
     }
 
     /// The share extension's write (ShareViewController.send), made from inside the app (a host's write to the group's
-    /// defaults can go unseen by the app): the JPEG as `pendingShare.jpg` in the App Group's container (`jpeg` names a
+    /// defaults can go unseen by the app), in the layout the step names (`layout`, build 62's by default). `jpeg` names a
     /// file beside the probe's steps in Documents/fp-probe; with none, a 1600 px photo drawn here, as the extension
-    /// downscales one), the comment as `pendingShareComment` in the group's defaults, the legacy base64 slot removed
-    /// (`stored: file`). A build without the App Group's entitlement has no group container (a simulator build made with
-    /// CODE_SIGNING_ALLOWED=NO, as the tools' were: a simulator build signed to run locally has it): that is an error
-    /// event that writes nothing (`stored: none`), so no scenario tests TrovoShare's fallback read believing it tests the
-    /// extension's file. `legacy: true` asks for that fallback on purpose: the photo goes to the legacy base64
-    /// `pendingShareImage` slot, which `getPendingShare` reads when no file is there and keeps for one release
-    /// (`stored: defaults`). It opens nothing: a scenario pairs it with `openURL trovo://share`, `openURLOnActive` or a
-    /// return from the background.
+    /// downscales one.
+    /// - "62": build 62's extension, `pendingShare.json` {v: 1, id, at, bytes, comment} then `pendingShare.jpg`, each
+    ///   atomically in the App Group's container, the legacy keys removed (`stored: file`, with the share's `id`).
+    /// - "61": build 61's extension, `pendingShare.jpg` with the comment in the group's defaults (`pendingShareComment`)
+    ///   and no words file (one left by a 62 share goes): a share made before the update (`stored: file`).
+    /// - `legacy: true` (layout "slot"): the base64 `pendingShareImage` slot on purpose, with the comment in the defaults,
+    ///   no file left to win over it (`stored: defaults`), as the hook wrote it under build 61.
+    /// A build without the App Group's entitlement has no group container (a simulator build made with
+    /// CODE_SIGNING_ALLOWED=NO: a simulator build signed to run locally has it): a file layout is then an error event that
+    /// writes nothing (`stored: none`), so no scenario tests TrovoShare's fallback read believing it tests the extension's
+    /// file. It opens nothing: a scenario pairs it with `openURL trovo://share`, `openURLOnActive` or a return from the
+    /// background. The event never carries the comment, only its length.
     private static func writeProbeShare(_ step: [String: Any]) -> [String: Any] {
         guard let defaults = UserDefaults(suiteName: shareGroup) else { return ["error": "no App Group defaults"] }
         let legacy = step["legacy"] as? Bool == true
+        let layout = legacy ? "slot" : (step["layout"] as? String ?? "62")
+        guard ["62", "61", "slot"].contains(layout) else { return ["error": "layout is 62, 61 or slot (legacy: true)"] }
         let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: shareGroup)
-        if container == nil, !legacy {
+        if container == nil, layout != "slot" {
             return ["error": "no App Group container in this build (no group entitlement): nothing written; sign the simulator build to run locally, or pass legacy: true for the base64 slot",
-                    "stored": "none", "legacy": false]
+                    "stored": "none", "legacy": false, "layout": layout]
         }
         let jpeg: Data
         var source = "drawn"
@@ -237,24 +243,47 @@ extension AppDelegate {
             guard let data = probePhoto() else { return ["error": "the photo could not be drawn"] }
             jpeg = data
         }
-        var stored = "file"
-        if legacy {
+        let comment = step["comment"] as? String ?? ""
+        let photoURL = container?.appendingPathComponent("pendingShare.jpg")
+        let wordsURL = container?.appendingPathComponent("pendingShare.json")
+        var out: [String: Any] = ["jpeg": source, "bytes": jpeg.count, "legacy": legacy, "layout": layout, "commentLength": comment.count]
+        switch layout {
+        case "slot":
             // asked for: the old base64 slot, with no file left to win over it
-            if let dir = container { try? FileManager.default.removeItem(at: dir.appendingPathComponent("pendingShare.jpg")) }
+            if let photoURL { try? FileManager.default.removeItem(at: photoURL) }
+            if let wordsURL { try? FileManager.default.removeItem(at: wordsURL) }
             defaults.set(jpeg.base64EncodedString(), forKey: "pendingShareImage")
-            stored = "defaults"
-        } else if let dir = container {
+            defaults.set(comment, forKey: "pendingShareComment")
+            out["stored"] = "defaults"
+        case "61":
+            guard let photoURL, let wordsURL else { return ["error": "no App Group container", "stored": "none", "legacy": false, "layout": layout] }
             do {
-                try jpeg.write(to: dir.appendingPathComponent("pendingShare.jpg"), options: .atomic)
+                try jpeg.write(to: photoURL, options: .atomic)
             } catch {
-                return ["error": "pendingShare.jpg could not be written", "stored": "none", "legacy": false]
+                return ["error": "pendingShare.jpg could not be written", "stored": "none", "legacy": false, "layout": layout]
+            }
+            try? FileManager.default.removeItem(at: wordsURL)
+            defaults.removeObject(forKey: "pendingShareImage")
+            defaults.set(comment, forKey: "pendingShareComment")
+            out["stored"] = "file"
+        default:
+            guard let photoURL, let wordsURL else { return ["error": "no App Group container", "stored": "none", "legacy": false, "layout": layout] }
+            let id = UUID().uuidString
+            let words: [String: Any] = ["v": 1, "id": id, "at": Int64((Date().timeIntervalSince1970 * 1000).rounded()), "bytes": jpeg.count,
+                                        "comment": comment]
+            do {
+                try JSONSerialization.data(withJSONObject: words).write(to: wordsURL, options: .atomic)
+                try jpeg.write(to: photoURL, options: .atomic)
+            } catch {
+                return ["error": "pendingShare.json or pendingShare.jpg could not be written", "stored": "none", "legacy": false, "layout": layout]
             }
             defaults.removeObject(forKey: "pendingShareImage")
+            defaults.removeObject(forKey: "pendingShareComment")
+            out["stored"] = "file"
+            out["id"] = id
         }
-        let comment = step["comment"] as? String ?? ""
-        defaults.set(comment, forKey: "pendingShareComment")
         defaults.synchronize()
-        return ["jpeg": source, "bytes": jpeg.count, "stored": stored, "legacy": legacy, "commentLength": comment.count]
+        return out
     }
 
     /// A 1600 x 1200 stand-in photo, JPEG at the extension's quality (0.8).

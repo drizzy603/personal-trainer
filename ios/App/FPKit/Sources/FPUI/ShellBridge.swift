@@ -246,9 +246,9 @@ public final class ShellBridge: NSObject {
     /// its probe event (never a typed text, a comment or a secret): "policy" writes a local policy file and fetches it
     /// (FPHost FPPolicy); "openURL" opens a URL through the App delegate's `application(_:open:options:)`, a real open's
     /// path (the URL parked, then `.trovoDeepLink`); "openURLOnActive" arms the same for when the scene next enters the
-    /// foreground, as a widget tap delivers it; "share" writes the App Group's `pendingShare.jpg` and
-    /// `pendingShareComment` as the share extension does, opening nothing; "sceneCycle" replays the scene's connection
-    /// (the closure `StoreProbe.sceneReplay` runs).
+    /// foreground, as a widget tap delivers it; "share" writes the App Group's share as the share extension does (build
+    /// 62's `pendingShare.json` then `pendingShare.jpg`, or build 61's jpg and `pendingShareComment`), opening nothing;
+    /// "sceneCycle" replays the scene's connection (the closure `StoreProbe.sceneReplay` runs).
     public static var debugHooks: [String: ([String: Any]) -> [String: Any]] = [:]
 
     /// Debug builds: an event in the shell probe's log, while one runs (a hook of the App's that acts after its step,
