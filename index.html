@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20261117-2"/>
+<meta name="build" content="20261119-1"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -9811,8 +9811,7 @@ function runnerSetRpe(val){
   if(!isNaN(v) && v >= 1 && v <= 10){ runnerRpe[ex.name] = v; _saveRunnerDraft(); }
 }
 // The shared photo and its comment (the share extension's), read by the deep link trovo://share at once, by the boot
-// at +2.5 s and by every return at +0.6 s. TrovoShare.getPendingShare deletes what it returns
-// (CapApp/TrovoSharePlugin.swift), so one reader at a time (_shareBusy, cleared in finally): a call while another
+// at +2.5 s and by every return at +0.6 s. One reader at a time (_shareBusy, cleared in finally): a call while another
 // reads, or waits to, reads nothing. Under the shell's bridge the read first waits for hello's answer or failure, or
 // the page leaving tabs mode, at most 3 s of visible time (contract 9, D46): the chat it opens is then the one hello
 // negotiated (no web chat drawn before build 60's overlay covers it), and a hello that never answers strands nothing,
@@ -9821,7 +9820,35 @@ function runnerSetRpe(val){
 // kept on the device until it is sent or removed (_photoKeep, below), and every step leaves one line in kt_wch_log
 // (Settings > About > Error log), a step that repeats one line for its run (_shareLog): sizes and states only, never
 // the words or the photo.
+// Up to build 61 TrovoShare.getPendingShare deletes what it answers (CapApp/TrovoSharePlugin.swift), so from its answer
+// on the page's copy was the only one: a WebContent death, an IndexedDB keep aborted or never committed, or the app
+// ending in that gap lost the photo. Build 62's plugin keeps a share its extension wrote until the page clears it. The
+// page feature-tests clearPendingShare and then asks getPendingShare({keep:true}) (without it, getPendingShare() as
+// before), whose answer carries the share's id (_shareSid), and clears it by that id once the photo's keep has
+// committed (_photoKeep answers its transaction's outcome), or once the photo is sent, removed or replaced by a pick
+// (_photoDrop, the pick's _photoKeep); a later share needs no clear, its extension wrote it over the one before. A keep
+// that fails clears nothing: the App Group's copy is then the photo's durable copy, and the next document reads it as a
+// fresh share. A read that answers an id this document took is nothing new (no second chat, keep or line). A clear
+// that does not clear leaves a line (a newer share waiting, or an error, which the next read of that id asks again).
 var _shareBusy=false;
+var _shareSid='';       // the id of the build-62 share the pending photo came from ('' for any other photo)
+var _shareTook={};      // the share ids this document took: a read that answers one again is nothing new
+var _shareKept={};      // the share ids whose photo this document's keep committed
+var _shareClearing={};  // the share ids asked to be cleared: one ask each (one that failed may be asked again)
+// The App Group's copy of a share this document took goes (TrovoShare.clearPendingShare, build 62): once per id; a
+// line when it did not clear.
+function _shareClear(id){
+  id=String(id || '');
+  var TS=window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.TrovoShare;
+  if(!id || _shareClearing[id] || !TS || typeof TS.clearPendingShare!=='function') return;
+  _shareClearing[id]=1;
+  var fail=function(){ delete _shareClearing[id]; _shareLog('share: not cleared (error)'); };
+  try{
+    Promise.resolve(TS.clearPendingShare({id:id})).then(function(r){
+      if(!(r && r.cleared)) _shareLog('share: not cleared (newer share waiting)');
+    }, fail);
+  }catch(e){ fail(); }
+}
 // hello went to the shell (its flag and TrovoShell) and has neither answered nor failed.
 function _fpHelloOut(){
   var P=_fpPlugin();
@@ -9976,27 +10003,35 @@ function _photoMark(m){
     return localStorage.getItem('kt_photo_kept')===v ? '' : 'marker not written';
   }catch(e){ return _photoWhy(e, 'marker not written'); }
 }
-// The pending photo as it is now, kept (src 'share' or 'pick', with the share's words): the next number and its stamp
-// in the marker first, then the record. With no marker written nothing is put, and the record there (the photo this
-// one replaced) is deleted; a record not written marks the marker gone, so the boot never puts back the photo this one
-// replaced.
-function _photoKeep(src, words){
+// The pending photo as it is now, kept (src 'share' or 'pick', with the share's words and its build-62 id): the next
+// number and its stamp in the marker first, then the record. With no marker written nothing is put, and the record
+// there (the photo this one replaced) is deleted; a record not written marks the marker gone, so the boot never puts
+// back the photo this one replaced. Answers a promise of the keep's outcome ({ok, why}: ok once the record's
+// transaction has committed; at once, not ok, when nothing was put). A pick replacing a build-62 share's photo clears
+// that share's App Group copy (_shareClear); a share does not need to (its extension wrote it over the one before).
+function _photoKeep(src, words, sid){
   var img=pendingImage;
-  if(!img || !img.data) return;
+  if(!img || !img.data) return Promise.resolve({ok:false, why:'no photo'});
+  var was=_shareSid;
+  _shareSid=(src==='share' && sid) ? String(sid) : '';
+  if(was && src!=='share') _shareClear(was);
   var m0=_photoMarkRead(), n=Math.max(m0 ? m0.n : 0, _photoN)+1, at=Math.max(Date.now(), _photoAt+1);
   _photoN=n; _photoAt=at; img.at=at;
   var no=_photoMark({n:n, at:at});
-  if(no){ _photoTx('readwrite', function(st){ st.delete('pending'); }); _wchLog('photo: not kept ('+no+')'); return; }
+  if(no){ _photoTx('readwrite', function(st){ st.delete('pending'); }); _wchLog('photo: not kept ('+no+')'); return Promise.resolve({ok:false, why:no}); }
   var rec={data:String(img.data), mediaType:String(img.mediaType || 'image/jpeg'), at:at, src:src==='share' ? 'share' : 'pick', n:n};
   if(src==='share' && words) rec.words=String(words);
-  _photoTx('readwrite', function(st){ st.put(rec, 'pending'); }).then(function(r){
+  return _photoTx('readwrite', function(st){ st.put(rec, 'pending'); }).then(function(r){
     if(!r.ok){ var m=_photoMarkRead(); if(m && m.n===n && !m.gone) _photoMark({n:n, at:at, gone:1}); }
     _wchLog(r.ok ? 'photo: kept' : 'photo: not kept ('+r.why+')');
+    return r;
   });
 }
-// The pending photo is gone (what: 'sent' or 'removed'; '' when there was none): so is its kept copy. The marker says
-// gone at once, so a deletion IndexedDB fails leaves a record the boot drops.
+// The pending photo is gone (what: 'sent' or 'removed'; '' when there was none): so is its kept copy, and the App
+// Group's copy of the build-62 share it came from. The marker says gone at once, so a deletion IndexedDB fails leaves a
+// record the boot drops.
 function _photoDrop(what){
+  if(_shareSid){ _shareClear(_shareSid); _shareSid=''; }
   var m=_photoMarkRead();
   if(m && !m.gone) _photoMark({n:m.n, at:m.at, gone:1});
   if(what) _wchLog('photo: '+what);
@@ -10169,16 +10204,28 @@ async function checkPendingShare(){
   var took=false;
   try {
     await _fpAfterHello(3000);
-    var r = TS ? await TS.getPendingShare() : null;
-    if(r && r.imageBase64){
+    // build 62's plugin keeps the share until the page clears it (its clearPendingShare says so); an older one deletes
+    // it as it answers, and is asked exactly as before
+    var keep = !!TS && typeof TS.clearPendingShare==='function';
+    var r = TS ? await (keep ? TS.getPendingShare({keep:true}) : TS.getPendingShare()) : null;
+    var sid = (keep && r && r.id!=null && r.id!=='') ? String(r.id) : '';
+    if(r && r.imageBase64 && sid && _shareTook[sid]){
+      // the share this document took, still in the App Group: nothing new. Its clear waits for its keep, unless its
+      // photo has gone or its keep committed already (a clear that failed is asked again here)
+      if(_shareSid!==sid || _shareKept[sid]) _shareClear(sid);
+    } else if(r && r.imageBase64){
       took=true;
+      if(sid) _shareTook[sid]=1;
       var b64=String(r.imageBase64), words=r.comment ? String(r.comment) : '';
       _wchLog('share: read '+Math.round(b64.length*3/4/1024)+' KB, words '+_chars(words).length+' chars, page '+(document.visibilityState==='hidden' ? 'hidden' : 'visible'));
       pendingImage = {data: b64, mediaType: 'image/jpeg', previewUrl: 'data:image/jpeg;base64,'+b64};
       // with no key the share lands on the connect screen, which shows no photo: not yet in front of the owner (back),
       // so the app's own prompts leave it be until a chat has drawn it (_photoWatch), as a photo put back at boot
       if(!getApiKey()) pendingImage.back=1;
-      _photoSeq++; _photoKeep('share', words);
+      _photoSeq++;
+      // the App Group's copy goes once the page's own is kept (a keep that fails leaves it: the durable copy), while the
+      // photo is still this share's (sent, removed or picked over, it was cleared then; a newer share wrote over it)
+      _photoKeep('share', words, sid).then(function(k){ if(sid && k && k.ok){ _shareKept[sid]=1; if(_shareSid===sid) _shareClear(sid); } });
       // Through the tab switch: it leaves COMPARE and closes the day sheet (either sat over the
       // chat, with its Delete buttons mid-screen) and lights the Coach tab. Then the chat itself.
       // The switch's own paint (the Coach tab opens on its hub) presents and dismisses nothing, so a
