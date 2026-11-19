@@ -138,6 +138,7 @@ final class ShellBridgeTests: XCTestCase {
         XCTAssertEqual(hello["v"] as? Int, 1)
         XCTAssertEqual(hello["screens"] as? [String], ["coach"])
         XCTAssertNil(hello["up"], "nothing up yet")
+        XCTAssertEqual(hello["doc"] as? Int, 1, "the scene's first document (build 62)")
         // a present with no model is refused; with one it goes up
         if case .success = await message(b, "present", ["screen": "coach"]) { XCTFail("no model: refused") }
         _ = await message(b, "model", ["screen": "coach", "rev": 1, "json": try modelJSON(boot: "b1", rev: 1)])
@@ -148,6 +149,9 @@ final class ShellBridgeTests: XCTestCase {
         // a reload: the next document's hello hears the chat is still up, and the chat stays
         let again = try await message(b, "hello", ["v": 1, "page": "P1", "screens": ["coach"], "boot": "b2"]).get()
         XCTAssertEqual(again["up"] as? [String], ["coach"])
+        // a new boot with no document start seen (no load here) is a new document all the same: the reply carries the
+        // link's count, not the start messages' (one, the load's)
+        XCTAssertEqual(again["doc"] as? Int, 2, "the scene's second document, counted by the link")
         try await Task.sleep(nanoseconds: 600_000_000)
         XCTAssertNotNil(stand.shown.last, "the chat stays up for the page to take over")
         let records = try XCTUnwrap(b.binding?.pageLink.records)

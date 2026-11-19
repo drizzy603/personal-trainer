@@ -1318,9 +1318,9 @@ def scen_wckill(c):
                  'after': {k: ma.get(k) for k in ('fp_tab', 'fp_chat', 'asked', 'tab', 'view', 'seqSeen', 'nav')}})
     pb, pa2 = procs(b), procs(a)
     c.rep.fact(s, 'the processes: WebContent %s -> %s, Networking %s -> %s (pids); the navigation %s at the new document\'s start, '
-               '%s after its hello (performance.navigation %s); hello %s' % (
+               '%s after its hello (performance.navigation %s); hello %s; the replies\' doc %s' % (
                    pb.get('web'), pa2.get('web'), pb.get('net'), pa2.get('net'), st.get('nav'), ma.get('nav'), ma.get('navOld'),
-                   ma.get('hello')))
+                   ma.get('hello'), [h.get('doc') for h in page_events(ev, 'hello')]))
     pa = page(a)
     presents = page_events(ev, 'present', after=(b or {}).get('t', 0))
     if c.tabs:

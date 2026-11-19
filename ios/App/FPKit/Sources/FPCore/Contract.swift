@@ -8,7 +8,8 @@ import Foundation
 //   (ScreenGate). Later builds only add keys (`tabs` in 61, `features: ['stream']` in 62).
 // - The page answers with the TrovoShell plugin: `hello {v, page, screens, boot?}` gets the
 //   negotiated `{v, screens, up?}` (`up`: a native screen still showing from the document before, which
-//   the page takes over); then `bootDone`, `present`/`dismiss`, `model`, `toast`, `confirm` and `log`
+//   the page takes over; 61 adds `tabs`, 62 `doc`, the document's number in its scene, on every reply,
+//   refusals included); then `bootDone`, `present`/`dismiss`, `model`, `toast`, `confirm` and `log`
 //   (PageMessage). Plugin calls arrive off main; the plugin hops to main.
 // - Native behaviour comes from this flag and the plugin's presence, never from build stamps: an
 //   older binary serves a newer staged page.
@@ -228,21 +229,29 @@ public struct HelloReply: Equatable, Sendable {
     public var why: String?
     /// The selection and the measured bar, iff `tabs` is negotiated (contract 3.2); left out of the JSON otherwise.
     public var tabs: TabsReply?
+    /// This document's number among the documents of its web view, which is one scene connection's: 1 for the scene's
+    /// first (LinkState's count, so a new boot whose document start the shell missed counts too). Build 62's shell sets
+    /// it on every reply, refusals included; left out of the JSON when nil (additive within v1). It tells a later
+    /// document of the scene that finds none of the scene's marks in its sessionStorage (WebKit's Networking process,
+    /// where they live, restarted while the scene lived) from the scene's first, which has none by construction.
+    public var doc: Int?
 
     public var json: JSONValue {
         var o: [String: JSONValue] = ["v": .number(Double(v)), "screens": .array(screens.map(JSONValue.string))]
         if !up.isEmpty { o["up"] = .array(up.map(JSONValue.string)) }
         if let why { o["why"] = .string(why) }
         if let tabs { o["tabs"] = tabs.json }
+        if let doc { o["doc"] = .number(Double(doc)) }
         return .object(o)
     }
 
-    public init(v: Int, screens: [String], up: [String] = [], why: String? = nil, tabs: TabsReply? = nil) {
+    public init(v: Int, screens: [String], up: [String] = [], why: String? = nil, tabs: TabsReply? = nil, doc: Int? = nil) {
         self.v = v
         self.screens = screens
         self.up = up
         self.why = why
         self.tabs = tabs
+        self.doc = doc
     }
 
     public init(_ n: Negotiation) {
@@ -253,7 +262,7 @@ public struct HelloReply: Equatable, Sendable {
     }
 
     /// This reply naming the screens the shell still shows (`shown`, in its order) that the page may take over: those
-    /// negotiated now. Refused replies take none.
+    /// negotiated now. Refused replies take none. Everything else (`tabs`, `doc`) is kept.
     public func takingOver(_ shown: [String]) -> HelloReply {
         var r = self
         r.up = v >= 1 ? shown.filter { screens.contains($0) } : []

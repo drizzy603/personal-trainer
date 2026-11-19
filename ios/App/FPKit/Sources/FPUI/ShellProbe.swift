@@ -263,8 +263,9 @@ final class ShellProbe {
 
     /// A page message the shell handled, with the moment it reached the shell (contract 15.3: the tools compare it with
     /// the page's own clocks); `refused` when the shell answered it with a refusal (a `pageRefused` event, so the `page`
-    /// events stay the messages the shell took).
-    func pageMessage(_ method: String, _ message: PageMessage, received: Date, refused: Error? = nil) {
+    /// events stay the messages the shell took). `reply`: the shell's answer, of which a hello's event carries `doc`
+    /// (build 62: the document's number in its scene, null from a shell that sends none).
+    func pageMessage(_ method: String, _ message: PageMessage, received: Date, refused: Error? = nil, reply: [String: Any]? = nil) {
         var o: [String: Any] = ["method": method, "recvT": ms(received), "recvWall": Self.wall(received)]
         switch message {
         case .model(let push):
@@ -283,6 +284,7 @@ final class ShellProbe {
             o["page"] = h.page
             o["screens"] = h.screens
             o["v"] = h.v
+            o["doc"] = reply?["doc"] ?? NSNull()
         case .toast(let t):
             o["text"] = t.text
             o["undo"] = t.undo ?? NSNull()

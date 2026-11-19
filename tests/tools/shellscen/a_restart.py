@@ -19,9 +19,10 @@ hello has answered, with the marks the new document found at its start, before i
 document-start script: a page writes fp_tab again when hello's selection moves it, and fp_chat again when it takes the
 chat over); every state carries both processes' pids, so a kill is seen to replace what it ends. Checked: the moves
 reached the page and the scene before the kill; the kill made a new document and replaced the processes it ended; the
-new document's hello answered and the page shows the shell's tab (the chat taken over in launch 2). wckill-log also
-checks what a WebContent kill must keep: the marks at the new document's start, and no place counted at its hello.
-For wckill-net what the marks and the count came to is reported as a fact with its values (R0 measures it).
+new document's hello answered and the page shows the shell's tab (the chat taken over in launch 2); hello's reply
+numbered the documents of the scene 1 then 2 (build 62's `doc`, R1, as the probe's hello events carry it). wckill-log
+also checks what a WebContent kill must keep: the marks at the new document's start, and no place counted at its
+hello. For wckill-net what the marks and the count came to is reported as a fact with its values (R0 measures it).
 """
 import native_shell as shell
 from native_shell import js, mark, state, step, wait
@@ -87,6 +88,11 @@ def _one(c, s, half):
     if s == S_LOG:
         c.rep.check(s, '%s: the Networking process went on through the WebContent kill (one pid)' % half,
                     isinstance(pb.get('net'), int) and pb.get('net') == pa.get('net'), [pb, pa])
+    # build 62 (R1): hello's reply numbers the document in its scene, as the shell sent it (the probe's hello events)
+    hellos = shell.page_events(ev, 'hello')
+    docs = [h.get('doc') for h in hellos]
+    c.rep.check(s, '%s: hello\'s reply numbered each document in its scene (doc 1 for the scene\'s first, 2 for the new one)' % half,
+                docs == [1, 2] and [h.get('boot') for h in hellos] == [boot0, boot1], {'docs': docs, 'boots': [h.get('boot') for h in hellos]})
     # the new document: its hello answered, and the page shows the shell's tab (the chat taken over in launch 2)
     ra = shell.root(a)
     shows = ma.get('hello') is not None and ma.get('tab') == want and ra.get('selected') == want and shell.page(a).get('tab') == want

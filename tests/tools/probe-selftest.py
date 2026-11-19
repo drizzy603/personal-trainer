@@ -410,7 +410,7 @@ PAGE_METHODS = {
     'selectTab': {'tab': 'str', 'intent': 'str|null'},
     'sheets': {'open': 'bool'},
     'setSwitch': {'screen': 'str', 'on': 'bool'},
-    'hello': {'boot': 'str|null', 'page': 'str', 'screens': ['str'], 'v': 'int'},
+    'hello': {'boot': 'str|null', 'page': 'str', 'screens': ['str'], 'v': 'int', 'doc': 'int|null'},   # doc: the reply's (62), null before
     'model': {'screen': 'str', 'rev': 'int'},
     'present': {'screen': 'str'},
     'dismiss': {'screen': 'str'},
