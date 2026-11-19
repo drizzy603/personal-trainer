@@ -601,6 +601,62 @@ final class ScreenHostTests: XCTestCase {
         XCTAssertEqual(host.coach.draft.text, "", "the composer empties, as after Send")
     }
 
+    /// Build 62 (S6): a photo picked in the chat's composer is kept in the composer's folder, and the chat's own Send
+    /// (here through Cmd+Return, the path the Send button takes) sends it and leaves no file and no key; a send the page
+    /// refuses puts it back and keeps it again.
+    func testTheChatsSendTakesTheKeptPickAlong() async throws {
+        FPFonts.register()
+        let suite = "fp.screenhost.pick.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        host.tearDown()
+        host = ScreenHost(presenter: root, webView: webView, shellBuild: "60", pageBuild: "P1", markerFolder: folder,
+                          coach: CoachStore(draft: CoachComposerDraft(defaults: defaults, folder: folder)))
+        host.presenting = stand
+        host.isActive = { true }
+        host.hooks = recordingHooks()
+        host.update("coach", model: try model())
+        host.present("coach")
+        try await settle()
+        let p = try XCTUnwrap(up)
+        let key = try XCTUnwrap(p.keyCommands?.first { $0.input == "\r" && $0.modifierFlags == .command })
+        let shown = UIWindow(frame: window.frame)
+        shown.windowScene = window.windowScene
+        shown.rootViewController = p
+        shown.makeKeyAndVisible()
+        defer {
+            shown.isHidden = true
+            shown.rootViewController = nil
+        }
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let ui = UIGraphicsImageRenderer(size: CGSize(width: 8, height: 8), format: format).image { c in
+            UIColor.systemTeal.setFill()
+            c.fill(CGRect(x: 0, y: 0, width: 8, height: 8))
+        }
+        let jpeg = try XCTUnwrap(ui.jpegData(compressionQuality: 0.8))
+        host.coach.draft.picked = PickedPhoto(prepared: CoachPhoto.Prepared(data: jpeg, mediaType: "image/jpeg", width: 8, height: 8), preview: ui)
+        let file = folder.appendingPathComponent(CoachComposerDraft.photoFileName)
+        XCTAssertEqual(try Data(contentsOf: file), jpeg, "kept as it is picked")
+        for _ in 0..<10 {
+            p.view.setNeedsLayout()
+            p.view.layoutIfNeeded()
+            RunLoop.main.run(until: Date().addingTimeInterval(0.03))
+        }
+        _ = p.perform(try XCTUnwrap(key.action), with: key)
+        try await settle()
+        let i = try XCTUnwrap(asked.lastIndex { $0.name == "coach.send" }, "no coach.send: \(asked)")
+        guard case .coachSend(_, let image?, nil, _) = asked[i] else { return XCTFail("the pick did not go: \(asked[i])") }
+        XCTAssertEqual(image.data, jpeg.base64EncodedString(), "the kept bytes")
+        XCTAssertNil(host.coach.draft.picked, "the composer empties, as after Send")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: file.path), "the chat's Send leaves no file")
+        XCTAssertNil(defaults.dictionary(forKey: CoachComposerDraft.photoKey), "and no key")
+        answers[i](.answered(.refused("busy")))
+        XCTAssertEqual(host.coach.draft.picked?.prepared.data, jpeg, "a refused send puts it back")
+        XCTAssertEqual(try Data(contentsOf: file), jpeg, "and keeps it again")
+        XCTAssertEqual(CoachComposerDraft(defaults: defaults, folder: folder).picked?.prepared.data, jpeg, "for the next launch")
+    }
+
     func testTheMarkerFollowsTheAppsActivity() async throws {
         host.update("coach", model: try model())
         host.present("coach")

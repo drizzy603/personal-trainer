@@ -246,9 +246,9 @@ public final class ShellBridge: NSObject {
     /// its probe event (never a typed text, a comment or a secret): "policy" writes a local policy file and fetches it
     /// (FPHost FPPolicy); "openURL" opens a URL through the App delegate's `application(_:open:options:)`, a real open's
     /// path (the URL parked, then `.trovoDeepLink`); "openURLOnActive" arms the same for when the scene next enters the
-    /// foreground, as a widget tap delivers it; "share" writes the App Group's `pendingShare.jpg` and
-    /// `pendingShareComment` as the share extension does, opening nothing; "sceneCycle" replays the scene's connection
-    /// (the closure `StoreProbe.sceneReplay` runs).
+    /// foreground, as a widget tap delivers it; "share" writes the App Group's share as the share extension does (build
+    /// 62's `pendingShare.json` then `pendingShare.jpg`, or build 61's jpg and `pendingShareComment`), opening nothing;
+    /// "sceneCycle" replays the scene's connection (the closure `StoreProbe.sceneReplay` runs).
     public static var debugHooks: [String: ([String: Any]) -> [String: Any]] = [:]
 
     /// Debug builds: an event in the shell probe's log, while one runs (a hook of the App's that acts after its step,
@@ -368,9 +368,10 @@ public final class ShellBridge: NSObject {
         if debug.clearBreaker { fx += link.editBook { $0.screens = [:] } }
         #endif
         let pageLink = PageLink(webView: webView)
-        // the live chat's store (plan task C7), its composer kept in these defaults (fpDraft.coach)
+        // the live chat's store (plan task C7), its composer kept in these defaults (fpDraft.coach) and a picked photo in the
+        // shell's folder (draft-photo, build 62): the next binding (a scene's reconnect, a relaunch) opens on both
         let screens = ScreenHost(presenter: presenter, webView: webView, shellBuild: shell.shell, pageBuild: pageBuild, markerFolder: folder,
-                                 coach: CoachStore(draft: CoachComposerDraft(defaults: defaults)))
+                                 coach: CoachStore(draft: CoachComposerDraft(defaults: defaults, folder: folder)))
         let handler = DocumentHandler(self)
         let ucc = webView.configuration.userContentController
         ucc.removeScriptMessageHandler(forName: Self.handlerName)

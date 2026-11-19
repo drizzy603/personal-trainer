@@ -46,11 +46,13 @@ import FPCore
 /// own windows are not asked), `retapTab` (the same on the selected tab, expecting `again`), `stray {tab}`
 /// (`selectedIndex` set directly: the root counts and redirects it, I2's fault injector), `waitTab {tab, ms}` (until
 /// the root's selection is `tab`), `navPop` (the Coach stack's finished interactive pop through the latch, as the edge
-/// pan's end makes it), `openURL {url}`, `openURLOnActive {url}`, `share {comment?, jpeg?, legacy?}` and `sceneCycle`
-/// (the App's hooks of those names: a URL opened through the App delegate now, or when the scene next enters the
-/// foreground; a shared photo and comment written to the App Group as the share extension writes them, `jpeg` naming a
-/// file beside the steps or none for one drawn in the app, an error event in a build without the group's container
-/// unless `legacy` asks for the old base64 slot; the scene's connection replayed, which ends the phase), `sceneDestroy`
+/// pan's end makes it), `openURL {url}`, `openURLOnActive {url}`, `share {comment?, jpeg?, layout?, legacy?}` and
+/// `sceneCycle` (the App's hooks of those names: a URL opened through the App delegate now, or when the scene next enters
+/// the foreground; a shared photo and comment written to the App Group as the share extension writes them, build 62's
+/// layout by default (`pendingShare.json`, then `pendingShare.jpg`; the event names its `id`) or build 61's
+/// (`layout: "61"`: the jpg, the comment in the group's defaults), `jpeg` naming a file beside the steps or none for one
+/// drawn in the app, an error event in a build without the group's container unless `legacy` asks for the old base64
+/// slot; the scene's connection replayed, which ends the phase), `sceneDestroy`
 /// (UIKit's own request to destroy the scene's session, as StoreProbe's: refused for this app, one scene on an iPhone,
 /// `sceneDestroyRefused`, and the phase goes on at the refusal; with no answer in 3 s, `sceneDestroyNoAnswer`, the
 /// phase ends and the states that follow say whether what the scene held went; a refusal after that is logged too,

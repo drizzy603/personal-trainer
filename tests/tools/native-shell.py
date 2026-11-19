@@ -973,18 +973,24 @@ def scen_smoke(c):
                 {'row': ab.get('tabsRow'), 'tabs': ab_screen(ab, 'tabs'), 'fellBack': (ab.get('status') or {}).get('fellBack')})
     c.rep.check(s, 'Settings > About > %s says "%s"' % (about_words(ab)['title'], want_c), ab.get('sub') == want_c
                 and about_words(ab)['title'] in (ab.get('row') or ''), {'row': ab.get('row'), 'coach': ab_screen(ab, 'coach'), 'coachHome': ab_screen(ab, 'coachHome')})
-    # The share hook writes its JPEG into the group's container (stored file), never the base64 slot; the file goes again
-    # at once, so no later launch's page picks a share up. (The comment it leaves, '', reads as no comment: TrovoShare's
-    # getPendingShare answers '' for a missing one, and a share writes its own.)
+    # The share hook writes build 62's layout into the group's container (stored file: pendingShare.json, then
+    # pendingShare.jpg), never the base64 slot; both files go again at once, so no later launch's page picks a share up.
+    # A binary before 62 writes the jpg alone, the comment ('', no comment) in the group's defaults.
     se = ev.first('share') or {}
     hold = (ev.first('js', label='share hold') or {}).get('result') or {}
     jpg = os.path.join(gc, 'pendingShare.jpg') if gc else ''
+    words = os.path.join(gc, 'pendingShare.json') if gc else ''
     there = bool(jpg) and os.path.isfile(jpg)
-    c.rep.check(s, 'the share hook writes pendingShare.jpg into the App Group\'s container (stored file, delta 17.7; the page\'s own reads held off)',
-                hold.get('held') is True and se.get('ran') is True and se.get('stored') == 'file' and se.get('legacy') is False and there,
-                {k: se.get(k) for k in ('ran', 'stored', 'legacy', 'jpeg', 'bytes', 'error')} | {'file': there, 'hold': hold})
-    if there:
-        os.remove(jpg)
+    paired = bool(words) and os.path.isfile(words)
+    want62 = se.get('layout') == '62'   # the hook names its layout from build 62's binary on
+    c.rep.check(s, 'the share hook writes %s into the App Group\'s container (stored file, delta 17.7; the page\'s own reads held off)'
+                % ('pendingShare.json and pendingShare.jpg' if want62 else 'pendingShare.jpg'),
+                hold.get('held') is True and se.get('ran') is True and se.get('stored') == 'file' and se.get('legacy') is False and there
+                and (paired or not want62),
+                {k: se.get(k) for k in ('ran', 'stored', 'legacy', 'layout', 'jpeg', 'bytes', 'error')} | {'file': there, 'words': paired, 'hold': hold})
+    for f in (jpg, words):
+        if f and os.path.isfile(f):
+            os.remove(f)
 
 
 def scen_chat(c):

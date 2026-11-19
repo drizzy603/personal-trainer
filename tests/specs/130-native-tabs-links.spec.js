@@ -58,9 +58,11 @@ const TABS = (selected, extra) => Object.assign(JSON.parse(CANONICAL_61.tabs), {
 
 // In the page, before its scripts:
 // - the coach API answering at once (as spec 123's), and __w(ms);
-// - TrovoShare: the photo the extension left (__held), handed over once, as the plugin deletes what it returns; each
-//   call recorded in __reads with the page's time (and Date.now()), whether hello had answered and whether it carried
-//   a photo; __shareDelay holds the answer back (a read in flight);
+// - TrovoShare: build 61's plugin: the photo the extension left (__held), handed over once, as the plugin deletes what
+//   it returns; each call recorded in __reads with the page's time (and Date.now()), whether hello had answered,
+//   whether it carried a photo and its argument (args, null for none: a page that asks build 61's with one trips it, a
+//   page error and a refused read, as no case expects); __shareDelay holds the answer back (a read in flight); build
+//   62's is INIT62's, below;
 // - TrovoWidget.consumeDeepLink: the parked link (__parked), taken once; a taking recorded in __links with the page's
 //   time, tab, hello, and the Coach tab's mode and covered; __hideAtLink hides the page as it is taken (HIDDEN's
 //   __vis); __stallAtLink (ms): that long after the link, performance.now jumps ten minutes ahead (a suspension no
@@ -80,9 +82,15 @@ const INIT = `(() => {
   window.__w = (ms) => new Promise((r) => setTimeout(r, ms));
   const P = window.Capacitor.Plugins;
   window.__held = null; window.__reads = []; window.__shareDelay = 0;
-  P.TrovoShare = Object.assign(P.TrovoShare || {}, { getPendingShare: () => {
+  P.TrovoShare = Object.assign(P.TrovoShare || {}, { getPendingShare: function () {
+    if (arguments.length) {
+      const asked = JSON.stringify(arguments[0]);
+      setTimeout(() => { throw new Error("build 61's getPendingShare was asked with an argument: " + asked); });
+      window.__reads.push({ at: performance.now(), date: Date.now(), hello: !!(window._fp && _fp.hello), got: false, args: asked });
+      return Promise.reject(new Error('build 61 takes no argument'));
+    }
     const r = window.__held; window.__held = null;
-    window.__reads.push({ at: performance.now(), date: Date.now(), hello: !!(window._fp && _fp.hello), got: !!(r && r.imageBase64) });
+    window.__reads.push({ at: performance.now(), date: Date.now(), hello: !!(window._fp && _fp.hello), got: !!(r && r.imageBase64), args: null });
     const v = r || {};
     return window.__shareDelay > 0 ? new Promise((res) => setTimeout(() => res(v), window.__shareDelay)) : Promise.resolve(v);
   } });
@@ -153,6 +161,37 @@ const STORE_PLUGIN = '(function () { var P = window.Capacitor && window.Capacito
   + ' inStep: true }, testQuit: null, testQuitArmed: false, testKill: false };'
   + ' P.TrovoStore = { status: function () { return Promise.resolve(JSON.parse(JSON.stringify(st))); },'
   + ' conflicts: function () { return Promise.resolve({ rows: [] }); } }; })();';
+
+// Build 62's TrovoShare (CapApp/TrovoSharePlugin.swift), after INIT: getPendingShare(o) with o.keep and a share with an
+// id (__held.id) leaves it held and answers the id (any other read hands it over once, as build 61's, with no id),
+// each read recorded in __reads as INIT's are, with args and the id answered; clearPendingShare({id}) lets the held
+// share go only while it is that id ({cleared}), each call recorded in __clears with the page's time, the share held
+// then, and kept: whether the page's keep had said "photo: kept" when it came.
+const INIT62 = `(() => {
+  const P = window.Capacitor.Plugins;
+  window.__clears = [];
+  P.TrovoShare = Object.assign(P.TrovoShare || {}, {
+    getPendingShare: function (o) {
+      const r = window.__held, keep = !!(o && o.keep) && !!r && !!r.id;
+      if (!keep) window.__held = null;
+      window.__reads.push({ at: performance.now(), date: Date.now(), hello: !!(window._fp && _fp.hello), got: !!(r && r.imageBase64),
+        args: arguments.length ? JSON.stringify(o) : null, id: keep ? r.id : null });
+      const v = !r ? {} : keep ? { imageBase64: r.imageBase64, comment: r.comment || '', id: r.id } : { imageBase64: r.imageBase64, comment: r.comment };
+      return window.__shareDelay > 0 ? new Promise((res) => setTimeout(() => res(v), window.__shareDelay)) : Promise.resolve(v);
+    },
+    clearPendingShare: function (o) {
+      const id = o && o.id !== undefined ? o.id : null, r = window.__held;
+      let kept = false;
+      try { kept = JSON.parse(localStorage.getItem('kt_wch_log') || '[]').some((l) => String(l).slice(15) === 'photo: kept'); } catch (e) {}
+      window.__clears.push({ id, held: r ? r.id || null : null, at: performance.now(), kept });
+      const ok = !!r && !!r.id && r.id === id;
+      if (ok) window.__held = null;
+      return Promise.resolve({ cleared: ok });
+    },
+  });
+})();`;
+// A cold share as build 62's extension leaves it: the link parked, the photo with its comment and its id waiting.
+const COLD_SHARE62 = 'window.__parked = "trovo://share"; window.__held = { imageBase64: "' + PHOTO + '", comment: "' + WORDS + '", id: "sid-cold" };';
 
 // o.nokey: no API key saved; o.init: more page script, after INIT.
 const pageBoot = (shell, o) => {
@@ -706,5 +745,92 @@ serial('dev.nav under tabs with hello late: overlay/how, settings/storage-sheet 
     assert(o.sel.length === 1 && J(o.sel[0].args) === J({ tab: 'log' }) && J(o.sel[0].answer) === J({ tab: 'log', seq: 0 }) && o.tab === 'log',
       'runner/rest: one selectTab {tab:\'log\'}: ' + J(o));
     assert(o.sheets.every((s) => s.open === false), 'runner/rest: the runner is not announced: ' + J(o));
+  } finally { await app.close(); }
+});
+
+// ── Build 62's TrovoShare: the share kept until the page clears it ───────────────────────────────────────────────
+serial('build 62\'s TrovoShare, warm, under tabs and build 60\'s coach: one getPendingShare({keep:true}) at once, the chat presented on a model holding the photo\'s key and the comment as its composer.draft, as before; one clearPendingShare by its id once the keep has said so; the return path\'s check then finds nothing new', async () => {
+  for (const shell of ['tabs', 'coach']) {
+    const tag = shell + ': ';
+    const app = await pageBoot(shell, { init: INIT62 });
+    try {
+      await readyChecked(app, true);
+      const i = await ev(app, () => __fpShell.calls.length);
+      const o = await ev(app, async (a) => {
+        const n0 = __reads.length;
+        window.__held = { imageBase64: a.photo, comment: a.words, id: 'sid-warm' }; window.__parked = 'trovo://share';
+        if (__fpShell.state().live) await __fpShell.select('coach', 'deepLink');
+        const handled = _trovoOpen('trovo://share');
+        await __w(0);
+        const atOnce = __reads.slice(n0);
+        for (let k = 0; k < 150 && !__clears.length; k++) await __w(20);
+        await __w(60);
+        return { handled, atOnce, reads: __reads.slice(n0), clears: __clears.slice(), held: window.__held };
+      }, { photo: PHOTO, words: WORDS });
+      const m = await look(app, i);
+      assert(o.handled === true && o.atOnce.length === 1 && o.atOnce[0].args === '{"keep":true}' && o.atOnce[0].got && o.atOnce[0].id === 'sid-warm',
+        tag + 'one getPendingShare({keep:true}) at once, answered with the share\'s id: ' + J(o.atOnce));
+      assert(J(m.ops) === J(['present coach']) && m.onPresent && m.onPresent.image && m.onPresent.image.key === m.key && !!m.key
+        && m.onPresent.draft && m.onPresent.draft.text === WORDS && m.tab === 'coach' && m.view === 'chat',
+        tag + 'the chat presented once, on a model holding the photo\'s key and the comment: ' + J(m));
+      assert(o.clears.length === 1 && o.clears[0].id === 'sid-warm' && o.clears[0].held === 'sid-warm' && o.clears[0].kept === true && o.held === null,
+        tag + 'one clear by its id, once the keep said so; nothing held: ' + J(o.clears));
+      const r = await ev(app, async () => {
+        const n = __reads.length, k = __fpShell.calls.length;
+        document.dispatchEvent(new Event('visibilitychange'));
+        await __w(900);
+        return { reads: __reads.slice(n), ops: __fpShell.calls.slice(k).filter((c) => c[0] === 'present' || c[0] === 'dismiss' || c[0] === 'selectTab').length,
+          clears: __clears.length, img: !!pendingImage };
+      });
+      assert(r.reads.length === 1 && r.reads[0].got === false && r.reads[0].args === '{"keep":true}' && r.ops === 0 && r.clears === 1 && r.img,
+        tag + 'the return path\'s +0.6 s check finds nothing new: ' + J(r));
+    } finally { await app.close(); }
+  }
+});
+
+serial('build 62\'s TrovoShare, a cold share under tabs, Coach selected: the parked link is read at +400 ms with keep, the chat opens with the photo and the comment, the share is cleared once the keep has said so, and the 2.5 s boot check finds nothing', async () => {
+  const app = await pageBoot(TABS('coach'), { clock: { time: Date.now() }, init: INIT62 + COLD_SHARE62 });
+  try {
+    await pause(app);
+    const h = await helloOf(app);
+    await runTo(app, h.at + 1000);
+    // the keep commits in IndexedDB's own time, not the page's timers: the clear is waited for before the boot check
+    await app.page.waitForFunction(() => __clears.length > 0, null, { timeout: 15000 });
+    await runTo(app, h.at + 3100);
+    await runFor(app, 100);
+    const m = await look(app, 0);
+    const c = await ev(app, () => ({ clears: __clears.slice(), held: window.__held }));
+    assert(m.links.length === 1 && m.links[0].url === 'trovo://share' && m.links[0].tab === 'coach', 'the parked link taken on Coach: ' + J(m.links));
+    assert(m.reads.length === 2 && m.reads[0].got && m.reads[0].hello && m.reads[0].args === '{"keep":true}' && m.reads[0].id === 'sid-cold'
+      && m.reads[0].at - m.links[0].at < 500 && m.reads[1].got === false && m.reads[1].args === '{"keep":true}' && m.reads[1].at - m.links[0].at > 1500,
+      'read with keep at the link, then the boot check finds nothing: ' + J(m.reads));
+    assert(J(m.ops) === J(['present coachHome', 'present coach']) && m.onPresent.image && m.onPresent.image.key === m.key && m.comp.draft && m.comp.draft.text === WORDS
+      && m.tab === 'coach' && m.view === 'chat', 'the Coach tab, then the chat with the photo and the comment: ' + J(m));
+    assert(c.clears.length === 1 && c.clears[0].id === 'sid-cold' && c.clears[0].kept === true && c.held === null && c.clears[0].at < m.reads[1].at,
+      'cleared once, after the keep and before the boot check: ' + J(c));
+  } finally { await app.close(); }
+});
+
+serial('build 62\'s TrovoShare, a cold share before hello under tabs, hello 1500 ms late: the link taken before hello\'s answer, no read before it, one with keep right after it, the chat presented with the comment as composer.draft, the share cleared once kept', async () => {
+  const late = 1500;
+  const app = await pageBoot(TABS('coach'), { clock: { time: Date.now() }, init: INIT62 + COLD_SHARE62 + 'window.__fpShellHelloDelay = ' + late + ';' });
+  try {
+    await pause(app);
+    const h0 = await helloOf(app);
+    await runTo(app, h0.at + late + 600);
+    await app.page.waitForFunction(() => __clears.length > 0, null, { timeout: 15000 });
+    await runTo(app, h0.at + 3100);
+    await runFor(app, 100);
+    const m = await look(app, 0);
+    const h = await helloOf(app);
+    const c = await ev(app, () => ({ clears: __clears.slice(), held: window.__held }));
+    assert(h && typeof h.seen === 'number' && h.seen - h.at >= late - 1 && h.before.reads === 0 && h.before.ops === 0,
+      'hello answered ' + late + ' ms after it went, with no read and nothing native before: ' + J(h));
+    assert(m.links.length === 1 && !m.links[0].hello && m.links[0].at < h.seen, 'the link taken before hello\'s answer: ' + J([m.links, h.seen]));
+    assert(m.reads.length === 2 && m.reads.every((r) => r.hello && r.args === '{"keep":true}') && m.reads[0].got && m.reads[0].at >= h.seen && m.reads[0].at - h.seen < 500
+      && m.reads[1].got === false, 'the photo read with keep right after hello\'s answer, the boot check finding nothing: ' + J([m.reads, h.seen]));
+    assert(J(m.ops) === J(['present coachHome', 'present coach']) && m.onPresent.image && m.onPresent.image.key === m.key
+      && m.comp.draft && m.comp.draft.text === WORDS && m.draft && m.draft.nonce === m.comp.draft.nonce, 'the chat presented with the photo, the comment its composer.draft: ' + J(m));
+    assert(c.clears.length === 1 && c.clears[0].id === 'sid-cold' && c.clears[0].kept === true && c.held === null, 'cleared once, after the keep: ' + J(c));
   } finally { await app.close(); }
 });

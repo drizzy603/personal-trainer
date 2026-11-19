@@ -251,8 +251,10 @@ runs.
 `fp: ping ok v1` in that launch's process, the root, hello's negotiation, the
 flag's 83-point bar, Settings › About's Native tab bar and Native Coach rows:
 "Off by the policy file" and "On · the iPhone's own chat screen" on the classic
-root by policy, and the share hook's `pendingShare.jpg` in the App Group's
-container with the page's own share reads held off);
+root by policy, and the share hook's files in the App Group's container with
+the page's own share reads held off: build 62's `pendingShare.json` and
+`pendingShare.jpg`, or `pendingShare.jpg` alone from an older binary's hook, which
+names no layout; both removed after);
 `chat` (classic: presented `.overFullScreen`; tab root: pushed on the NATIVE Coach
 stack, `host: stack`, not modal, the web view hidden in the Coach slot, the bar
 shown; a message, the model switch, a forwarded confirm and Undo toast, the
@@ -427,7 +429,14 @@ window, the page's tabs-mode fields) and every event kind's fields (`funnel`,
 `screenChanged` in contract 8.1's words, page messages with their receipt time,
 `intent` records with no argument, `type`, `draft` and `share` with no field
 beyond their own (lengths, never the words), `trovoOpen`, `ping`, `fellBack` in
-contract 10.3's words); the shell's counters moving only where a step moves them; and a
+contract 10.3's words); the share hook in build 62's layout on a build signed to run
+locally (`FP_BUILD_SIGN=local`: the App Group's container): `pendingShare.json`
+{v: 1, id, at, bytes, comment} and `pendingShare.jpg` as the runner reads them at
+each step, `TrovoShare.getPendingShare({keep:true})` leaving both and answering the
+id, a clear by another id leaving them, the page's read through `trovo://share`
+keeping the photo and clearing the share by its id (both files gone), then build
+61's layout (`layout: "61"`: the jpg, the words in the group's defaults) read and
+deleted with no id, and the base64 slot (`legacy: true`); the shell's counters moving only where a step moves them; and a
 canary (`sk-ant-test-` and 16 random characters) typed into the native key field
 and saved by CONNECT, found in no probe log (each log read after the app ended).
 The page's coach calls go to a closed loopback port (`-fpApiBase`), so the canary

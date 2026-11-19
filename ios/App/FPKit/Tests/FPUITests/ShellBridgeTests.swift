@@ -1048,6 +1048,55 @@ final class ShellBridgeTests: XCTestCase {
         wv.loadHTMLString(page("ground again"), baseURL: URL(string: "https://fp.test/"))
         try await sees("dark", "a second document", title: "ground again")
     }
+
+    /// Build 62 (S6): the binding's composer keeps a photo the owner picked in the bridge's folder (`FPShell/draft-photo`)
+    /// and its key in the bridge's defaults, so the next binding (a scene's reconnect: the binding torn down, a new web
+    /// view bound) and the next launch's bridge open on the same pick, beside the words; Remove takes both away.
+    func testTheComposersPickIsKeptInTheShellsFolderAndOutlivesAReconnect() throws {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let ui = UIGraphicsImageRenderer(size: CGSize(width: 8, height: 8), format: format).image { c in
+            UIColor.systemOrange.setFill()
+            c.fill(CGRect(x: 0, y: 0, width: 8, height: 8))
+        }
+        let jpeg = try XCTUnwrap(ui.jpegData(compressionQuality: 0.8))
+        let photo = PickedPhoto(prepared: CoachPhoto.Prepared(data: jpeg, mediaType: "image/jpeg", width: 8, height: 8), preview: ui)
+        let file = folder.appendingPathComponent(CoachComposerDraft.photoFileName)
+
+        let b = bridge61()
+        b.install(webView: webView, presenter: root, pageBuild: "P1")
+        let first = try XCTUnwrap(b.binding?.screens.coach)
+        XCTAssertNil(first.draft.picked)
+        first.draft.text = "With this photo"
+        first.draft.picked = photo
+        XCTAssertEqual(try Data(contentsOf: file), jpeg, "in the shell's folder")
+        XCTAssertNotNil(defaults.dictionary(forKey: CoachComposerDraft.photoKey), "its key in the bridge's defaults")
+
+        // a scene's reconnect: the binding goes with its scene, and a new web view binds
+        b.sceneDisconnected(webView: webView)
+        XCTAssertNil(b.binding)
+        let webView2 = WKWebView(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        let root2 = UIViewController()
+        root2.view = webView2
+        b.install(webView: webView2, presenter: root2, pageBuild: "P1")
+        let second = try XCTUnwrap(b.binding?.screens.coach)
+        XCTAssertFalse(second === first, "a new binding, a new store")
+        XCTAssertEqual(second.draft.text, "With this photo")
+        XCTAssertEqual(second.draft.picked?.prepared, photo.prepared, "the reconnect's composer opens on the same pick")
+
+        // the next launch's bridge, on the same folder and defaults
+        b.sceneDisconnected(webView: webView2)
+        let relaunch = bridge61()
+        relaunch.install(webView: webView, presenter: root, pageBuild: "P1")
+        let third = try XCTUnwrap(relaunch.binding?.screens.coach)
+        XCTAssertEqual(third.draft.picked?.prepared, photo.prepared, "the next launch's composer too")
+
+        // Remove: gone from the folder and the defaults
+        third.draft.picked = nil
+        XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
+        XCTAssertNil(defaults.dictionary(forKey: CoachComposerDraft.photoKey))
+        relaunch.sceneDisconnected(webView: webView)
+    }
 }
 
 /// The stall page never came up (ShellBridgeTests.stalledBridge): the test fails there, saying so.
