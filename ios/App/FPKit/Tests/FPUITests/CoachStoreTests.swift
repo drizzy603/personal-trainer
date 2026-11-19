@@ -780,12 +780,17 @@ final class CoachStoreTests: XCTestCase {
     // MARK: A kept pick and the page's photo (build 62's review, F-S1); a message the page took at the teardown (F-S4)
 
     /// A store on the composer the next launch opens, over a pick an earlier launch kept, with its own record of the
-    /// intents it asks (none answered).
-    private func relaunched(with p: PickedPhoto) -> (CoachStore, () -> [Intent]) {
+    /// intents it asks: the page's photo (`coach.image`) answered with `pagePhoto`'s bytes, the rest unanswered.
+    private func relaunched(with p: PickedPhoto, pagePhoto: Data? = nil) -> (CoachStore, () -> [Intent]) {
         CoachComposerDraft(defaults: defaults, folder: folder).picked = p   // the earlier launch's pick, kept
         let s = CoachStore(draft: CoachComposerDraft(defaults: defaults, folder: folder))
         var sent: [Intent] = []
-        s.hooks.ask = { intent, _ in sent.append(intent) }
+        s.hooks.ask = { [unowned self] intent, done in
+            sent.append(intent)
+            if case .coachImage = intent, let pagePhoto {
+                done(self.done(["mediaType": .string("image/jpeg"), "data": .string(pagePhoto.base64EncodedString())]))
+            }
+        }
         return (s, { sent })
     }
 
@@ -795,7 +800,8 @@ final class CoachStoreTests: XCTestCase {
     /// launch. Before (547d7a5) the kept pick stayed in the box, won the preview and went with the share's words.
     func testAPickKeptFromAnEarlierLaunchGivesWayToThePagesPhoto() throws {
         let p = pick()
-        let (s, sent) = relaunched(with: p)
+        let (shared, sharedJPEG) = tinyPhoto()
+        let (s, sent) = relaunched(with: p, pagePhoto: sharedJPEG)
         XCTAssertEqual(s.draft.picked?.prepared, p.prepared, "brought back at the binding's start")
         XCTAssertTrue(s.apply(try model(rev: 1, composer: composer(draft: ["text": "Shared words", "nonce": "d1.b1"], image: "p1.b1"))))
         XCTAssertNil(s.draft.picked, "the page's photo shows, not the kept pick")
@@ -804,6 +810,9 @@ final class CoachStoreTests: XCTestCase {
         XCTAssertNil(CoachComposerDraft(defaults: defaults, folder: folder).picked, "nothing for the next launch")
         XCTAssertEqual(s.events.filter { $0.contains("gave way to the page's photo") }.count, 1, "one line: \(s.events)")
         XCTAssertTrue(sent().contains(.coachImage(key: "p1.b1")), "the page's photo is fetched for the box: \(sent())")
+        // the box's preview (CoachComposer: the pick's, else the page's photo the host holds by the composer's key)
+        let held = try XCTUnwrap(s.image("p1.b1"), "the page's photo held for the preview")
+        XCTAssertEqual(held.size.width * held.scale, shared.size.width * shared.scale, "the shared photo, with no pick over it")
         XCTAssertEqual(s.draft.text, "Shared words")
         XCTAssertTrue(s.sendComposer(nonce: "kp2"))
         XCTAssertEqual(sent().last, .coachSend(text: "Shared words", image: nil, usePending: true, nonce: "kp2"), "Send takes the page's photo")
