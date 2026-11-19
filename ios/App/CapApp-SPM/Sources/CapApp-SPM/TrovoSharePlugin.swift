@@ -112,9 +112,10 @@ public class TrovoSharePlugin: CAPPlugin, CAPBridgedPlugin {
     /// file's `bytes` (a newer share writes its words, then renames its photo into place: one renamed in since the first
     /// read stays, and the answer is {cleared: false}, a newer share waiting), the words file only while it still names
     /// that id (words that turned into a newer share's are left for their photo). A removal that fails for anything but
-    /// a file already gone rejects the call (review round 2): the photo's before its words file is touched, so the pair
-    /// stays whole, and the page's error path ('share: not cleared (error)') asks again at its next read of that id,
-    /// where {cleared: false} would read as a newer share waiting and never be asked again.
+    /// a file already gone rejects the call when it is the photo's (review round 2), before the words file is touched, so
+    /// the pair stays whole and the page's error path ('share: not cleared (error)') asks again at its next read of that
+    /// id, where {cleared: false} would read as a newer share waiting and never be asked again. The words file's own
+    /// removal failing after the photo went answers as cleared: no read can answer that share again (round 3).
     @objc public func clearPendingShare(_ call: CAPPluginCall) {
         guard let id = call.getString("id"), !id.isEmpty else {
             call.reject("id required")
@@ -135,7 +136,9 @@ public class TrovoSharePlugin: CAPPlugin, CAPBridgedPlugin {
             if n != w.bytes { cleared = false }   // not this share's photo: it stays
             else if !Self.remove(photoURL) { call.reject("the share's photo could not be removed"); return }   // pair kept
         }
-        if Self.words(wordsURL)?.id == id, !Self.remove(wordsURL) { call.reject("the share's words could not be removed"); return }
+        // Once the photo is gone the share is: every read answers by its photo, a words file left alone pairs with
+        // nothing, and the next share writes its own over it, so a words removal that fails changes no answer (round 3).
+        if Self.words(wordsURL)?.id == id { _ = Self.remove(wordsURL) }
         if let defaults = UserDefaults(suiteName: Self.group) {
             defaults.removeObject(forKey: "pendingShareImage")
             defaults.removeObject(forKey: "pendingShareComment")

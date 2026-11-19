@@ -2621,6 +2621,8 @@ serial('(o) the owner leaves the share\'s chat while its keep waits to be tried 
     await ev(app, () => { window.__vis = 'visible'; });   // the app in front, the show's event held back from the waiting keep
     await ev(app, () => switchTab('log'));                 // the owner leaves the chat
     await settle(app, 100);
+    const l = await ev(app, () => ({ on: pendingImage ? pendingImage.on : null, mark: __mark() }));
+    assert(l.on === 0 && gone(l.mark), 'the leave seen (the photo off its chat), not marked: the marker says gone: ' + J(l));
     await ev(app, () => { switchTab('coach', { intent: 'chat' }); coachView = 'chat'; render(); });   // and comes back to it
     await settle(app, 100);
     const a = await ev(app, () => ({ tab: currentTab, view: coachView, mark: __mark() }));
@@ -2711,6 +2713,40 @@ serial('(o) a newer share written between the read and the clear: the clear does
   }
 });
 
+serial('(o) the owner leaves the share\'s chat while its first keep is still on its way (its leave marked, one line) and comes back to it; that keep aborts and the next commits: its marker says left 0 (the photo was left once and its chat is the owner\'s place again), and a second leave marks it with no second line (none)', async () => {
+  const app = await pageBoot('none', { init: INIT62 });
+  try {
+    await ready(app, false);
+    await relaunch(app, { gate: true, abortPuts: 1, held: { imageBase64: PHOTO, comment: WORDS, id: 'sid-o20' } });
+    await app.page.waitForFunction(() => { const m = __mark(); return !!(m && typeof m.n === 'number' && !m.gone && pendingImage && pendingImage.on === 1); }, null, { timeout: 15000 });
+    await settle(app, 100);   // the share read and shown in its chat, its first keep's marker written, IndexedDB's open held
+    await ev(app, () => switchTab('log'));                 // the owner leaves the chat while that keep is on its way
+    await settle(app, 100);
+    const a = await ev(app, () => ({ mark: __mark(), log: __log() }));
+    assert(a.mark && a.mark.left === 1 && !a.mark.gone && a.log.filter((l) => l === 'photo: chat left').length === 1,
+      'the leave marked, one line: ' + J(Object.assign({}, a, { log: a.log.slice(0, 6) })));
+    await ev(app, () => { switchTab('coach', { intent: 'chat' }); coachView = 'chat'; render(); });   // and comes back to it
+    await settle(app, 100);
+    const b = await ev(app, () => __mark());
+    assert(b && b.left === 0 && !b.gone, 'back on the chat: left 0: ' + J(b));
+    await ev(app, () => __idbRelease());                   // the first keep's put aborts; the second is tried 0.3 s later
+    // (under a heavy load the held open can pass its 4 s bound first: then the abort falls on the second, the third commits)
+    await waitLine(app, '/^photo: kept \\(keep [23]\\)$/.test(l)', 'the keep that commits');
+    await app.page.waitForFunction(() => __clears.length > 0 && __clears[0].kept !== null, null, { timeout: 15000 });
+    await settle(app, 100);
+    const mk = await ev(app, () => __mark()), k = await ev(app, () => __idb('get'));
+    assert(mk && k && mk.n === k.n && mk.at === k.at && mk.left === 0 && !mk.gone && J(Object.keys(mk).sort()) === J(['at', 'left', 'n']),
+      'the keep that committed says left 0: ' + J({ mk, k: k && { n: k.n, at: k.at } }));
+    await ev(app, () => switchTab('log'));                 // the owner leaves again
+    await settle(app, 100);
+    const m = await ev(app, () => ({ mark: __mark(), log: __log() }));
+    assert(m.mark && m.mark.left === 1 && m.log.filter((l) => l === 'photo: chat left').length === 1,
+      'the second leave marked with no second line: ' + J(Object.assign({}, m, { log: m.log.slice(0, 8) })));
+    clean(m.log);
+    noErrors(app);
+  } finally { await app.close(); }
+});
+
 serial('(o) three keeps that fail, then a clear that fails: each says so once, and the next read of that id (a return\'s check) asks the clear again, which clears it; the photo stays pending in memory and the next launch reads nothing (none)', async () => {
   const app = await pageBoot('none', { init: INIT62 });
   try {
@@ -2722,6 +2758,9 @@ serial('(o) three keeps that fail, then a clear that fails: each says so once, a
     const a = await held62(app);
     assert(a.clears.length === 1 && a.clears[0].id === 'sid-o19' && a.held === 'sid-o19' && a.img === PHOTO,
       'the clear after the third keep refused: the App Group keeps the share: ' + J(Object.assign({}, a, { log: a.log.slice(0, 6), img: !!a.img })));
+    assert(a.log.filter((l) => l === 'photo: not kept (aborted)').length === 1 && a.log.filter((l) => l === LOST62).length === 1
+      && notCleared(a.log).length === 1 && a.log.filter((l) => /^share: read/.test(l)).length === 1,
+      'one line each: the read, the failed keeps, the give-up, the refused clear: ' + J(a.log.slice(0, 8)));
     await ev(app, async () => { await checkPendingShare(); await __w(60); });
     await settle(app, 100);
     const b = await held62(app);
@@ -2729,9 +2768,10 @@ serial('(o) three keeps that fail, then a clear that fails: each says so once, a
       && b.log.filter((l) => /^share: read/.test(l)).length === 1,
       'the read of the same id asked the clear again and cleared it, nothing new shown: ' + J(Object.assign({}, b, { log: b.log.slice(0, 6), img: !!b.img })));
     await relaunch(app);
-    await settle(app, 3000);   // the boot's check and the kept photo's read have come and gone
+    await app.page.waitForFunction(() => __reads.length >= 1, null, { timeout: 15000 });   // the boot's check has read
+    await settle(app, 600);
     const m = await look(app);
-    assert(m.img === null && m.reads.every((x) => x === false) && !m.kept,
+    assert(m.img === null && m.reads.length >= 1 && m.reads.every((x) => x === false) && !m.kept,
       'the next launch reads nothing: no share in the App Group, no kept copy: ' + J(Object.assign({}, m, { kept: !!m.kept, log: m.log.slice(0, 6) })));
     clean(m.log);
     noErrors(app);
