@@ -440,8 +440,9 @@ function MOCK_RULES() {
 // __fpShellBar {h, safe}, __fpShellThrow (method names that throw synchronously), __fpShellUp, __fpShellStatus,
 // __fpShellCross ('<tab>': a tap crosses the next selectTab), __fpShellSheetsDelay (ms, default 16),
 // __fpShellSheetsSilent, __fpShellRefreshDelay (ms, default 0), __fpShellIOS (a number below 26: tabs off 'os'),
-// __fpShellDoc (build 62's hello: every reply carries doc, the scene's count of its documents; without it the reply is
-// 61's, which names none).
+// __fpShellDoc (build 62's hello: every reply carries doc, the number of the scene's documents that said hello, each
+// document once at its first hello, as FPCore LinkState.documentsSaidHello counts; without it the reply is 61's, which
+// names none). scene.docs stays the count of the scene's document starts.
 // Helpers: __fpShell.tap(tab), select(tab, 'deepLink' | 'stray'), bar(h, safe), fallBack(why, draft), state();
 // __fpShell.composer stands for the native composer's unsent words (cleared by an answer with took: true).
 function shellMock(arg) {
@@ -469,7 +470,7 @@ function shellMock(arg) {
       const b = t && t.bar && typeof t.bar === 'object' ? t.bar : {};
       scene = { root: t ? 'tabs' : 'classic', fellBack: null, selected: (t && t.selected) || 'log', seq: 0, rev: 0,
         bar: { h: (b.h | 0) || 0, safe: (b.safe | 0) || 0 }, coach: t ? 'waiting' : 'web', pushed: false, home: null,
-        switches: { tabs: true }, declined: {}, strays: 0, policy: { at: null, result: null }, docs: 0 };
+        switches: { tabs: true }, declined: {}, strays: 0, policy: { at: null, result: null }, docs: 0, said: 0 };
     }
     scene.docs++;
     if (scene.fellBack) delete window.__FP_SHELL.tabs;   // 10.3: the scene's later documents boot classic
@@ -560,6 +561,7 @@ function shellMock(arg) {
     const off = Array.isArray(knob('__fpShellOff')) ? knob('__fpShellOff').slice() : [];
     off.forEach((p) => { if (doc.off.indexOf(p) < 0) doc.off.push(p); });
     const r = R.hello(window.__FP_SHELL, a, { live: live(), off: doc.off });
+    if (!doc.said) { doc.said = true; scene.said = (scene.said | 0) + 1; }   // this document said hello: counted once
     doc.page = (a && a.page) || null;
     r.declined.forEach((p) => { scene.declined[p] = doc.page; });
     if (r.fellBack) { scene.fellBack = { why: r.fellBack, at: Date.now() }; scene.coach = 'web'; scene.pushed = false; }
@@ -577,9 +579,9 @@ function shellMock(arg) {
     if (has('tabs')) reply.tabs = { selected: scene.selected, seq: scene.seq, bar: shownBar() };
     const ht = knob('__fpShellHelloTabs');
     if (ht !== undefined) { if (ht === null) delete reply.tabs; else reply.tabs = copy(ht); }
-    // build 62's reply (window.__fpShellDoc, opt-in): the document's number in its scene on every reply, refusals
-    // included; the default stays 61's reply, which names none
-    if (knob('__fpShellDoc')) reply.doc = scene.docs;
+    // build 62's reply (window.__fpShellDoc, opt-in): the document's number among the scene's documents that said
+    // hello, on every reply, refusals included; the default stays 61's reply, which names none
+    if (knob('__fpShellDoc')) reply.doc = scene.said;
     // the Coach tab (1.4): WEB at once on a reply without coachHome; a screen up that the reply leaves out goes down
     if (live() && !has('coachHome')) scene.coach = 'web';
     if (scene.pushed && !has('coach')) scene.pushed = false;
