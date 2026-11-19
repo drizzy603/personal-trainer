@@ -2804,6 +2804,39 @@ final class ShellBridgeTabsTests: XCTestCase {
         XCTAssertEqual(markerByte(s, marker), SectionMarker.outside, "which ended")
     }
 
+    /// Build 62's restart flag: every hello's reply numbers its document in the scene (`doc`), the link's count of the
+    /// web view's documents, one scene connection's: 1 for the scene's first, 2 after a reload, 3 for a new boot whose
+    /// document start went unseen (LinkState's rule), the same boot again no new document. A scene connected again (the
+    /// old one let go, a new web view and binding on the same bridge) starts at 1 again; a classic root's reply and a
+    /// refusal carry it too.
+    func test47HelloNumbersItsDocumentInTheScene() async throws {
+        let s = try await scene(first: "log", hello: nil)
+        let first = try await hello(s)
+        XCTAssertEqual(first["doc"] as? Int, 1, "the scene's first document")
+        XCTAssertNotNil(first["tabs"], "beside the tab root's selection")
+        try await load(s)
+        let reload = try await hello(s, boot: "b2")
+        XCTAssertEqual(reload["doc"] as? Int, 2, "a reload: the scene's second document")
+        let unseen = try await hello(s, boot: "b3")
+        XCTAssertEqual(unseen["doc"] as? Int, 3, "a new boot with no document start seen counts as one (LinkState)")
+        let same = try await hello(s, boot: "b3")
+        XCTAssertEqual(same["doc"] as? Int, 3, "the same boot again: no new document")
+        // the scene goes and connects again: a new web view and binding on the same bridge count from 1
+        s.letGo()
+        scenes.removeAll { $0 === s }
+        let again = try await scene(first: "log", hello: nil, bridge: s.bridge)
+        let reconnected = try await hello(again)
+        XCTAssertEqual(reconnected["doc"] as? Int, 1, "a new scene connection's first document")
+        // a classic root's reply carries it too, and so does a refusal (a new boot of the same scene: its second document)
+        let c = try await scene(allowed: false, hello: nil)
+        let linked = try await hello(c, ["coach"])
+        XCTAssertEqual(linked["doc"] as? Int, 1)
+        XCTAssertNil(linked["tabs"], "a classic root: no selection")
+        let refused = try await message(c, "hello", ["v": 0, "page": "P1", "screens": ["coach"], "boot": "b2"]).get()
+        XCTAssertEqual(refused["why"] as? String, "no-version")
+        XCTAssertEqual(refused["doc"] as? Int, 2, "a refusal carries it")
+    }
+
 }
 
 /// The stand-in page never came up: the case fails there, saying so.

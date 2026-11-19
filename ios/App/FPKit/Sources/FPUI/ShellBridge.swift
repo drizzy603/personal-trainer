@@ -692,7 +692,7 @@ public final class ShellBridge: NSObject {
                 heard = true
                 var refused: Error?
                 if case .failure(let e) = r { refused = e }
-                ShellProbe.shared?.pageMessage(method, message, received: now, refused: refused)
+                ShellProbe.shared?.pageMessage(method, message, received: now, refused: refused, reply: try? r.get())
             }
             answer(r)
         }
@@ -844,11 +844,16 @@ public final class ShellBridge: NSObject {
     /// {selected, seq, bar}` and the Coach tab follows (contract 1.4, D17, I13): WEB at once when the reply leaves
     /// `coachHome` out, whatever its mode; a WAITING tab (only before the scene's first declaration) starts its 3 s net; a
     /// NATIVE tab is named in `up` and taken over by the new document (its declaration: no present, no timer); a WEB tab
-    /// stays WEB. After the answer, the resync.
+    /// stays WEB. Every reply, refusals included, numbers the document in its scene (`doc`, build 62: the link's count of
+    /// this web view's documents, 1 for the scene's first). After the answer, the resync.
     private func hello(_ h: HelloRequest, _ b: Binding, at now: Date) -> (reply: [String: Any], after: () -> Void) {
         let answer = b.link.hello(h, ownChecks: ownChecks(page: h.page, book: b.link.book), at: now)
         apply(answer.effects, b)
         var reply = answer.reply.takingOver(shownForUp(b))
+        // the document's number in its scene (build 62), on every reply, refusals included: the link counts every
+        // document of this web view, one scene connection's (a new boot whose start went unseen too), after this hello's
+        // own count, so 1 is the scene's first; the page reads a later one that finds none of the scene's marks
+        reply.doc = b.link.documents
         if #available(iOS 26.0, *), let root = liveRoot(b), reply.screens.contains("tabs") {
             if !reply.screens.contains("coachHome") {
                 coachTurnsWeb(b, why: "the hello's answer leaves coachHome out")
@@ -863,7 +868,7 @@ public final class ShellBridge: NSObject {
             b.screens.dismiss(s)
         }
         let linked = b.link.link
-        Self.log.notice("fp: hello page \(h.page, privacy: .public) boot \(h.boot ?? "-", privacy: .public): v\(reply.v) \(reply.screens.joined(separator: ","), privacy: .public)\(reply.up.isEmpty ? "" : " (up " + reply.up.joined(separator: ",") + ")", privacy: .public)\(reply.tabs.map { " tabs " + $0.selected + " seq \($0.seq)" } ?? "", privacy: .public)\(reply.why.map { " refused: " + $0 } ?? "", privacy: .public)")
+        Self.log.notice("fp: hello page \(h.page, privacy: .public) boot \(h.boot ?? "-", privacy: .public) doc \(reply.doc ?? 0): v\(reply.v) \(reply.screens.joined(separator: ","), privacy: .public)\(reply.up.isEmpty ? "" : " (up " + reply.up.joined(separator: ",") + ")", privacy: .public)\(reply.tabs.map { " tabs " + $0.selected + " seq \($0.seq)" } ?? "", privacy: .public)\(reply.why.map { " refused: " + $0 } ?? "", privacy: .public)")
         let up = reply.up
         let after: () -> Void = { [weak self, weak b] in
             guard let self, let b, let linked, b.link.link == linked else { return }

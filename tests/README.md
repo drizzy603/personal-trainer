@@ -125,7 +125,7 @@ flags it models the shell (contract 2-4, 8, 10.3, 15.3):
   names them on every run, pins them, and sends their `screens.off` to `index.html` itself. A decline
   the mock records before the document's hello (`dismiss tabs` first) carries no page build, since it
   learns the build at the hello (FPCore records the build it serves); the spec names that row too.
-- **hello** answers `{v, screens, up?, why?, tabs?}`, then (next task) the resync: `shell.covered` for
+- **hello** answers `{v, screens, up?, why?, tabs?}` (build 61's reply; under `__fpShellDoc` build 62's, with `doc` too), then (next task) the resync: `shell.covered` for
   the selected tab's mode and the snapshots of what is up; never `tabs.select`. `selectTab` runs the
   funnel and answers `{tab, seq}` (`off`, `bad-tab`); `sheets` answers `{bar}` 16 ms later; `setSwitch`
   (`no-switch` but for `tabs`; off falls back `switch`); `present`/`dismiss` (`coachHome` declares the
@@ -145,7 +145,11 @@ flags it models the shell (contract 2-4, 8, 10.3, 15.3):
   before this hello), `__fpShellBar {h, safe}`, `__fpShellThrow` (methods that throw synchronously),
   `__fpShellUp`, `__fpShellStatus`, `__fpShellCross` (a tap crosses the next `selectTab`),
   `__fpShellSheetsDelay`, `__fpShellSheetsSilent`, `__fpShellRefreshDelay`, `__fpShellIOS` (below 26:
-  `tabs` off `os`).
+  `tabs` off `os`), `__fpShellDoc` (build 62's hello: every reply, refusals included, carries `doc`, the
+  scene's count of its documents, 1 for its first; opt-in, so every spec that does not set it tests the 61
+  reply the shipped binaries send: spec 132's build 62 cases and spec 122's P1 set it). A restart that lost
+  WebKit's sessionStorage while the scene lived is the page's marks (`fp_tab`, `fp_chat`, `fp_seen`) removed
+  with `__fpShellMock` kept, then a reload.
 
 **Boot options** for build 61: `opts.html` (another page text served as `/index.html`: a string or a
 function of the page's own, such as an OTA switch or a page whose main script throws), `BASE_PAGE()`
@@ -268,7 +272,8 @@ pan, or navPop on the tab root: no keyboard comes back, the document not
 scrolled; `interactivePop` on with Back, off in setup); `wckill` (WebContent
 killed with the chat up: the new document takes it over, on the tab root
 coachHome too with the Coach tab NATIVE throughout, resynced, nothing resent, the
-open confirm stale); `marker` (a planted crash marker, on the tab root the chat's
+open confirm stale; the scene's marks, `fp_chat` `t` or `1`, are there at the new
+document's start and nothing is counted at its hello); `marker` (a planted crash marker, on the tab root the chat's
 and then the hub's: the web Coach once, About's row and counters, Try again);
 `policy` (`screens.coach` "off" at once, on the tab root `screens.coachHome` too,
 the bar staying); `breaker` (three timeouts: pings on the classic root, `coach.*`
@@ -299,6 +304,20 @@ build. A module reaches the runner's helpers with
 and About's steps; the docstring of `tools/native-shell.py` lists them) and gets
 the context `c` (`c.sim`, `c.rep`, `c.root`, `c.tabs`, `c.os`, `c.page`,
 `c.shell`).
+
+`shellscen/a_restart.py` (build 62's restart flag, the tab root only): `wckill-log`
+(a scene begun on Log, Progress tapped, or Coach and the hub's Open Chat, then the
+WebContent killed: the marks kept, nothing counted) and `wckill-net` (the same with
+WebKit's Networking process ended in the same turn through ShellProbe's
+`killNetwork`: every sessionStorage key gone, the scene kept) and `wckill-crash`
+(the Networking process killed from the host with SIGKILL, as jetsam ends it, by
+the pid the probe's state reports, while the page lives on: its live sessionStorage
+reads empty at once; then the WebContent killed). Each reads the marks
+the new document found at its start, before its scripts ran (the probe's
+document-start script), both processes' pids, hello's `doc` (1, then 2) and the
+page's answer: a blind document says `shell: document 2 booted without the scene's
+marks` once and counts nothing (on 61's page the same restart counted the owner's
+own tab, `_photoAsked` 1: R0, 19 Nov, iOS 26.5 and 27.0).
 
 **What every run checks besides**: over every state of every launch,
 `leftWindow` and `leftWindowAny` 0 (but in scenarios that take the web view out

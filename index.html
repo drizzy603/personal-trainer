@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20261119-1"/>
+<meta name="build" content="20261119-2"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -25154,12 +25154,21 @@ function _fpLog(text, level){
 // did), FP_NATIVE false none. In tabs mode the reply carries the shell's selection, seq and measured bar:
 // adopted when newer, then the take-over, as one step (contract 3.2); a reply without tabs, or one the page
 // cannot use, or a failed call ends tabs mode (contract 2.3). Every answer stops the head's failsafe.
+// Build 62's shell numbers the document in its scene (doc, 1 for the scene's first; none from 60 and 61). The scene's
+// marks live in WebKit's Networking process and the scene in the app's, and a restart of both WebKit processes while
+// the app lives loses the marks and keeps the scene (made on demand by tests/tools/shellscen/a_restart.py): the page
+// then boots on the scene's first tab with no marks, and hello's selection is where the owner already was. So each
+// document marks the scene here (fp_seen), and a later document (doc above 1) that finds neither that mark nor fp_tab
+// booted blind: it adopts hello's tab without counting a place asked for, and says so once in the logs.
 function _fpHello(){
   var P=_fpPlugin(); if(!P || !P.hello) return;
   var T=_fp.tabs, screens=!FP_NATIVE ? [] : T.mode ? FP_SCREENS.slice() : ['coach'];
   var answered=function(){ window.__fpTabsAnswered=true; _fpFailStop(); };
   // from here the shell may negotiate under the tab root's rule, so a way out on the page's own takes the chat off
   if(screens.indexOf('tabs')>=0) T.asked=true;
+  // the scene's marks as this document found them, read before it writes its own (no local switch has run yet)
+  var seen=false, hadTab=false;
+  try{ seen=sessionStorage.getItem('fp_seen')==='1'; hadTab=FP_TAB_IDS.indexOf(sessionStorage.getItem('fp_tab'))>=0; sessionStorage.setItem('fp_seen','1'); }catch(e){}
   try{
     Promise.resolve(P.hello({v:FP_CONTRACT, page:APP_BUILD, screens:screens, boot:_fpBoot})).then(function(r){
       answered();
@@ -25175,6 +25184,12 @@ function _fpHello(){
       _fp.hello={v:v, screens:(r && Array.isArray(r.screens)) ? r.screens.filter(function(s){ return typeof s==='string'; }) : [], why:(r && r.why) || ''};
       _fp.v=v;
       _fpLog('hello v'+v+' '+(_fp.hello.screens.join(',') || 'no screens')+(_fp.hello.why ? ' ('+_fp.hello.why+')' : ''));
+      // the shell's word on this document's place in its scene (0: a shell that does not say); a later document that
+      // found none of the scene's marks booted blind (above)
+      var doc=(r && typeof r==='object' && _fpUint(r.doc) && r.doc>=1) ? r.doc : 0;
+      if(doc) _fp.hello.doc=doc;
+      var blind=doc>1 && !seen && !hadTab;
+      if(blind){ try{ var bl='shell: document '+doc+' booted without the scene\'s marks'; _fpLog(bl); _wchLog(bl); }catch(e){} }
       var up=(v>=1 && r && Array.isArray(r.up)) ? r.up.filter(function(s){ return typeof s==='string'; }) : [];
       // the native chat the document before had up (fp_chat) that this reply still offers but no longer names up was
       // taken down while no document was linked (the owner's Back during a WebContent restart: PageLink ends the intent
@@ -25194,8 +25209,9 @@ function _fpHello(){
           // a page selection still unanswered was asked after this reply was made: its answer carries the shell's
           // selection, so the page does not bounce to the reply's tab and back (P-D8)
           // a newer selection that moves the page is a bar tap the shell took while no document was linked (a WebContent
-          // restart, or a cold launch before hello answered): a place asked for too
-          if(tabs.seq>T.seq){ T.seq=tabs.seq; if(!T.pend && tabs.selected!==currentTab){ _photoAsked++; _switchTabLocal(tabs.selected); } }
+          // restart, or a cold launch before hello answered): a place asked for too. Not for a document that booted
+          // blind: it stands on the scene's first tab only because the marks went, so the shell's tab is adopted uncounted
+          if(tabs.seq>T.seq){ T.seq=tabs.seq; if(!T.pend && tabs.selected!==currentTab){ if(!blind) _photoAsked++; _switchTabLocal(tabs.selected); } }
           if(tabs.bar.rev>T.rev) _fpBarSet(tabs.bar, tabs.bar.rev);
           if(up.length) _fpTakeOver(up);
         }finally{ _fp.taking=false; }

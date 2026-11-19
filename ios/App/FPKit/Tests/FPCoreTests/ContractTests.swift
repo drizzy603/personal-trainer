@@ -48,6 +48,26 @@ final class ContractTests: XCTestCase {
         XCTAssertEqual(BarMetrics(h: 49, safe: 0, rev: 0).json, ["h": 49, "safe": 0, "rev": 0])
     }
 
+    /// hello's `doc` (build 62): the document's number in its scene, on every reply (a refusal too), kept by the takeover,
+    /// and no key at all while it is nil, so every reply before 62's (and every exact string above) stays as it was.
+    func testHelloRepliesNumberTheirDocument() {
+        let reply = HelloReply(v: 1, screens: ["coach"], doc: 2)
+        XCTAssertEqual(reply.json, ["v": 1, "screens": ["coach"], "doc": 2])
+        XCTAssertEqual(reply.json.jsonText, #"{"doc":2,"screens":["coach"],"v":1}"#)
+        let taking = reply.takingOver(["coach"])
+        XCTAssertEqual(taking.doc, 2, "the takeover keeps doc")
+        XCTAssertEqual(taking.json, ["v": 1, "screens": ["coach"], "up": ["coach"], "doc": 2])
+        let tabs = TabsReply(selected: "coach", seq: 1, bar: BarMetrics(h: 83, safe: 34, rev: 0))
+        XCTAssertEqual(HelloReply(v: 1, screens: ["coach", "coachHome", "tabs"], tabs: tabs, doc: 3).takingOver(["coachHome"]).json.jsonText,
+                       #"{"doc":3,"screens":["coach","coachHome","tabs"],"tabs":{"bar":{"h":83,"rev":0,"safe":34},"selected":"coach","seq":1},"up":["coachHome"],"v":1}"#)
+        var refused = HelloReply(.refused(.noVersion))
+        XCTAssertNil(refused.doc, "a negotiation sets no doc: the shell does")
+        refused.doc = 1
+        XCTAssertEqual(refused.takingOver(["coach"]).json, ["v": 0, "screens": [], "why": "no-version", "doc": 1], "a refusal carries it too")
+        XCTAssertNil(HelloReply(v: 1, screens: ["coach"]).json["doc"], "nil adds no key")
+        XCTAssertNil(HelloReply(.linked(v: 1, screens: ["coach"])).takingOver(["coach"]).doc)
+    }
+
     /// The first tab (contract 2.4, 9): Coach for a share; else the dev route's head when it names a tab other than Log.
     func testFirstTab() {
         XCTAssertEqual(ShellTabs.ids, ["log", "progress", "coach", "settings"])

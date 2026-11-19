@@ -44,7 +44,8 @@ Scenarios (build 60's nine and teardown, under both roots; decision.md section 9
            Back and off in setup
   wckill   a WebContent kill with the chat up: the new document takes it over (on the tab root coachHome and the chat,
            the Coach tab NATIVE throughout, no WEB frame), the shell resyncs on its boot without resending (the send in
-           flight ends as gone, its words back in the composer), and the open confirm closes as stale
+           flight ends as gone, its words back in the composer), and the open confirm closes as stale; the scene's
+           sessionStorage marks (fp_chat t or 1) are there at the new document's start and its hello counts nothing
   marker   a planted crash marker (presenting coach@...; on the tab root presenting coachHome@... too) brings back the
            web Coach, once: the verdict stays for this shell and page build; Settings > About says why and lists the
            shell's counters; its Try again (on 61's page: coachHome, then coach) brings the native Coach back next launch
@@ -686,6 +687,51 @@ return out;
 """
 
 
+# The scene's marks and what the document's hello made of them (build 62's restart flag, R0): sessionStorage's fp_tab,
+# fp_chat and fp_seen now and every key's name, the marks as the document found them at its start (the probe's
+# document-start script, before the page's scripts: window.__fpStartMarks), the places asked for since its boot
+# (_photoAsked), its hello's answer (_fp.hello: from build 62 with the shell's doc), the tab and view it shows, the seq
+# it has seen, its boot, the navigation's type (performance's entry, and the old performance.navigation), the newest
+# eight Settings > About breadcrumbs (kt_wch_log, without their time) and all of them as stored (wchAll: newest first,
+# each with its 'MM-DD HH:MM:SS ' in front; they outlive a launch). Read once hello has answered (5 s at most).
+MARKS_JS = r"""
+for (var i = 0; i < 50 && !(window._fp && _fp.hello); i++) await new Promise(function (r) { setTimeout(r, 100); });
+var g = function (k) { try { return sessionStorage.getItem(k); } catch (e) { return 'error: ' + String(e && e.message || e); } };
+var keys = []; try { for (var i = 0; i < sessionStorage.length; i++) keys.push(sessionStorage.key(i)); keys.sort(); } catch (e) {}
+var nav = null; try { var n = performance.getEntriesByType('navigation')[0]; nav = n ? n.type : null; } catch (e) {}
+var f = window._fp || {}, T = f.tabs || {}, all = [];
+try { all = JSON.parse(localStorage.getItem('kt_wch_log') || '[]').map(String); } catch (e) {}
+return { fp_tab: g('fp_tab'), fp_chat: g('fp_chat'), fp_seen: g('fp_seen'), keys: keys, start: window.__fpStartMarks || null,
+  wch: all.slice(0, 8).map(function (l) { return l.slice(15); }), wchAll: all,
+  asked: (typeof _photoAsked !== 'undefined') ? _photoAsked : null, hello: f.hello || null,
+  tab: (typeof currentTab !== 'undefined') ? currentTab : null, view: (typeof coachView !== 'undefined') ? coachView : null,
+  seqSeen: (typeof T.seq === 'number') ? T.seq : null, tabsMode: !!T.mode, boot: (typeof _fpBoot !== 'undefined') ? _fpBoot : null,
+  nav: nav, navOld: (performance.navigation || {}).type, history: history.length };
+"""
+
+
+def crumbs_since(lines, wall_ms):
+    """The breadcrumbs of a MARKS_JS read (`wchAll`: kt_wch_log's lines as stored, newest first, each starting with the
+    page's local 'MM-DD HH:MM:SS ') written at or after `wall_ms` (epoch ms on the host's clock, which the simulator's app
+    runs on; to the second), without their time: kt_wch_log outlives a launch, so a check of one launch's lines reads
+    only those."""
+    if not isinstance(wall_ms, (int, float)):
+        return []
+    t = time.strftime('%m-%d %H:%M:%S', time.localtime(wall_ms / 1000.0))
+    return [l[15:] for l in lines or [] if isinstance(l, str) and len(l) > 15 and l[:14] >= t]
+
+
+def marks_of(ev, label):
+    """A MARKS_JS step's answer ({} when it did not answer)."""
+    r = (ev.first('js', label=label) or {}).get('result')
+    return r if isinstance(r, dict) else {}
+
+
+def procs(e):
+    """A state's process pids ({web, net}: the page's WebContent and Networking processes, None for none)."""
+    return (e or {}).get('procs') or {}
+
+
 def page(e):
     return (e or {}).get('page') or {}
 
@@ -1259,13 +1305,13 @@ def scen_wckill(c):
         js('stub', STUB_JS), wait(1000),
         js('confirm', "_ktConfirm({title: 'Probe stale?', body: 'Asked before the kill', confirmLabel: 'Yes', "
                       "onConfirm: function () { localStorage.setItem('kt_probe_stale_yes', '1'); }}); return true;"),
-        wait(800), state('before kill'), mark('before-kill'),
+        wait(800), js('marks before', MARKS_JS), state('before kill'), mark('before-kill'),
         {'op': 'blockPage', 'ms': 6000}, wait(150),
         {'op': 'send', 'text': 'Probe never resent', 'nonce': 'probe-resend-1'}, wait(400),
         {'op': 'killWebContent'},
     ]
     steps2 = [
-        state('new document'), wait(1200), state('after kill'), mark('after-kill'),
+        state('new document'), wait(1200), js('marks after', MARKS_JS), state('after kill'), mark('after-kill'),
         intent('stale confirm', 'confirm', id='@lastConfirm', yes=True), wait(300),
         js('stale yes', "return localStorage.getItem('kt_probe_stale_yes');"),
         js('stub', STUB_JS), {'op': 'send', 'text': 'Probe after the kill', 'nonce': 'probe-after-1'}, wait(3000), state('after send'),
@@ -1278,6 +1324,24 @@ def scen_wckill(c):
     c.rep.check(s, 'the kill started a new document (a new boot) with the chat up all along', boot0 and boot1 and boot0 != boot1 and shellst(a).get('documents', 0) >= 2
                 and coach(a).get('presented') and not any(t.startswith(('dismiss coach', 'back coach')) for t in screens(a).get('transitions') or []),
                 {'boot0': boot0, 'boot1': boot1, 'documents': shellst(a).get('documents'), 'transitions': screens(a).get('transitions')})
+    # The scene's marks live in WebKit's Networking process, which a WebContent kill leaves running (build 62's R0): the
+    # chat's mark (t on a tab root's Coach stack, 1 as the overlay) and every other key are there at the new document's
+    # start, before its scripts run, and its hello counts no place asked for (the chat was taken over, not moved).
+    mb, ma = marks_of(ev, 'marks before'), marks_of(ev, 'marks after')
+    st = ma.get('start') or {}
+    letter = 't' if c.tabs else '1'
+    c.rep.check(s, 'the scene\'s marks outlive a WebContent kill: fp_chat %s (the chat %s) before it, at the new document\'s start '
+                '(read before its scripts) with every key the document before had, and after its hello, which counts no place '
+                'asked for (_photoAsked 0)' % (letter, 'on the Coach stack' if c.tabs else 'as the overlay'),
+                mb.get('fp_chat') == letter and st.get('fp_chat') == letter and not st.get('error')
+                and set(mb.get('keys') or []) <= set(st.get('keys') or []) and ma.get('fp_chat') == letter and ma.get('asked') == 0,
+                {'before': {k: mb.get(k) for k in ('fp_tab', 'fp_chat', 'keys')}, 'start': st,
+                 'after': {k: ma.get(k) for k in ('fp_tab', 'fp_chat', 'asked', 'tab', 'view', 'seqSeen', 'nav')}})
+    pb, pa2 = procs(b), procs(a)
+    c.rep.fact(s, 'the processes: WebContent %s -> %s, Networking %s -> %s (pids); the navigation %s at the new document\'s start, '
+               '%s after its hello (performance.navigation %s); hello %s; the replies\' doc %s' % (
+                   pb.get('web'), pa2.get('web'), pb.get('net'), pa2.get('net'), st.get('nav'), ma.get('nav'), ma.get('navOld'),
+                   ma.get('hello'), [h.get('doc') for h in page_events(ev, 'hello')]))
     pa = page(a)
     presents = page_events(ev, 'present', after=(b or {}).get('t', 0))
     if c.tabs:

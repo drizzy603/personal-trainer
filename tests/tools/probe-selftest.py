@@ -66,6 +66,9 @@ Launches, in this order (`--only` picks among them; prepare and restore always r
   sceneCycle     the scene's connection replayed twice (the step, then the generic `hook` step): a new web view in a
                  new window each time, the next phase on the new page, the old page, root and window let go, a key window
   sceneDestroy   UIKit's own request to destroy the scene's session: refused on an iPhone, nothing replaced
+  killNetwork    WebKit's Networking process ended through SPI with the WebContent in one turn: the next phase on a new
+                 page, both processes' pids new (every state's procs), the document-start marks script answering in each
+                 document; then the Networking process alone (webContent false), the phase going on
   classic        the tab bar's device switch off (`setSwitch`: a page event, the scene falls back now), a launch on the
                  classic root ({kind: classic}, the chat in the overlay, every tab-root step an error event), the switch
                  on again and the tab root back at the next launch
@@ -288,9 +291,11 @@ PAGE = {
     'zoom': 'num', 'lastOpen': 'num|null', 'visitFrom': 'num|null', 'awayFrom': 'num|null', 'screenChild': 'bool',
     'phScreen': 'str|null', 'seqSeen': 'int', 'coachMode': 'str|null', 'sheetsOpen': 'int|null', 'holds': 'int', 'fpTab': 'str|null',
 }
+# the pids of the page's WebContent and Networking processes (SPI getters; null for none)
+PROCS = {'web': 'int|null', 'net': 'int|null'}
 STATE = {'label': 'any', 'page': PAGE, 'shell': SHELL, 'keyboard': 'list', 'firstResponder': 'str', 'webResponder': 'bool',
          'webScrollY': 'num', 'input': maybe(INPUT), 'replaced': maybe({'by': 'str', 'webView': 'bool', 'root': 'bool', 'window': 'bool'}),
-         'keyWindow': 'str'}
+         'keyWindow': 'str', 'procs': PROCS}
 
 
 # every event's own fields (ShellProbe.event)
@@ -397,6 +402,9 @@ EVENTS = {
     'edgeBack': {'started': 'bool', 'progress': 'num', 'finish': 'bool'},
     'waitCoach': {'label': 'any', 'until': 'str', 'met': 'bool', 'ms': 'int'},
     'blockPage': {'ms': 'int'},
+    'killWebContent': {'before': PROCS},
+    'killNetwork': _alt({'terminated': oneof(True), 'webContent': 'bool', 'before': PROCS}, {'terminated': oneof(False), 'error': 'str'},
+                        ok=lambda e: e.get('terminated') is True),
     'axBundles': {'loaded': ['str']},
     'intent-step': {'label': 'any'},
     'done': {},
@@ -407,7 +415,7 @@ PAGE_METHODS = {
     'selectTab': {'tab': 'str', 'intent': 'str|null'},
     'sheets': {'open': 'bool'},
     'setSwitch': {'screen': 'str', 'on': 'bool'},
-    'hello': {'boot': 'str|null', 'page': 'str', 'screens': ['str'], 'v': 'int'},
+    'hello': {'boot': 'str|null', 'page': 'str', 'screens': ['str'], 'v': 'int', 'doc': 'int|null'},   # doc: the reply's (62), null before
     'model': {'screen': 'str', 'rev': 'int'},
     'present': {'screen': 'str'},
     'dismiss': {'screen': 'str'},
@@ -1358,6 +1366,41 @@ def scen_sceneDestroy(c):
             {'asked': sd, 'refused': sr, 'noAnswer': na, 'replaced': (a or {}).get('replaced')})
 
 
+START_MARKS_JS = 'return window.__fpStartMarks || null;'
+
+
+def scen_killNetwork(c):
+    """killNetwork (build 62's R0): the Networking process ended through SPI and the WebContent with it in one turn, the
+    next phase on the new page, both pids new; the document-start marks script answered in each document; then the
+    Networking process alone (`webContent: false`), the phase going on."""
+    s = 'killNetwork'
+    ev = c.launch(s, 'killNetwork', [
+        [wait(1200), state('before'), js('start 1', START_MARKS_JS), step('tapTab', tab='progress'), step('waitTab', tab='progress', ms=3000),
+         step('killNetwork')],
+        [wait(1500), state('after'), js('start 2', START_MARKS_JS), step('killNetwork', webContent=False), wait(1500), state('net only'), DONE]],
+        timeout=200)
+    b, a, n = ev.state('before'), ev.state('after'), ev.state('net only')
+    kn = ev.all('killNetwork')
+    k1 = kn[0] if kn else {}
+    pb, pa = (b or {}).get('procs') or {}, (a or {}).get('procs') or {}
+    ints = all(type(x.get(k)) is int for x in (pb, pa) for k in ('web', 'net'))
+    c.check(s, 'killNetwork: terminated through SPI with the WebContent, the pids it ended in its before (the state\'s procs)',
+            k1.get('terminated') is True and k1.get('webContent') is True and k1.get('before') == pb and ints, {'event': k1, 'procs': [pb, pa]})
+    c.check(s, 'the next phase ran on a new page whose WebContent and Networking processes are both new (pids)', ints and pb['web'] != pa['web']
+            and pb['net'] != pa['net'] and shellst(a).get('documents') == 2 and len(ev.all('bootDone')) == 2,
+            {'procs': [pb, pa], 'documents': shellst(a).get('documents'), 'bootDones': len(ev.all('bootDone'))})
+    m1, m2 = (first(ev, 'js', label=x).get('result') for x in ('start 1', 'start 2'))
+    c.check(s, 'the document-start marks script ran in each document (keys, nav; the first document\'s fp_tab null)',
+            all(isinstance(m, dict) and type(m.get('keys')) is list and 'nav' in m for m in (m1, m2)) and m1.get('fp_tab') is None,
+            [m1, m2])
+    c.rep.fact(s, 'the marks the new document found at its start after the Networking process ended: %s' % (m2,))
+    k2 = kn[1] if len(kn) > 1 else {}
+    c.check(s, 'killNetwork {webContent: false}: the Networking process alone, the phase going on (a state after it)',
+            k2.get('terminated') is True and k2.get('webContent') is False and n is not None, {'event': k2, 'state': bool(n)})
+    c.rep.fact(s, 'after the Networking process alone ended: procs %s, documents %s, the page\'s tab %s' % (
+        (n or {}).get('procs'), shellst(n).get('documents'), page(n).get('tab')))
+
+
 def scen_classic(c):
     s = 'classic'
     off = r"""var P = _fpPlugin(); return Promise.resolve(P.setSwitch({screen: 'tabs', on: false})).then(function (st) {
@@ -1498,7 +1541,7 @@ def scen_restore(c):
 
 
 ORDER = ['tapTab', 'retapTab', 'stray', 'waitTab', 'pageEvents', 'pressHub', 'navPop', 'back', 'setup', 'edgeBack', 'waitCoach', 'typeComposer',
-         'openURL', 'openURLOnActive', 'fpOpenURL', 'share', 'ping', 'sceneCycle', 'sceneDestroy', 'classic', 'typeKey']
+         'openURL', 'openURLOnActive', 'fpOpenURL', 'share', 'ping', 'sceneCycle', 'sceneDestroy', 'killNetwork', 'classic', 'typeKey']
 
 
 # ── the run's own checks ─────────────────────────────────────────────────────────────────────────────────────────────
