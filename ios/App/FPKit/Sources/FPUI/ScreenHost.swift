@@ -578,7 +578,8 @@ public final class ScreenHost: NSObject {
     }
 
     /// Every screen down at once, with no animation (the scene is going; the link is gone for good). The owner's
-    /// messages still on their way go back in the composer, kept for the next chat. In the stack the chat is popped and
+    /// messages still on their way go back in the composer, kept for the next chat, but one the page took (answered
+    /// with its id, CoachStore's .sent) goes with its words and pick (build 62's review, F-S4). In the stack the chat is popped and
     /// its marker removed first, and the web view's accessibility is left to the root (contract 8.4). The home's store
     /// is torn down (its model, a key on its way, the key field).
     public func tearDown() {

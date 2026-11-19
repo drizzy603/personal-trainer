@@ -112,7 +112,9 @@ public class TrovoSharePlugin: CAPPlugin, CAPBridgedPlugin {
     /// file's `bytes` (a newer share writes its words, then renames its photo into place: one renamed in since the first
     /// read stays, and the answer is {cleared: false}, a newer share waiting), the words file only while it still names
     /// that id (words that turned into a newer share's are left for their photo). A removal that fails for anything but
-    /// a file already gone answers {cleared: false} too: the share is still there, for the next document to read.
+    /// a file already gone rejects the call (review round 2): the photo's before its words file is touched, so the pair
+    /// stays whole, and the page's error path ('share: not cleared (error)') asks again at its next read of that id,
+    /// where {cleared: false} would read as a newer share waiting and never be asked again.
     @objc public func clearPendingShare(_ call: CAPPluginCall) {
         guard let id = call.getString("id"), !id.isEmpty else {
             call.reject("id required")
@@ -130,9 +132,10 @@ public class TrovoSharePlugin: CAPPlugin, CAPBridgedPlugin {
         let photoURL = dir.appendingPathComponent(Self.photoName)
         var cleared = true
         if let n = Self.size(photoURL) {
-            if n == w.bytes { cleared = Self.remove(photoURL) } else { cleared = false }   // not this share's photo: it stays
+            if n != w.bytes { cleared = false }   // not this share's photo: it stays
+            else if !Self.remove(photoURL) { call.reject("the share's photo could not be removed"); return }   // pair kept
         }
-        if Self.words(wordsURL)?.id == id, !Self.remove(wordsURL) { cleared = false }
+        if Self.words(wordsURL)?.id == id, !Self.remove(wordsURL) { call.reject("the share's words could not be removed"); return }
         if let defaults = UserDefaults(suiteName: Self.group) {
             defaults.removeObject(forKey: "pendingShareImage")
             defaults.removeObject(forKey: "pendingShareComment")

@@ -79,7 +79,7 @@
 //   document was linked took its chat down itself (the policy before the next document or at its hello, a page that
 //   leaves tabs out of its hello), so nothing counts and the kept share's chat opens as it did; a refused hello offers
 //   no chat; a fallback the document heard leaves no mark; after a fallback nobody saw, the overlay chat's Back during
-//   a second restart still counts. Build 62 (web 20261119-1; the harness's __fpShellDoc knob gives hello's reply the
+//   a second restart still counts. Build 62 (web 20261119-4; the harness's __fpShellDoc knob gives hello's reply the
 //   document's number in its scene, doc): a restart that lost the scene's marks (fp_tab, fp_chat, fp_seen) while the
 //   scene lived, which 61's reply reads as a move to the shell's tab (asked elsewhere, pinned beside it), boots blind
 //   under 62's: hello's tab adopted uncounted, the share's web chat or connect screen back as before, one 'booted
@@ -111,7 +111,7 @@
 //   clears the share by its id once, after its record is kept, and a later read finds nothing; a share with no id
 //   (build 61's extension's, read by 62) clears nothing. Read again before its clear (the keep held), it is nothing new:
 //   one chat, one read line, one keep. The app closed before the keep committed: the next launch reads it again and
-//   opens its chat with the photo and the words. A keep that fails (web 20261119-3; IndexedDB missing or throwing, the
+//   opens its chat with the photo and the words. A keep that fails (web 20261119-4; IndexedDB missing or throwing, the
 //   quota, an aborted put, the marker refused) is kept again on _photoRetry's schedule, three keeps a document at most:
 //   0.3 s after the failure while the page shows (each about 0.3 s after the one before, no fourth), else 0.3 s after
 //   it next shows; a keep that commits clears the share and the next launch has the photo back from the page's own
@@ -161,8 +161,8 @@ const MIN = 60000, HOUR = 3600000;
 //   INIT62's, below; TrovoWidget.consumeDeepLink: the parked link (__parked), once;
 // - __next (sessionStorage, set before a relaunch): what the next document starts with: a share waiting (held, parked),
 //   hello's delay (the 61 mock's __fpShellHelloDelay), the parked link's answer held (linkDelay, ms), gate (the page's
-//   IndexedDB opens held until __idbRelease()) and hidden (the page boots unseen: document.visibilityState reads
-//   __vis, 'visible' unless so);
+//   IndexedDB opens held until __idbRelease()), hidden (the page boots unseen: document.visibilityState reads
+//   __vis, 'visible' unless so) and clearFail (INIT62's __clearFail from the document's start);
 // - __idb(op, rec): the kept record through IndexedDB's own API ('get', 'put', 'delete'), taken before an init can
 //   take IndexedDB away; __mark(): the marker kt_photo_kept as JSON; __plant(rec, o): a record (its n 1 unless it has
 //   one) and the marker naming it (o.mark false: none; o.markN: another number; o.left: left:1; o.gone: gone:1), as a
@@ -183,7 +183,7 @@ const INIT = `(() => {
   try {
     const n = JSON.parse(sessionStorage.getItem('__next') || 'null');
     sessionStorage.removeItem('__next');
-    if (n) { window.__held = n.held || null; window.__parked = n.parked || ''; if (n.helloDelay) window.__fpShellHelloDelay = n.helloDelay; window.__linkDelay = n.linkDelay || 0; if (n.hidden) window.__vis = 'hidden'; }
+    if (n) { window.__held = n.held || null; window.__parked = n.parked || ''; if (n.helloDelay) window.__fpShellHelloDelay = n.helloDelay; window.__linkDelay = n.linkDelay || 0; if (n.hidden) window.__vis = 'hidden'; window.__nextClearFail = n.clearFail || 0; }
     // abortReads: the first N reads of the photo store this document makes abort their transaction with no error, as
     // WebKit aborts one under a page it suspends (the owner's iPhone, 14 Nov); __photoGets counts the page's reads, and
     // __idb's own reads pass by (__inIdb)
@@ -331,7 +331,7 @@ const INIT62 = `(() => {
   const save = () => { try { if (held) sessionStorage.setItem('__appGroup', JSON.stringify(held)); else sessionStorage.removeItem('__appGroup'); } catch (e) {} };
   save();
   Object.defineProperty(window, '__held', { configurable: true, get: () => held, set: (v) => { held = v || null; save(); } });
-  window.__clears = []; window.__clearFail = 0;
+  window.__clears = []; window.__clearFail = window.__nextClearFail || 0;
   P.TrovoShare = Object.assign(P.TrovoShare || {}, {
     getPendingShare: function (o) {
       window.__readArgs.push(arguments.length ? JSON.stringify(o) : null);
@@ -2350,7 +2350,7 @@ serial('(o) the app closed after the read, its keep held: the next launch reads 
   }
 });
 
-// Build 62's share whose keep fails (web 20261119-3, the review's S2): the page keeps it again on _photoRetry's schedule,
+// Build 62's share whose keep fails (web 20261119-4, the review's S2): the page keeps it again on _photoRetry's schedule,
 // three keeps of it a document at most; when the third fails it clears the share as build 61's plugin did at its read,
 // the photo pending in memory only, with one line.
 const LOST62 = 'share: cleared after 3 failed keeps (photo in memory only)';
@@ -2604,6 +2604,39 @@ serial('(o) the owner leaves the share\'s chat while its keep waits to be tried 
     const m = await look(app);
     assert(m.img === PHOTO && shut(m) && m.log.indexOf('photo: back from 0 min, chat not opened (left earlier)') >= 0 && m.reads.every((x) => x === false),
       'the next launch: the photo back with its chat shut: ' + J(Object.assign({}, m, { img: !!m.img, kept: !!m.kept, log: m.log.slice(0, 5) })));
+    assert(m.log.filter((l) => l === 'photo: chat left').length === 1,
+      'the leave the keep carried has its one line (review round 2, P2): ' + J(m.log.slice(0, 8)));
+    clean(m.log);
+    noErrors(app);
+  } finally { await app.close(); }
+});
+
+serial('(o) the owner leaves the share\'s chat while its keep waits to be tried again and comes back to it before the keep is tried: the keep that commits marks no leave (the marker names its record and nothing more), and the next launch opens the photo\'s chat (none)', async () => {
+  const app = await pageBoot('none', { init: INIT62 });
+  try {
+    await ready(app, false);
+    await relaunch(app, { hidden: true, abortPuts: 1, held: { imageBase64: PHOTO, comment: WORDS, id: 'sid-o18' } });
+    await waitLine(app, FAILED_KEEP, 'the failed keep');
+    await settle(app, 100);
+    await ev(app, () => { window.__vis = 'visible'; });   // the app in front, the show's event held back from the waiting keep
+    await ev(app, () => switchTab('log'));                 // the owner leaves the chat
+    await settle(app, 100);
+    await ev(app, () => { switchTab('coach', { intent: 'chat' }); coachView = 'chat'; render(); });   // and comes back to it
+    await settle(app, 100);
+    const a = await ev(app, () => ({ tab: currentTab, view: coachView, mark: __mark() }));
+    assert(a.tab === 'coach' && a.view === 'chat' && gone(a.mark), 'back on the chat before the keep is tried again, the marker still gone: ' + J(a));
+    await show(app);
+    await waitLine(app, 'l === ' + J(KEPT(2)), 'the second keep');
+    await app.page.waitForFunction(() => __clears.length > 0 && __clears[0].kept !== null, null, { timeout: 15000 });
+    await settle(app, 100);
+    const mk = await ev(app, () => __mark()), k = await ev(app, () => __idb('get'));
+    assert(names(mk, k), 'the keep that committed marks no leave: the marker names its record and nothing more: ' + J({ mk, k: k && { n: k.n, at: k.at } }));
+    await relaunch(app);
+    await waitLine(app, 'l === "photo: back from 0 min, chat opened"', 'chat opened');
+    await settle(app, 300);
+    const m = await look(app);
+    assert(m.img === PHOTO && m.tab === 'coach' && m.view === 'chat' && m.log.filter((l) => l === 'photo: chat left').length === 0,
+      'the next launch opens the photo\'s chat; no leave line was ever written: ' + J(Object.assign({}, m, { img: !!m.img, kept: !!m.kept, log: m.log.slice(0, 6) })));
     clean(m.log);
     noErrors(app);
   } finally { await app.close(); }
@@ -2676,6 +2709,33 @@ serial('(o) a newer share written between the read and the clear: the clear does
       noErrors(app);
     } finally { await app.close(); }
   }
+});
+
+serial('(o) three keeps that fail, then a clear that fails: each says so once, and the next read of that id (a return\'s check) asks the clear again, which clears it; the photo stays pending in memory and the next launch reads nothing (none)', async () => {
+  const app = await pageBoot('none', { init: INIT62 });
+  try {
+    await ready(app, false);
+    await relaunch(app, { abortPuts: 3, clearFail: 1, held: { imageBase64: PHOTO, comment: WORDS, id: 'sid-o19' } });
+    await waitLine(app, 'l === ' + J(LOST62), 'the share given up after three keeps');
+    await waitLine(app, 'l === "share: not cleared (error)"', 'the clear refused');
+    await settle(app, 100);
+    const a = await held62(app);
+    assert(a.clears.length === 1 && a.clears[0].id === 'sid-o19' && a.held === 'sid-o19' && a.img === PHOTO,
+      'the clear after the third keep refused: the App Group keeps the share: ' + J(Object.assign({}, a, { log: a.log.slice(0, 6), img: !!a.img })));
+    await ev(app, async () => { await checkPendingShare(); await __w(60); });
+    await settle(app, 100);
+    const b = await held62(app);
+    assert(b.clears.length === 2 && b.clears[1].id === 'sid-o19' && b.held === null && b.img === PHOTO && notCleared(b.log).length === 1
+      && b.log.filter((l) => /^share: read/.test(l)).length === 1,
+      'the read of the same id asked the clear again and cleared it, nothing new shown: ' + J(Object.assign({}, b, { log: b.log.slice(0, 6), img: !!b.img })));
+    await relaunch(app);
+    await settle(app, 3000);   // the boot's check and the kept photo's read have come and gone
+    const m = await look(app);
+    assert(m.img === null && m.reads.every((x) => x === false) && !m.kept,
+      'the next launch reads nothing: no share in the App Group, no kept copy: ' + J(Object.assign({}, m, { kept: !!m.kept, log: m.log.slice(0, 6) })));
+    clean(m.log);
+    noErrors(app);
+  } finally { await app.close(); }
 });
 
 serial('(o) a clear that fails says so once, and the next read of that id (a return\'s check) asks again, which clears it; the photo stays pending throughout (none)', async () => {

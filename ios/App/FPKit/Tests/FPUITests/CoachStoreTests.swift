@@ -860,6 +860,30 @@ final class CoachStoreTests: XCTestCase {
         XCTAssertEqual(image, q.prepared.coachImage)
     }
 
+    /// F-S1's put-back half (review round 2, F4): a kept pick the owner sent in this binding and a refused send put back
+    /// is this binding's from then on, so a page photo after it leaves it (the two slots) and the next launch still has
+    /// it; it never gives way the way an untouched kept pick does.
+    func testAKeptPickPutBackByARefusedSendKeepsTheTwoSlots() throws {
+        let p = pick()
+        CoachComposerDraft(defaults: defaults, folder: folder).picked = p   // the earlier launch's pick, kept
+        let s = CoachStore(draft: CoachComposerDraft(defaults: defaults, folder: folder))
+        s.now = { [unowned self] in self.clock }
+        var waiting: [(intent: Intent, done: (PageLink.Outcome) -> Void)] = []
+        s.hooks.ask = { intent, done in waiting.append((intent, done)) }
+        XCTAssertTrue(s.apply(try model(rev: 1)))
+        XCTAssertEqual(s.draft.picked?.prepared, p.prepared, "brought back, no page photo yet")
+        XCTAssertTrue(s.sendComposer(nonce: "kp6"))
+        XCTAssertFalse(fileKept, "Send takes it")
+        let i = try XCTUnwrap(waiting.firstIndex(where: { $0.intent.name == "coach.send" }), "the send was asked")
+        waiting.remove(at: i).done(.answered(.refused("busy")))
+        XCTAssertEqual(s.draft.picked?.prepared, p.prepared, "a refused send puts it back")
+        XCTAssertTrue(s.apply(try model(rev: 2, composer: composer(image: "p4.b1"))))
+        XCTAssertEqual(s.draft.picked?.prepared, p.prepared, "put back in this binding, it keeps the two slots over the page's photo")
+        XCTAssertTrue(fileKept, "and stays kept for the next launch")
+        XCTAssertEqual(CoachComposerDraft(defaults: defaults, folder: folder).picked?.prepared, p.prepared)
+        XCTAssertTrue(s.events.filter { $0.contains("gave way to the page's photo") }.isEmpty, "no give-way line: \(s.events)")
+    }
+
     /// F-S4: the binding going drops a message the page took (`.sent`: the model that holds it had not come), its words
     /// and its pick both, so the next launch never offers again what the chat already has. Before (547d7a5) it went
     /// back in the composer and, from build 62, its photo was kept on disk for the next launch.

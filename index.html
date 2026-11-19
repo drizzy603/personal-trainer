@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20261119-3"/>
+<meta name="build" content="20261119-4"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -9828,7 +9828,7 @@ function runnerSetRpe(val){
 // committed (_photoKeep answers its transaction's outcome), or once the photo is sent, removed or replaced by a pick
 // (_photoDrop, the pick's _photoKeep); a later share needs no clear, its extension wrote it over the one before. A
 // share whose keep fails is kept again on _photoRetry's schedule (0.3 s later while the page shows, else 0.3 s after it
-// next shows: _photoSoon), three keeps of it a document at most (_shareKeep, web 20261119-3): one that commits clears
+// next shows: _photoSoon), three keeps of it a document at most (_shareKeep, web 20261119-4): one that commits clears
 // the share; when the third fails the share is cleared as build 61's plugin cleared it at its read, the photo pending
 // in memory only, with one line. The photo sent, removed or replaced meanwhile ends its keeps (that step cleared the
 // share, or a newer share wrote over it). So the App Group's copy outlives a document only when the document ends
@@ -10057,7 +10057,12 @@ function _photoKeep(src, words, sid, k){
   var again=k>1, say=again ? _shareLog : _wchLog;
   var m0=_photoMarkRead(), n=Math.max(m0 ? m0.n : 0, _photoN)+1, at=Math.max(Date.now(), _photoAt+1);
   _photoN=n; _photoAt=at; img.at=at;
-  var no=_photoMark(again && img.on===0 ? {n:n, at:at, left:1} : {n:n, at:at});
+  // A keep tried again carries the photo's leave history (review round 2, P2): the owner away from its chat marks it
+  // left, with its first leave's line when no line said one yet (a leave the failed keep's gone marker refused); one who
+  // left and came back writes left 0, so a later leave adds no second line.
+  var carry=again && img.on===0;
+  var no=_photoMark(carry ? {n:n, at:at, left:1} : (again && img.wasLeft ? {n:n, at:at, left:0} : {n:n, at:at}));
+  if(!no && carry && !img.wasLeft){ img.wasLeft=1; _shareLog('photo: chat left'); }
   if(no){ _photoTx('readwrite', function(st){ st.delete('pending'); }); say('photo: not kept ('+no+')'); return Promise.resolve({ok:false, why:no}); }
   var rec={data:String(img.data), mediaType:String(img.mediaType || 'image/jpeg'), at:at, src:src==='share' ? 'share' : 'pick', n:n};
   if(src==='share' && words) rec.words=String(words);
@@ -10088,6 +10093,7 @@ function _photoLeave(img, quiet){
   if(!img || !img.at || !m || m.at!==img.at || m.left || m.gone) return false;
   if(_photoMark({n:m.n, at:m.at, left:1})) return false;
   if(!quiet && m.left===undefined) _shareLog('photo: chat left');
+  img.wasLeft=1;   // its leave said (or the caller's line says it): a keep tried again carries it (_photoKeep)
   return true;
 }
 // render() calls it. Once the task's paints are done (a way into the chat passes the hub in the same task), the chat on

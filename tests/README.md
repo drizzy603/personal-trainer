@@ -463,8 +463,8 @@ deleted with no id, then the plugin's checks before each removal (build 62's rev
 F-S3: a clear by the share's id once the runner renamed another photo over its photo
 leaves that photo and answers `cleared: false`, build 61's read then taking it as an
 unpaired photo; a clear whose removal fails, the runner having made the container
-read-only, answers `cleared: false` and leaves both files, and the next clear takes
-them; the container is made writable again whatever the launch came to), and the
+read-only, rejects (review round 2: the page's error path asks again) and leaves both
+files, and the next clear takes them; the container is made writable again whatever the launch came to), and the
 base64 slot (`legacy: true`); the shell's counters moving only where a step moves them; and a
 canary (`sk-ant-test-` and 16 random characters) typed into the native key field
 and saved by CONNECT, found in no probe log (each log read after the app ended).

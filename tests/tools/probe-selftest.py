@@ -62,8 +62,8 @@ Launches, in this order (`--only` picks among them; prepare and restore always r
                  in the group's defaults, read and deleted with no id; then the plugin's checks before each removal
                  (build 62's review, F-S3): a clear by the share's id once the runner renamed another photo over its
                  photo leaves that photo (cleared false), which build 61's read then takes as unpaired, and a clear
-                 whose removal fails (the runner made the container read-only) answers cleared false and leaves both
-                 files, the next clear taking them), then the legacy slot on purpose with a JPEG file beside the steps
+                 whose removal fails (the runner made the container read-only) rejects and leaves both files, as
+                 review round 2 has it, the next clear taking them), then the legacy slot on purpose with a JPEG file beside the steps
                  (`jpeg`), read by trovo://share
   ping           `blockPage` while a tap's tabs.select waits: its timeout held, confirmed by a ping (`ping` event, done),
                  no fallback
@@ -709,8 +709,12 @@ return { id: window.__fpProbeShareId, photo: r && r.imageBase64 ? String(r.image
 SHARE_CLEAR_ID_JS = r"""
 var id = window.__fpProbeShareId;
 if (!id) return { error: 'no share id kept' };
-var r = await Capacitor.Plugins.TrovoShare.clearPendingShare({ id: id });
-return { id: id, cleared: (r && typeof r.cleared === 'boolean') ? r.cleared : null };
+try {
+  var r = await Capacitor.Plugins.TrovoShare.clearPendingShare({ id: id });
+  return { id: id, cleared: (r && typeof r.cleared === 'boolean') ? r.cleared : null };
+} catch (e) {
+  return { id: id, cleared: null, rejected: String((e && e.message) || e).slice(0, 80) };
+}
 """
 SHARE_PLAIN_READ_JS = r"""
 var r = await Capacitor.Plugins.TrovoShare.getPendingShare();
@@ -1281,8 +1285,8 @@ def scen_share(c):
                   step('draft', text=''), js('clear 61', CLEAR_JS),
                   # build 62's review (F-S3), the page's own reads held again: a clear by the share's id once another photo
                   # was renamed over its photo (the runner's, as a newer share's would be) leaves that photo; build 61's
-                  # read then takes it as an unpaired photo; a clear whose removal fails (the container read-only) leaves
-                  # both files, and the next one takes them
+                  # read then takes it as an unpaired photo; a clear whose removal fails (the container read-only)
+                  # rejects and leaves both files, and the next one takes them
                   js('share hold 2', SHARE_HOLD_JS), step('share', comment=c.share_text), wait(1500),
                   js('keep read 2', SHARE_KEEP_ID_JS), wait(1500), js('foreign clear', SHARE_CLEAR_ID_JS), wait(1500),
                   js('unpaired read', SHARE_PLAIN_READ_JS), wait(1500),
@@ -1369,9 +1373,10 @@ def scen_share(c):
                 and g2.get('json') is None, {'read': ur, 'files': g2})
         k3, lc = first(ev, 'js', label='keep read 3').get('result') or {}, first(ev, 'js', label='locked clear').get('result') or {}
         g3 = snaps.get('at the locked clear') or {}
-        c.check(s, 'a clear whose removal fails (the runner made the App Group\'s container read-only) answers cleared: false and leaves '
-                   'both files (F-S3)',
-                hands.get('locked') is True and k3.get('id') == e3.get('id') and lc.get('id') == e3.get('id') and lc.get('cleared') is False
+        c.check(s, 'a clear whose removal fails (the runner made the App Group\'s container read-only) rejects, so the page\'s error '
+                   'path asks again, and leaves both files (F-S3, review round 2)',
+                hands.get('locked') is True and k3.get('id') == e3.get('id') and lc.get('id') == e3.get('id') and lc.get('cleared') is None
+                and bool(lc.get('rejected'))
                 and isinstance(g3.get('json'), dict) and g3['json'].get('id') == e3.get('id') and g3.get('jpg') == e3.get('bytes'),
                 {'share': {x: e3.get(x) for x in ('id', 'bytes')}, 'keep read': k3, 'clear': lc, 'files': g3, 'hands': hands})
         ca, g4 = first(ev, 'js', label='clear again').get('result') or {}, snaps.get('after the clear again') or {}
