@@ -17,7 +17,9 @@ import FPCore
 /// (through the bridge, counted by the link; "@lastConfirm" stands for the id of the last confirm the page forwarded),
 /// `state {label, a11y}` (`a11y: true` turns the accessibility runtime on first, as a first press does, so the state's
 /// `input` carries the label VoiceOver reads), `mark {label, hold}` (the keyboard log starts again; nothing moves for
-/// `hold` ms, 1500 by default, while the host screenshots), `killWebContent`, `reload`, `back` (the chat's Back),
+/// `hold` ms, 1500 by default, while the host screenshots), `killWebContent`, `killNetwork {webContent}` (WebKit's
+/// Networking process ended through SPI, and by default the WebContent with it in the same turn; an error event on a
+/// WebKit without the SPI), `reload`, `back` (the chat's Back),
 /// `edgeBack {progress, finish}` (the edge pan without a finger), `confirm {yes}` and `undo` (taps on the toast
 /// window), `blockPage {ms}` (the page's main thread busy), `send {text, nonce}` (these words through the composer's
 /// Send), `webResponder` (the web view's content view takes first responder, as a tap into the page does),
@@ -59,7 +61,8 @@ import FPCore
 /// Reports: every event carries `t` (ms since the probe started), `wall` (epoch ms) and `appState`. `state` holds the
 /// page's own (`pageStateJS`: the tabs-mode fields 10-page.md section 8 names among them), the shell's (`ShellBridge
 /// .describe()`: the link, the screens with each one's `host` and the Coach stack, the tab root's `root`, `leftWindow`
-/// and `leftWindowAny`), the keyboard's log, the first responder, and `input`: the top screen's first text input as
+/// and `leftWindowAny`), the keyboard's log, the first responder, `procs {web, net}` (the pids of the page's WebContent
+/// and Networking processes, null for none), and `input`: the top screen's first text input as
 /// `{kind: composer|key, focused, hasText, inWindow, a11yOn, a11yLabel}`, never its text; `a11yLabel` is the label
 /// VoiceOver reads (delta 14.10), read while the accessibility runtime is on (`a11yOn`: after a press or a `state
 /// {a11y: true}`) with UIKit's and SwiftUI's accessibility bundles loaded (only they name a SwiftUI text field), else
@@ -132,11 +135,21 @@ final class ShellProbe {
     private var phaseEnded: (() -> Void)?
 
     /// Scripts the shell adds at document start while probing: the page's visibilitychange events, counted from the
-    /// document's start.
+    /// document's start; and the scene's marks as this document finds them, before the page's own scripts run
+    /// (`window.__fpStartMarks`: sessionStorage's fp_tab, fp_chat and fp_seen, every key's name, and the navigation's
+    /// type when WebKit has its entry yet), which tell a restart that kept WebKit's sessionStorage from one that lost it
+    /// (build 62's restart flag, R0), whatever the page writes once it runs.
     let documentStartScripts = [
         """
         (function () { window.__fpVis = []; document.addEventListener('visibilitychange', function () { \
         window.__fpVis.push(document.visibilityState + '@' + Math.round(performance.now())); }); })();
+        """,
+        """
+        (function () { var m = { keys: [], nav: null }; try { var s = window.sessionStorage; \
+        m.fp_tab = s.getItem('fp_tab'); m.fp_chat = s.getItem('fp_chat'); m.fp_seen = s.getItem('fp_seen'); \
+        for (var i = 0; i < s.length; i++) m.keys.push(s.key(i)); m.keys.sort(); } catch (e) { m.error = String(e); } \
+        try { var n = performance.getEntriesByType('navigation')[0]; m.nav = n ? n.type : null; } catch (e) {} \
+        window.__fpStartMarks = m; })();
         """,
     ]
 
@@ -404,9 +417,28 @@ final class ShellProbe {
             let hold = (step["hold"] as? NSNumber)?.doubleValue ?? 1500
             DispatchQueue.main.asyncAfter(deadline: .now() + hold / 1000) { next() }
         case "killWebContent":
-            event("killWebContent")
+            event("killWebContent", ["before": Self.procs(b?.webView)])
             b?.webView?.perform(NSSelectorFromString("_killWebContentProcess"))
             endPhase()
+        case "killNetwork":
+            // WebKit's Networking process ended (it holds the scene's sessionStorage, fp_tab and fp_chat among it: build
+            // 62's R0), and with `webContent` (the default) the page's WebContent too, in the same turn: Capacitor
+            // reloads the page into a new WebContent, which reaches a new Networking process. `-[WKWebsiteDataStore
+            // _terminateNetworkProcess]` (SPI, behind responds(to:)); a WebKit without it is an error event that ends
+            // nothing. With `webContent: false` only the Networking process goes and the phase goes on.
+            let wv = b?.webView
+            let sel = NSSelectorFromString("_terminateNetworkProcess")
+            guard let store = wv?.configuration.websiteDataStore, store.responds(to: sel) else {
+                event("killNetwork", ["terminated": false, "error": wv == nil ? "no web view"
+                    : "this WebKit has no -[WKWebsiteDataStore _terminateNetworkProcess]"])
+                return next()
+            }
+            let alsoWeb = (step["webContent"] as? Bool) ?? true
+            let before = Self.procs(wv)
+            _ = store.perform(sel)
+            if alsoWeb { wv?.perform(NSSelectorFromString("_killWebContentProcess")) }
+            event("killNetwork", ["terminated": true, "webContent": alsoWeb, "before": before])
+            if alsoWeb { endPhase() } else { next() }
         case "reload":
             event("reload")
             b?.webView?.reload()
@@ -1150,6 +1182,23 @@ final class ShellProbe {
         }
     }
 
+    /// The pid an SPI getter answers (`-[WKWebView _webProcessIdentifier]`, `-[WKWebsiteDataStore
+    /// _networkProcessIdentifier]`: a pid_t), nil when the object does not respond to it or answers no process (0).
+    static func spiPid(_ object: NSObject?, _ name: String) -> Int? {
+        let sel = NSSelectorFromString(name)
+        guard let object, object.responds(to: sel) else { return nil }
+        typealias Getter = @convention(c) (NSObject, Selector) -> Int32
+        let pid = unsafeBitCast(object.method(for: sel), to: Getter.self)(object, sel)
+        return pid > 0 ? Int(pid) : nil
+    }
+
+    /// The page's WebContent process and its data store's Networking process now (every state's `procs`, and a kill's
+    /// `before`): their pids, null for none (or a WebKit without the getter), so a kill is seen to replace them.
+    static func procs(_ webView: WKWebView?) -> [String: Any] {
+        ["web": spiPid(webView, "_webProcessIdentifier") ?? NSNull(),
+         "net": spiPid(webView?.configuration.websiteDataStore, "_networkProcessIdentifier") ?? NSNull()]
+    }
+
     /// WebKit's content view inside the web view's scroll view (the view that holds first responder for the page).
     static func contentView(_ webView: WKWebView?) -> UIView? {
         webView?.scrollView.subviews.first { NSStringFromClass(type(of: $0)).hasPrefix("WKContent") }
@@ -1234,7 +1283,7 @@ final class ShellProbe {
             self.event("state", ["label": label, "page": page, "shell": self.bridge.describe(), "keyboard": self.keyboard,
                                  "firstResponder": responder, "webResponder": Self.contentView(wv)?.isFirstResponder ?? false,
                                  "webScrollY": Double((wv?.scrollView.contentOffset.y ?? 0) + inset), "input": input,
-                                 "replaced": self.replaced?.report ?? NSNull(),
+                                 "replaced": self.replaced?.report ?? NSNull(), "procs": Self.procs(wv),
                                  "keyWindow": String(describing: UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.keyWindow }.first.map { type(of: $0) })])
             done()
         }
