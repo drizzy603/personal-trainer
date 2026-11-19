@@ -337,17 +337,24 @@ class ShareViewController: UIViewController {
         return encoded(cg)
     }
 
-    /// The image as a JPEG at quality 0.8 (a photo with transparency on white: JPEG has none), with its preview.
+    /// The image as a JPEG at quality 0.8 (a photo with transparency on white: JPEG has none), with its preview. The
+    /// flattening context is 8 bits a component in the image's own RGB space; one CoreGraphics will not make there (an
+    /// extended-range space, an input-only profile) is made again in sRGB (build 62's review, F-S5), so such a photo
+    /// never ends as "Couldn't load this photo".
     static func encoded(_ image: CGImage) -> (jpeg: Data, preview: UIImage)? {
         var flat = image
         switch image.alphaInfo {
         case .none, .noneSkipFirst, .noneSkipLast:
             break
         default:
-            let space = image.colorSpace.flatMap { $0.model == .rgb ? $0 : nil } ?? CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+            let own = image.colorSpace.flatMap { $0.model == .rgb ? $0 : nil }
+            let srgb = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
             let rect = CGRect(x: 0, y: 0, width: image.width, height: image.height)
-            guard let ctx = CGContext(data: nil, width: image.width, height: image.height, bitsPerComponent: 8, bytesPerRow: 0,
-                                      space: space, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { return nil }
+            func context(_ space: CGColorSpace) -> CGContext? {
+                CGContext(data: nil, width: image.width, height: image.height, bitsPerComponent: 8, bytesPerRow: 0,
+                          space: space, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)
+            }
+            guard let ctx = own.flatMap(context) ?? context(srgb) else { return nil }
             ctx.setFillColor(UIColor.white.cgColor)
             ctx.fill(rect)
             ctx.draw(image, in: rect)

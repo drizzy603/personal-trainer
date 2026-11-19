@@ -59,8 +59,12 @@ Launches, in this order (`--only` picks among them; prepare and restore always r
                  pendingShare.jpg, with the page's own reads held: TrovoShare.getPendingShare({keep:true}) leaves both
                  files and answers the share's id, a clear by another id leaves them, then trovo://share: the page reads
                  it, keeps it and clears it by its id, both files gone; then build 61's layout, the jpg with the words
-                 in the group's defaults, read and deleted with no id), then the legacy slot on purpose with a JPEG file
-                 beside the steps (`jpeg`), read by trovo://share
+                 in the group's defaults, read and deleted with no id; then the plugin's checks before each removal
+                 (build 62's review, F-S3): a clear by the share's id once the runner renamed another photo over its
+                 photo leaves that photo (cleared false), which build 61's read then takes as unpaired, and a clear
+                 whose removal fails (the runner made the container read-only) answers cleared false and leaves both
+                 files, the next clear taking them), then the legacy slot on purpose with a JPEG file beside the steps
+                 (`jpeg`), read by trovo://share
   ping           `blockPage` while a tap's tabs.select waits: its timeout held, confirmed by a ping (`ping` event, done),
                  no fallback
   sceneCycle     the scene's connection replayed twice (the step, then the generic `hook` step): a new web view in a
@@ -694,6 +698,25 @@ SHARE_STALE_CLEAR_JS = r"""
 var r = await Capacitor.Plugins.TrovoShare.clearPendingShare({ id: 'probe-stale-' + Date.now() });
 return { cleared: !!(r && r.cleared) };
 """
+# Build 62's review (F-S3), the plugin's checks right before each removal: the waiting share's id from a keep read, kept
+# in the page's window for the clears after it; a clear by that id, its `cleared` as answered (null when it is no
+# boolean); build 61's read, with no argument. Sizes and ids only, never the words.
+SHARE_KEEP_ID_JS = r"""
+var r = await Capacitor.Plugins.TrovoShare.getPendingShare({ keep: true });
+window.__fpProbeShareId = r && r.id ? String(r.id) : null;
+return { id: window.__fpProbeShareId, photo: r && r.imageBase64 ? String(r.imageBase64).length : 0 };
+"""
+SHARE_CLEAR_ID_JS = r"""
+var id = window.__fpProbeShareId;
+if (!id) return { error: 'no share id kept' };
+var r = await Capacitor.Plugins.TrovoShare.clearPendingShare({ id: id });
+return { id: id, cleared: (r && typeof r.cleared === 'boolean') ? r.cleared : null };
+"""
+SHARE_PLAIN_READ_JS = r"""
+var r = await Capacitor.Plugins.TrovoShare.getPendingShare();
+return { photo: r && r.imageBase64 ? String(r.imageBase64).length : 0, commentLength: r && r.comment ? String(r.comment).length : 0,
+  id: r && r.id ? String(r.id) : null };
+"""
 # The page's share state after its read: its share and photo lines (sizes and states only), the share it holds and the
 # ids it kept and asked to clear.
 SHARE_LINES_JS = r"""
@@ -1202,17 +1225,46 @@ def scen_share(c):
         return out
 
     looks = [('62 written', 'share', None, 0), ('kept by the read', 'js', 'keep read', 0), ('after the stale clear', 'js', 'stale clear', 0),
-             ('after the page\'s read', 'js', 'share lines', 0), ('61 written', 'share', None, 1), ('after the 61 read', 'js', 'share lines 61', 0)]
+             ('after the page\'s read', 'js', 'share lines', 0), ('61 written', 'share', None, 1), ('after the 61 read', 'js', 'share lines 61', 0),
+             ('after the foreign clear', 'js', 'foreign clear', 0), ('after the unpaired read', 'js', 'unpaired read', 0),
+             ('at the locked clear', 'js', 'locked clear', 0), ('after the clear again', 'js', 'clear again', 0)]
+    # Build 62's review (F-S3): the runner's own hands on the container between steps. Once the keep read of the third
+    # share has answered, another photo is renamed into place over its photo, as the extension renames a newer share's
+    # (its size is not the words file's bytes); once the fourth share's has, the container is made read-only, so a
+    # removal in it fails; it is made writable again once the clear under it has answered (and at the end, whatever
+    # happened).
+    hands = {}
+    mode0 = os.stat(gc).st_mode & 0o7777 if c.group else None
+
+    def js_done(ev, label):
+        return any(e.get('label') == label for e in ev.all('js'))
 
     def during(ev):
         if not c.group:
             return
+        if 'foreign' not in hands and js_done(ev, 'keep read 2'):
+            pp = os.path.join(gc, 'pendingShare.jpg')
+            hands['foreign'] = None
+            if os.path.isfile(pp):
+                with open(pp, 'rb') as f:
+                    data = f.read() + b'\xff\xd9' * 32
+                tmp = os.path.join(gc, '.probe-foreign.jpg')
+                with open(tmp, 'wb') as f:
+                    f.write(data)
+                os.replace(tmp, pp)
+                hands['foreign'] = len(data)
+        if 'locked' not in hands and js_done(ev, 'keep read 3'):
+            os.chmod(gc, 0o555)
+            hands['locked'] = True
         for name, kind, label, k in looks:
             if name in snaps:
                 continue
             got = ev.all(kind) if label is None else [e for e in ev.all(kind) if e.get('label') == label]
             if len(got) > k:
                 snaps[name] = files()
+        if hands.get('locked') and 'unlocked' not in hands and js_done(ev, 'locked clear'):
+            os.chmod(gc, mode0)
+            hands['unlocked'] = True
 
     phase = [wait(800)]
     if c.group:
@@ -1226,14 +1278,28 @@ def scen_share(c):
                   step('draft', text=''), js('clear file', CLEAR_JS),
                   step('share', comment=c.share_text, layout='61'), wait(1500), step('openURL', url='trovo://share'), wait(3500),
                   state('shared 61'), js('composer 61', COMPOSER_JS), js('share lines 61', SHARE_LINES_JS), wait(1500),
-                  step('draft', text=''), js('clear 61', CLEAR_JS)]
+                  step('draft', text=''), js('clear 61', CLEAR_JS),
+                  # build 62's review (F-S3), the page's own reads held again: a clear by the share's id once another photo
+                  # was renamed over its photo (the runner's, as a newer share's would be) leaves that photo; build 61's
+                  # read then takes it as an unpaired photo; a clear whose removal fails (the container read-only) leaves
+                  # both files, and the next one takes them
+                  js('share hold 2', SHARE_HOLD_JS), step('share', comment=c.share_text), wait(1500),
+                  js('keep read 2', SHARE_KEEP_ID_JS), wait(1500), js('foreign clear', SHARE_CLEAR_ID_JS), wait(1500),
+                  js('unpaired read', SHARE_PLAIN_READ_JS), wait(1500),
+                  step('share', comment=c.share_text), wait(1500), js('keep read 3', SHARE_KEEP_ID_JS), wait(1500),
+                  js('locked clear', SHARE_CLEAR_ID_JS), wait(1500), js('clear again', SHARE_CLEAR_ID_JS), wait(1500),
+                  js('share release 2', SHARE_RELEASE_JS)]
     else:
         # the refused write is read back: trovo://share must find nothing (no photo, no comment, both composers empty)
         phase += [step('share', comment=c.share_text), step('openURL', url='trovo://share'), wait(3500), js('composer refused', COMPOSER_JS),
                   state('refused read')]
     phase += [step('share', comment=c.share_text, legacy=True, jpeg=PHOTO), step('openURL', url='trovo://share'), wait(3500), state('shared'),
               js('composer', COMPOSER_JS), step('draft', text=''), js('clear', CLEAR_JS), DONE]
-    ev = c.launch(s, 'share', [phase], during=during)
+    try:
+        ev = c.launch(s, 'share', [phase], during=during)
+    finally:
+        if c.group and mode0 is not None:
+            os.chmod(gc, mode0)   # the container writable again, whatever the launch came to
     if c.group:
         # whatever a failed step left in the container goes, so no later launch's page reads it as a share
         left = [n for n in ('pendingShare.json', 'pendingShare.jpg') if os.path.isfile(os.path.join(gc, n))]
@@ -1288,6 +1354,30 @@ def scen_share(c):
                 g61.get('photo') == want_photo(e61.get('bytes') or 0) and (chat(s61).get('draft') == c.share_text or g61.get('web') == len(c.share_text))
                 and l61.get('sid') == '' and (l61.get('clearing') or []) == (ln.get('clearing') or []) and f.get('jpg') is None and f.get('json') is None,
                 {'composer': g61, 'native draft length': len(chat(s61).get('draft') or ''), 'page': l61, 'files': f})
+        # build 62's review (F-S3): the plugin checks each file again right before it removes it
+        e2, e3 = (sh[2] if len(sh) > 2 else {}), (sh[3] if len(sh) > 3 else {})
+        k2, fc = first(ev, 'js', label='keep read 2').get('result') or {}, first(ev, 'js', label='foreign clear').get('result') or {}
+        g1, foreign = snaps.get('after the foreign clear') or {}, hands.get('foreign')
+        c.check(s, 'a clear by the share\'s id once another photo was renamed over its photo (the runner\'s, its size not the words file\'s '
+                   'bytes, as a newer share\'s would be) leaves that photo and answers cleared: false; the words file naming that id goes (F-S3)',
+                e2.get('layout') == '62' and k2.get('id') == e2.get('id') and fc.get('id') == e2.get('id') and type(foreign) is int
+                and foreign != e2.get('bytes') and fc.get('cleared') is False and g1.get('jpg') == foreign and g1.get('json') is None,
+                {'share': {x: e2.get(x) for x in ('id', 'bytes', 'layout')}, 'keep read': k2, 'foreign photo': foreign, 'clear': fc, 'files': g1})
+        ur, g2 = first(ev, 'js', label='unpaired read').get('result') or {}, snaps.get('after the unpaired read') or {}
+        c.check(s, 'build 61\'s read (no keep) then takes that photo as an unpaired one, no id, and deletes it (its size still the bytes it read)',
+                type(foreign) is int and ur.get('photo') == want_photo(foreign) and ur.get('id') is None and g2.get('jpg') is None
+                and g2.get('json') is None, {'read': ur, 'files': g2})
+        k3, lc = first(ev, 'js', label='keep read 3').get('result') or {}, first(ev, 'js', label='locked clear').get('result') or {}
+        g3 = snaps.get('at the locked clear') or {}
+        c.check(s, 'a clear whose removal fails (the runner made the App Group\'s container read-only) answers cleared: false and leaves '
+                   'both files (F-S3)',
+                hands.get('locked') is True and k3.get('id') == e3.get('id') and lc.get('id') == e3.get('id') and lc.get('cleared') is False
+                and isinstance(g3.get('json'), dict) and g3['json'].get('id') == e3.get('id') and g3.get('jpg') == e3.get('bytes'),
+                {'share': {x: e3.get(x) for x in ('id', 'bytes')}, 'keep read': k3, 'clear': lc, 'files': g3, 'hands': hands})
+        ca, g4 = first(ev, 'js', label='clear again').get('result') or {}, snaps.get('after the clear again') or {}
+        c.check(s, 'the next clear by that id, the container writable again, removes both files (cleared: true)',
+                hands.get('unlocked') is True and ca.get('cleared') is True and g4.get('jpg') is None and g4.get('json') is None,
+                {'clear': ca, 'files': g4, 'hands': hands})
     else:
         c.check(s, 'share with no App Group container: an error event that writes nothing (stored none), never the legacy slot unasked',
                 one.get('ran') is True and one.get('stored') == 'none' and 'error' in one, one)
