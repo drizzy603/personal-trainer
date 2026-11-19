@@ -64,9 +64,11 @@ TYPES=('ShellProbe' 'StoreProbe' 'ShellDebug')
 LONG=("the scene's delegate cannot replay a connection"   # App: the sceneCycle hook (and StoreProbe's)
       'no JPEG at Documents/fp-probe/'                    # App: the share hook
       'no App Group container in this build'              # App: the share hook
+      'layout is 62, 61 or slot (legacy: true)'           # App: the share hook's App Group layouts (build 62)
       'no url with a scheme'                              # App: openURL, openURLOnActive
       "no tab root (the scene's root is classic)"         # FPUI ShellProbe
       'the key field does not hold the keys'              # FPUI ShellProbe: type
+      'this WebKit has no -[WKWebsiteDataStore _terminateNetworkProcess]'   # FPUI ShellProbe: killNetwork (build 62)
       '-fpShellProbeLog'                                  # FPUI ShellProbe: its launch argument (16 bytes)
       'ignored (-fpIgnoreMarker)'                         # FPUI ShellBridge: the Debug launch options
       'no sceneReplay: the App set no root factory'       # FPHost StoreProbe
