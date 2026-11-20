@@ -79,7 +79,7 @@
 //   document was linked took its chat down itself (the policy before the next document or at its hello, a page that
 //   leaves tabs out of its hello), so nothing counts and the kept share's chat opens as it did; a refused hello offers
 //   no chat; a fallback the document heard leaves no mark; after a fallback nobody saw, the overlay chat's Back during
-//   a second restart still counts. Build 62 (web 20261119-4; the harness's __fpShellDoc knob gives hello's reply the
+//   a second restart still counts. Build 62 (web 20261119-5; the harness's __fpShellDoc knob gives hello's reply the
 //   document's number in its scene, doc): a restart that lost the scene's marks (fp_tab, fp_chat, fp_seen) while the
 //   scene lived, which 61's reply reads as a move to the shell's tab (asked elsewhere, pinned beside it), boots blind
 //   under 62's: hello's tab adopted uncounted, the share's web chat or connect screen back as before, one 'booted
@@ -111,7 +111,7 @@
 //   clears the share by its id once, after its record is kept, and a later read finds nothing; a share with no id
 //   (build 61's extension's, read by 62) clears nothing. Read again before its clear (the keep held), it is nothing new:
 //   one chat, one read line, one keep. The app closed before the keep committed: the next launch reads it again and
-//   opens its chat with the photo and the words. A keep that fails (web 20261119-4; IndexedDB missing or throwing, the
+//   opens its chat with the photo and the words. A keep that fails (web 20261119-5; IndexedDB missing or throwing, the
 //   quota, an aborted put, the marker refused) is kept again on _photoRetry's schedule, three keeps a document at most:
 //   0.3 s after the failure while the page shows (each about 0.3 s after the one before, no fourth), else 0.3 s after
 //   it next shows; a keep that commits clears the share and the next launch has the photo back from the page's own
@@ -2350,7 +2350,7 @@ serial('(o) the app closed after the read, its keep held: the next launch reads 
   }
 });
 
-// Build 62's share whose keep fails (web 20261119-4, the review's S2): the page keeps it again on _photoRetry's schedule,
+// Build 62's share whose keep fails (web 20261119-5, the review's S2): the page keeps it again on _photoRetry's schedule,
 // three keeps of it a document at most; when the third fails it clears the share as build 61's plugin did at its read,
 // the photo pending in memory only, with one line.
 const LOST62 = 'share: cleared after 3 failed keeps (photo in memory only)';

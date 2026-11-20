@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20261119-4"/>
+<meta name="build" content="20261119-5"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -9828,7 +9828,7 @@ function runnerSetRpe(val){
 // committed (_photoKeep answers its transaction's outcome), or once the photo is sent, removed or replaced by a pick
 // (_photoDrop, the pick's _photoKeep); a later share needs no clear, its extension wrote it over the one before. A
 // share whose keep fails is kept again on _photoRetry's schedule (0.3 s later while the page shows, else 0.3 s after it
-// next shows: _photoSoon), three keeps of it a document at most (_shareKeep, web 20261119-4): one that commits clears
+// next shows: _photoSoon), three keeps of it a document at most (_shareKeep, web 20261119-5): one that commits clears
 // the share; when the third fails the share is cleared as build 61's plugin cleared it at its read, the photo pending
 // in memory only, with one line. The photo sent, removed or replaced meanwhile ends its keeps (that step cleared the
 // share, or a newer share wrote over it). So the App Group's copy outlives a document only when the document ends
