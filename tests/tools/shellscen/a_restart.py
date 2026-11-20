@@ -1,4 +1,4 @@
-"""Build 62's restart flag (lane R of b62/DESIGN.md, R0): whether the scene's marks, sessionStorage's fp_tab and fp_chat,
+"""Build 62's restart flag (its proof run, R0, made on build 61's code before the fix): whether the scene's marks, sessionStorage's fp_tab and fp_chat,
 outlive a restart of WebKit's processes while the app and its scene live, and what the next document's hello then counts
 as a place the owner asked for (_photoAsked: a kept share's chat stays shut for it, counted as left).
 
